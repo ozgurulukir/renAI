@@ -1,6 +1,6 @@
-# renAI: AI-Powered Book Renamer and Organizer
+# renAI: AI-Powered Document Renamer and Organizer
 
-`renAI` is a powerful Python tool designed to automatically rename and organize your digital book collection using LLMs (Large Language Models) and OCR (Optical Character Recognition). It extracts metadata directly from the content of your PDF, EPUB, MOBI, and other document formats.
+`renAI` is a powerful Python tool designed to automatically rename and organize your digital documents (books, notes, etc.) using LLMs (Large Language Models) and OCR (Optical Character Recognition). It extracts metadata directly from the content of your PDF, EPUB, MOBI, and other document formats.
 
 ---
 
