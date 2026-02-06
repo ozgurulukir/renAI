@@ -10,7 +10,9 @@ from config import get_allowed_categories
 
 
 class LLMEngine:
-    def __init__(self, provider: str, api_key: str, base_url: str, model_name: str) -> None:
+    def __init__(
+        self, provider: str, api_key: str, base_url: str, model_name: str
+    ) -> None:
         self.provider = provider
         self.model_name = model_name
         self.client = OpenAI(api_key=api_key, base_url=base_url)
@@ -184,6 +186,10 @@ Provide ONLY the refined valid JSON object.
                         }
                     )
 
+            except json.JSONDecodeError as e:
+                logging.error(f"JSON parsing failed (Attempt {attempt + 1}): {e}")
+            except (OpenAIError, OSError) as e:
+                logging.error(f"API or network error (Attempt {attempt + 1}): {e}")
             except Exception as e:
                 logging.error(f"LLM request failed (Attempt {attempt + 1}): {e}")
 

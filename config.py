@@ -125,8 +125,28 @@ PROVIDERS = {
 
 
 # OCR Configuration
-TESSERACT_PATH = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 OCR_LANG = "tur+eng"
+
+
+def get_tesseract_path() -> Path:
+    """Get Tesseract executable path with environment variable override."""
+    import sys
+
+    # Allow environment variable override
+    env_path = os.getenv("TESSERACT_PATH")
+    if env_path:
+        return Path(env_path)
+
+    # Platform-specific defaults
+    if sys.platform == "win32":
+        return Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+    elif sys.platform == "darwin":  # macOS
+        return Path("/usr/local/bin/tesseract")
+    else:  # Linux and others
+        return Path("/usr/bin/tesseract")
+
+
+TESSERACT_PATH = get_tesseract_path()
 
 
 def load_eval_models(provider: str) -> list:

@@ -99,7 +99,9 @@ class OCREngine:
 
             # Find contours
             contours, _ = cv2.findContours(  # type: ignore
-                binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE  # type: ignore
+                binary,
+                cv2.RETR_LIST,
+                cv2.CHAIN_APPROX_SIMPLE,  # type: ignore
             )
 
             if not contours:
@@ -163,8 +165,6 @@ class OCREngine:
         except Exception as e:
             logging.debug(f"Skew correction failed: {e}")
             return image
-
-
 
     def extract_text(self, file_path: Path) -> str:
         """Extract text from a document using OCR."""

@@ -35,6 +35,8 @@ test_files/
 *.log
 mupdf*
 mutool*
+todo*
+fixes*
 
 
 # Environment Variables

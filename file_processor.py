@@ -13,32 +13,38 @@ from ocr_engine import OCREngine
 from utils import get_file_hash, proportional_chunk_trim, sanitize_filename
 
 
-def safe_move_file(source_path: Path, dest_path: Path, operation_type: str = "move") -> Path:
+def safe_move_file(
+    source_path: Path, dest_path: Path, operation_type: str = "move"
+) -> Path:
     """
     Safely move a file with duplicate detection and error handling.
-    
+
     Args:
         source_path: Path to the source file
         dest_path: Path to the destination file
         operation_type: Type of operation for logging ("rename", "move", "organize")
-    
+
     Returns:
         The actual destination path used (may be modified for duplicates)
+
+    Raises:
+        FileNotFoundError: If source file doesn't exist
+        OSError: If file operation fails
     """
     import shutil
     import uuid
-    
+
     # Check if source file exists
     if not source_path.exists():
         raise FileNotFoundError(f"Source file {source_path} does not exist")
-    
+
     # Handle duplicate destination files
     final_dest_path = dest_path
     if dest_path.exists():
         # Check if files have same content (same hash)
         existing_hash = get_file_hash(dest_path)
         new_hash = get_file_hash(source_path)
-        
+
         if existing_hash == new_hash:
             # Same content - skip moving
             logging.info(
@@ -51,11 +57,13 @@ def safe_move_file(source_path: Path, dest_path: Path, operation_type: str = "mo
             final_dest_path = (
                 dest_path.parent / f"{dest_path.stem}_{unique_id}{dest_path.suffix}"
             )
-    
+
     # Perform the file operation
     try:
         shutil.move(str(source_path), str(final_dest_path))
-        logging.info(f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}")
+        logging.info(
+            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
+        )
         return final_dest_path
     except Exception as e:
         logging.error(
@@ -158,7 +166,7 @@ class BookProcessor:
                 logging.info(
                     f"Insufficient text from PyMuPDF for {file_path.name}, falling back to OCR"
                 )
-                
+
                 # If skip_ocr_files is enabled, move directly to Needs_OCR folder without attempting OCR
                 if self.skip_ocr_files and self.needs_ocr_dir:
                     try:
@@ -169,7 +177,7 @@ class BookProcessor:
                         logging.error(
                             f"Failed to move {file_path.name} to Needs_OCR: {e}"
                         )
-                
+
                 # Otherwise, attempt OCR
                 ocr_text = self.ocr_engine.extract_text(file_path)
                 if ocr_text.strip():
@@ -280,7 +288,7 @@ class BookProcessor:
                 return True, file_path, new_name, category
 
             new_path = file_path.parent / new_name
-            
+
             with self.file_operation_lock:
                 try:
                     final_path = safe_move_file(file_path, new_path, "rename")
@@ -307,35 +315,30 @@ class BookProcessor:
     ) -> None:
         """Move successfully renamed files into category folders."""
         for success, current_path, name, category in processed_info:
-            if success and current_path and category:
-                # Skip if file doesn't exist (was already moved)
-                if not current_path.exists():
-                    logging.info(f"File {name} was already moved, skipping organization")
-                    continue
-                
-                category_dir = root_dir / category
-                try:
-                    category_dir.mkdir(parents=True, exist_ok=True)
-                except Exception as e:
-                    logging.error(
-                        f"ERROR: Could not create category directory {category_dir}: {e}. Skipping organization for {name}."
-                    )
-                    continue
+            if not success or not current_path or not category:
+                continue
 
-                dest_path = category_dir / name
-                
-                try:
-                    # Check if file still exists before attempting to move
-                    if current_path.exists():
-                        safe_move_file(current_path, dest_path, "organize")
-                    else:
-                        logging.info(
-                            f"File {name} was already moved to {category}, skipping"
-                        )
-                except Exception as e:
-                    logging.error(
-                        f"ERROR: Failed to move {name} to {category_dir}: {e}. File remains at {current_path}."
-                    )
+            category_dir = root_dir / category
+            try:
+                category_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                logging.error(
+                    f"ERROR: Could not create category directory {category_dir}: {e}. Skipping organization for {name}."
+                )
+                continue
+
+            dest_path = category_dir / name
+
+            try:
+                # Attempt move directly - safe_move_file handles non-existent source
+                final_path = safe_move_file(current_path, dest_path, "organize")
+                logging.info(f"Organized {name} -> {final_path}")
+            except FileNotFoundError:
+                logging.info(f"File {name} was already moved or deleted, skipping")
+            except Exception as e:
+                logging.error(
+                    f"ERROR: Failed to move {name} to {category_dir}: {e}. File remains at {current_path}."
+                )
 
     def benchmark_extractors(self, file_path: Path) -> None:
         """Run all available extractors on a file and report results."""
@@ -376,7 +379,9 @@ class BookProcessor:
 
         print("=" * 60 + "\n")
 
-    def evaluate_models(self, file_path: Path, provider: str, model_names: List[str]) -> None:
+    def evaluate_models(
+        self, file_path: Path, provider: str, model_names: List[str]
+    ) -> None:
         """Evaluate multiple models on a single file for metadata quality."""
         print("\n" + "=" * 85)
         print(f"MODEL EVALUATION: {file_path.name}")
@@ -441,5 +446,3 @@ class BookProcessor:
         if self.needs_ocr_dir and self.needs_ocr_dir.exists():
             return list(self.needs_ocr_dir.iterdir())
         return []
-
-
