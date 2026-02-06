@@ -1,0 +1,88 @@
+# Custom Categories Configuration for renAI
+#
+# File Format:
+# - Lines starting with '#' are comments
+# - Empty lines are ignored
+# - Use 'LANG: language_code' to specify language (tr for Turkish, en for English)
+# - Categories are listed under their respective language
+#
+# Example:
+# LANG: en
+# Article
+# Fiction
+# Non-Fiction
+# Textbook
+
+# English Categories
+LANG: en
+Article
+Fiction
+Non-Fiction
+Textbook
+Report
+Gov
+Presentation
+Manual
+Thesis
+Research
+Other
+Dictionary
+Biography
+Memoir
+Science
+History
+Philosophy
+Psychology
+Economics
+Technology
+Programming
+Cooking
+Travel
+Health
+Self-Help
+
+# Turkish Categories
+LANG: tr
+Makale
+Kurgu
+Kurgu Dışı
+Ders Kitabı
+Rapor
+Devlet
+Sunum
+Kılavuz
+Tez
+Araştırma
+Diğer
+Sözlük
+Biyografi
+Öykü
+Ansiklopedi
+Bilim
+Tarih
+Felsefe
+Psikoloji
+Ekonomi
+Teknoloji
+Programlama
+Aşçılık
+Seyahat
+Sağlık
+Kişisel Gelişim
+```
+
+Now let me update the README to document this feature:
+
+<tool_call>
+<function=read_file>
+<parameter=path>
+renAI/README.md
+</parameter>
+<parameter=start_line>
+1
+</parameter>
+<parameter=end_line>
+100
+</parameter>
+</function>
+</tool_call>

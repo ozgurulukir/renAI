@@ -1,0 +1,219 @@
+import os
+from pathlib import Path
+
+# Directory Configuration (must be defined first for other paths)
+BASE_DIR = Path(__file__).parent.resolve()
+CACHE_DIR = BASE_DIR / ".renamer_cache"
+DEBUG_DIR = BASE_DIR / ".ocr_debug"
+
+# Evaluation log file
+EVAL_LOG_FILE = BASE_DIR / "evaluation.log"
+
+# Warning Configuration
+SHOW_WARNINGS = os.getenv("RENAI_SHOW_WARNINGS", "true").lower() in ("true", "1", "yes")
+
+# Category Configuration
+DEFAULT_CATEGORIES = {
+    "tr": [
+        "Makale",
+        "Kurgu",
+        "Kurgu Dışı",
+        "Ders Kitabı",
+        "Rapor",
+        "Devlet",
+        "Sunum",
+        "Kılavuz",
+        "Tez",
+        "Araştırma",
+        "Diğer",
+        "Sözlük",
+        "Dergi",
+    ],
+    "en": [
+        "Article",
+        "Fiction",
+        "Non-Fiction",
+        "Textbook",
+        "Report",
+        "Gov",
+        "Presentation",
+        "Manual",
+        "Thesis",
+        "Research",
+        "Other",
+        "Dictionary",
+        "Magazine",
+    ],
+}
+
+# Custom categories file path
+CUSTOM_CATEGORIES_FILE = BASE_DIR / "categories.txt"
+
+
+def load_categories_from_file() -> dict:
+    """Load custom categories from a text file.
+
+    File format:
+    - Lines starting with '#' are comments
+    - Empty lines are ignored
+    - Use 'LANG: tr' or 'LANG: en' to specify language
+    - Categories are listed under their respective language
+
+    Example:
+    LANG: en
+    Article
+    Fiction
+    Non-Fiction
+    Textbook
+    Report
+    """
+    categories = {}
+
+    if not CUSTOM_CATEGORIES_FILE.exists():
+        return {}
+
+    try:
+        with open(CUSTOM_CATEGORIES_FILE, "r", encoding="utf-8") as f:
+            current_lang = "en"  # Default language
+            categories[current_lang] = []
+
+            for line in f:
+                line = line.strip()
+
+                # Skip empty lines and comments
+                if not line or line.startswith("#"):
+                    continue
+
+                # Check for language specification
+                if line.lower().startswith("lang:"):
+                    current_lang = line.split(":", 1)[1].strip().lower()
+                    if current_lang not in categories:
+                        categories[current_lang] = []
+                    continue
+
+                # Add category to current language
+                categories[current_lang].append(line)
+
+            return categories
+    except Exception as e:
+        print(f"Error loading custom categories from {CUSTOM_CATEGORIES_FILE}: {e}")
+        return {}
+
+
+# Load custom categories if file exists
+CUSTOM_CATEGORIES = load_categories_from_file()
+
+
+# API Provider Configurations
+PROVIDERS = {
+    "deepinfra": {
+        "base_url": "https://api.deepinfra.com/v1/openai",
+        "api_key": os.getenv("DEEPINFRA_API_KEY"),
+        "default_model": "meta-llama/Llama-3.3-70B-Instruct",
+    },
+    "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key": os.getenv("OPENROUTER_API_KEY"),
+        "default_model": "google/gemini-2.0-flash-exp:free",
+    },
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key": os.getenv("OPENAI_API_KEY"),
+        "default_model": "gpt-4o-mini",
+    },
+}
+
+
+# OCR Configuration
+TESSERACT_PATH = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+OCR_LANG = "tur+eng"
+
+
+def load_eval_models(provider: str) -> list:
+    """Load evaluation models from provider-specific text files."""
+    file_path = BASE_DIR / f"eval_models_{provider}.txt"
+    if file_path.exists():
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                # Read non-empty lines, stripping whitespace
+                return [line.strip() for line in f if line.strip()]
+        except Exception as e:
+            print(f"Error loading {file_path}: {e}")
+    return []
+
+
+EVAL_MODELS = {
+    "deepinfra": load_eval_models("deepinfra"),
+    "openrouter": load_eval_models("openrouter"),
+    "openai": load_eval_models("openai"),
+}
+
+
+# Tool Paths
+MUTOOL_PATH = "mutool"
+
+
+def get_allowed_categories() -> dict:
+    """Get allowed categories, preferring custom categories if file exists."""
+    if CUSTOM_CATEGORIES:
+        return CUSTOM_CATEGORIES
+    return DEFAULT_CATEGORIES
+
+
+def initialize_directories() -> None:
+    """Ensure necessary directories exist."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def display_warnings(mode: str, recursive: bool) -> None:
+    """Display important warnings to the user before processing."""
+    if not SHOW_WARNINGS:
+        return
+
+    print("\n" + "=" * 70)
+    print("⚠️  IMPORTANT WARNINGS")
+    print("=" * 70)
+
+    # Directory layout warning for organize mode
+    if mode == "organize":
+        print("\n📁 DIRECTORY LAYOUT WARNING:")
+        print("   When using --mode organize, files will be moved into category")
+        print("   folders at the target directory root. This may disrupt your")
+        print("   existing directory layout:")
+        print("   - Files from all subdirectories will be moved to category folders")
+        print("   - Empty subdirectories may remain after files are moved")
+        print("   - Category folders are created at the root level")
+        print("   - Running multiple times will re-process files")
+
+    # Data loss warning
+    print("\n💾 DATA LOSS PREVENTION:")
+    print("   - Always backup your files before running renAI")
+    print("   - Test with a small directory first")
+    print("   - Review the naming convention: Title -- Subtitle -- Author (Year).ext")
+
+    # Token usage warning
+    print("\n📊 TOKEN USAGE & BUDGET:")
+    print("   - LLM API costs apply for each file processed")
+    print("   - Up to 8000 characters sent per file")
+    print("   - Caching helps reduce costs")
+    print("   - Estimate: ~$0.001/file (varies by provider/model)")
+
+    # Recursive warning
+    if recursive:
+        print("\n🔄 RECURSIVE MODE:")
+        print("   - Processing subdirectories recursively")
+        print("   - Files in category folders will be re-evaluated")
+        print("   - Cache still applies to avoid re-extraction")
+
+    print("\n" + "=" * 70)
+    print("Press Enter to proceed or Ctrl+C to cancel...")
+    print("=" * 70 + "\n")
+    input("Press Enter to continue...")
+
+
+if __name__ == "__main__":
+    # Test directory creation
+    initialize_directories()
+    print(f"Base Directory: {BASE_DIR}")
+    print(f"Cache Directory: {CACHE_DIR}")

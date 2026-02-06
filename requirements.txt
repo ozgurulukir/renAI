@@ -1,0 +1,27 @@
+# Renamer Script Dependencies for Windows 11
+# Install using: pip install -r requirements.txt
+
+# Core PDF and document handling
+pymupdf>=1.23.0
+
+# OCR and Image Processing
+pytesseract>=0.3.10
+Pillow>=10.0.0
+
+# API communication
+requests>=2.31.0
+openai>=1.0.0
+
+# PDF Extraction alternatives
+pdfplumber>=0.10.0
+pypdf>=3.17.0
+pypdfium2>=4.21.0
+
+# Multi-format document conversion (Microsoft)
+markitdown>=0.0.1
+
+# NOTE: Tesseract OCR engine must be installed on Windows 11 separately.
+# Download: https://github.com/UB-Mannheim/tesseract/wiki
+
+# Optional: OpenCV for skew correction in OCR
+opencv-python>=4.8.0
