@@ -70,19 +70,3 @@ Seyahat
 Sağlık
 Kişisel Gelişim
 ```
-
-Now let me update the README to document this feature:
-
-<tool_call>
-<function=read_file>
-<parameter=path>
-renAI/README.md
-</parameter>
-<parameter=start_line>
-1
-</parameter>
-<parameter=end_line>
-100
-</parameter>
-</function>
-</tool_call>
