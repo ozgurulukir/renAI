@@ -1,32 +1,295 @@
 # renAI: AI-Powered Document Renamer and Organizer
 
-`renAI` is a powerful Python tool designed to automatically rename and organize your digital documents (books, notes, etc.) using LLMs (Large Language Models) and OCR (Optical Character Recognition). It extracts metadata directly from the content of your PDF, EPUB, MOBI, and other document formats.
+`renAI` is a powerful Python tool that automatically renames and organizes your digital documents using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts metadata directly from document content to create consistent, searchable filenames.
 
 ---
 
+## 📖 Introduction
 
+Managing large digital document collections can be challenging. Files often arrive with inconsistent or meaningless names, making them difficult to find and organize. renAI solves this by:
 
-## ⚙️ Custom Categories Configuration
+- **Reading document content** to identify titles, authors, and publication years
+- **Classifying documents** into customizable categories
+- **Applying consistent naming conventions** automatically
+- **Organizing files** into category-based folders when desired
 
-You can define custom categories by creating a `categories.txt` file in the project root directory.
+The tool supports multiple document formats (PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD) and works with various LLM providers (DeepInfra, OpenRouter, OpenAI).
 
-### Dictionary Structure:
-Categories are stored as a dictionary with language codes as keys and lists of categories as values:
-```json
-{
-  "en": ["Article", "Fiction", "Non-Fiction", ...],
-  "tr": ["Makale", "Kurgu", "Kurgu Dışı", ...]
-}
+### Naming Convention
+
+Files are renamed using the format:
+```
+Title -- Subtitle -- Author -- (Year).ext
 ```
 
-### File Format:
-- Lines starting with `#` are comments
-- Empty lines are ignored
-- Use `LANG: language_code` to specify language (tr for Turkish, en for English)
-- Categories are listed under their respective language
+Example: `Introduction to Machine Learning -- A Practical Approach -- Andrew Ng -- (2018).pdf`
 
-### Example `categories.txt`:
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-Format Support** | Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, and MD files |
+| **Multiple PDF Extractors** | Choose from PyMuPDF, pdfplumber, pypdf, or pypdfium2 |
+| **AI-Driven Metadata** | Uses LLMs to extract titles, authors, years, and categories |
+| **Advanced OCR** | Tesseract integration with Enhanced Mode for low-quality scans |
+| **mutool Support** | Extracts high-quality images from fixed-layout PDFs |
+| **Smart Caching** | MD5-based caching reduces API costs and processing time |
+| **Custom Categories** | Define your own categories per language in `categories.txt` |
+
+### Operating Modes
+
+- **`rename`**: Renames files based on extracted metadata
+- **`organize`**: Moves renamed files into category folders
+- **`benchmark`**: Compares PDF extraction library performance
+- **`eval-model`**: Tests different LLM models for accuracy
+
+---
+
+## 🛠️ Installation
+
+### Prerequisites
+
+1. **Python 3.10+**
+2. **Tesseract OCR** - [Download for Windows](https://github.com/UB-Mannheim/tesseract/wiki/Tesseract-at-UB-Mannheim) or install via package manager:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install tesseract-ocr
+   
+   # macOS
+   brew install tesseract
+   ```
+3. **mutool (Optional)** - Part of [MuPDF](https://mupdf.com/releases/index.html)
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/ozgurulukir/renAI.git
+cd renAI
+
+# Create virtual environment (recommended)
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# or: .venv\Scripts\activate  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
 ```
+
+### API Keys
+
+Set your API keys as environment variables:
+
+```bash
+# Windows (PowerShell)
+$env:DEEPINFRA_API_KEY = "your_key_here"
+$env:OPENROUTER_API_KEY = "your_key_here"
+$env:OPENAI_API_KEY = "your_key_here"
+
+# Linux/Mac
+export DEEPINFRA_API_KEY="your_key_here"
+export OPENROUTER_API_KEY="your_key_here"
+export OPENAI_API_KEY="your_key_here"
+```
+
+Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrouter.ai) | [OpenAI](https://platform.openai.com/api-keys)
+
+---
+
+## 📖 Usage Examples
+
+### Basic Renaming
+
+```bash
+# Rename all files in directory
+python main.py "C:/Path/To/Books" --mode rename
+```
+
+### Organizing into Folders
+
+```bash
+# Rename and organize into category folders
+python main.py "C:/Path/To/Books" --mode organize
+```
+
+### High-Quality OCR for Scanned Documents
+
+```bash
+# Enhanced OCR with image preprocessing
+python main.py "C:/Path/To/Books" --ocr-enhanced --use-mutool
+```
+
+### Using Different LLM Providers
+
+```bash
+# DeepInfra (default)
+python main.py "C:/Path/To/Books" --mode rename --provider deepinfra
+
+# OpenRouter
+python main.py "C:/Path/To/Books" --mode rename --provider openrouter
+
+# OpenAI
+python main.py "C:/Path/To/Books" --mode rename --provider openai
+```
+
+### Local Inference (Ollama / LM Studio)
+
+Use the `custom` provider to connect to local inference servers like [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/). These tools provide OpenAI-compatible APIs.
+
+```bash
+# Set environment variables (Windows PowerShell)
+$env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"  # Ollama default
+$env:CUSTOM_MODEL = "llama3"  # Your model name
+
+# Run with custom provider
+python main.py "C:/Path/To/Books" --mode rename --provider custom
+
+# Or override model directly
+python main.py "C:/Path/To/Books" --mode rename --provider custom --model mistral
+```
+
+#### Environment Variables for Custom Provider
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CUSTOM_API_BASE_URL` | Base URL of your local API server | `http://localhost:8000/v1` |
+| `CUSTOM_MODEL` | Model name to use | `llama3` |
+| `CUSTOM_API_KEY` | API key (usually not needed for local) | `not-required` |
+
+#### Common Local Server URLs
+
+| Tool | URL |
+|------|-----|
+| Ollama | `http://localhost:11434/v1` |
+| LM Studio | `http://localhost:1234/v1` |
+| LocalAI | `http://localhost:8080/v1` |
+| Text Generation WebUI | `http://localhost:5001/v1` |
+
+### Custom Models
+
+```bash
+# DeepInfra with custom model
+python main.py "C:/Path/To/Books" --mode rename --model Qwen/Qwen2.5-72B-Instruct
+
+# OpenRouter with Gemini
+python main.py "C:/Path/To/Books" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
+```
+
+### Faster Processing
+
+```bash
+# Increase concurrent workers
+python main.py "C:/Path/To/Books" --mode rename --workers 8
+```
+
+### Force Refresh Metadata
+
+```bash
+# Bypass cache and re-extract
+python main.py "C:/Path/To/Books" --mode rename --update-metadata
+```
+
+### Benchmarking
+
+```bash
+# Compare PDF extractors
+python main.py "C:/Path/To/Books" --benchmark
+
+# Evaluate LLM models
+python main.py "C:/Path/To/Books" --eval-model --provider deepinfra
+```
+
+### Cache Management
+
+```bash
+# Clear all cache
+python main.py --clear-cache
+
+# Clear cache for specific directory
+python main.py "C:/Path/To/Books" --clear-cache
+```
+
+---
+
+## ⚠️ Warnings & Limitations
+
+### Data Loss Prevention
+
+> **⚠️ Always backup your files before running renAI in `rename` or `organize` mode.**
+
+- The tool renames and moves files
+- Safety checks are included, but unexpected issues can occur
+- Review the naming convention before applying to your entire collection
+- Test with a small directory first
+
+### Directory Layout Warning (Organize Mode)
+
+When using `--mode organize`:
+- Files from all subdirectories are moved to category folders at the root
+- Empty subdirectories may remain after files are moved
+- Category folders are created at the root level, not within subdirectories
+- Running multiple times will re-process files
+
+### Technical Limitations
+
+| Limitation | Description |
+|------------|-------------|
+| **Text Length** | Up to 8000 characters sent to LLM per file |
+| **API Costs** | Each file processed sends text to an LLM API |
+| **Rate Limits** | Providers may enforce rate limits |
+| **OCR Quality** | Scanned documents require good quality scans |
+| **Language Support** | Optimized for Turkish and English |
+
+### OCR Handling Options
+
+- **`--skip-needs-ocr`**: Moves files with insufficient text to `Needs_OCR` folder (skips OCR)
+- **`--move-ocr-failures`**: Moves completely unprocessable files to `OCR_Failures` folder
+
+---
+
+## ✅ Best Practices
+
+1. **Regular Backups**: Always keep a backup of your original files
+2. **Start Small**: Test with 5-10 files first to verify quality
+3. **Monitor Costs**: Set up usage alerts with your LLM provider
+4. **Use Caching**: Avoid `--update-metadata` unless necessary
+5. **Choose OCR Wisely**: Use `--ocr-enhanced --use-mutool` only for scanned documents
+6. **Compare Providers**: OpenRouter often offers competitive pricing
+7. **Clear Cache**: Use `--clear-cache` when switching models or settings
+8. **Protect Privacy**: For sensitive or private documents, use a local LLM (Ollama, LM Studio) with the `custom` provider. This keeps your document content on your machine rather than sending it to cloud services.
+
+### Privacy Considerations
+
+| Scenario | Recommended Provider |
+|----------|---------------------|
+| Public documents | Any cloud provider (DeepInfra, OpenRouter, OpenAI) |
+| Private/personal files | `custom` provider with local LLM |
+| Sensitive business documents | `custom` provider with local LLM |
+| Testing/experimentation | Cloud providers for convenience |
+
+For detailed privacy guidance, data retention policies, and compliance considerations, see [PRIVACY.md](PRIVACY.md).
+
+### Cost Estimation
+
+| Files | Est. Cost (~$0.001/file) |
+|-------|--------------------------|
+| 100 | $0.10 |
+| 1,000 | $1.00 |
+| 10,000 | $10.00 |
+
+Actual costs vary by provider and model.
+
+---
+
+## 🔧 Configuration
+
+### Custom Categories
+
+Create `categories.txt` in the project root:
+
+```txt
 # English Categories
 LANG: en
 Article
@@ -41,12 +304,6 @@ Thesis
 Research
 Other
 Dictionary
-Biography
-Memoir
-Science
-History
-Philosophy
-Psychology
 
 # Turkish Categories
 LANG: tr
@@ -64,345 +321,79 @@ Diğer
 Sözlük
 ```
 
-If no `categories.txt` file exists, the tool uses default categories.
+### Command Options
 
----
-
-### Data Loss Prevention
-- **Always backup your files** before running renAI in `rename` or `organize` mode. The tool will rename and move files, and while it includes safety checks, unexpected issues can occur.
-- **Review the naming convention** before applying to your collection. The format is: `Title -- Subtitle -- Author (Year).ext`
-- **Test with a small directory first** to verify the tool behaves as expected with your specific files.
-
-### Token Usage & Budget Considerations
-- **LLM API costs apply**: Each file processed sends text to an LLM API. Monitor your API usage regularly.
-- **Text length limits**: Up to 8000 characters are sent to the LLM per file. Large documents may be truncated.
-- **Caching helps reduce costs**: Extracted text and metadata are cached. Use `--update-metadata` only when necessary.
-- **Estimate your budget**: For 1000 files at ~$0.001 per file (approximate), expect ~$1 in API costs. Actual costs vary by provider and model.
-- **Rate limits**: Some providers enforce rate limits. Use `--workers` to control concurrency if needed.
-
-### Recommended Best Practices
-1. **Regular Backups**: Keep at least one backup of your original file collection before processing.
-2. **Start Small**: Test with 5-10 files first to verify metadata extraction quality.
-3. **Monitor API Usage**: Set up usage alerts with your LLM provider to avoid unexpected charges.
-4. **Cache Management**: Use `--clear-cache` to reset cached data when switching models or extraction methods.
-5. **OCR Quality**: For scanned documents, use `--ocr-enhanced --use-mutool` for better results (but expect higher API costs due to more text).
-6. **Provider Selection**: Compare costs between DeepInfra, OpenRouter, and OpenAI. OpenRouter often offers competitive pricing.
-
----
-
-## ⚠️ Important Warnings & Best Practices
-
-### Directory Layout Warning for Organize Mode
-**WARNING:** When using `--mode organize`, the script will rename and move files into category folders at the target directory root. This may disrupt your existing directory layout:
-- Files from all subdirectories will be moved to category folders (e.g., `Fiction/`, `Makale/`)
-- Empty subdirectories may remain after files are moved
-- Category folders are created at the root level, not within subdirectories
-- Running organize mode multiple times will re-process files and may change folder structure
-
-**Recommendation:** Always backup your files before running organize mode, and test with a small directory first.
-
-### Data Loss Prevention
-- **Always backup your files** before running renAI in `rename` or `organize` mode. The tool will rename and move files, and while it includes safety checks, unexpected issues can occur.
-- **Review the naming convention** before applying to your collection. The format is: `Title -- Subtitle -- Author (Year).ext`
-- **Test with a small directory first** to verify the tool behaves as expected with your specific files.
-
-### Token Usage & Budget Considerations
-- **LLM API costs apply**: Each file processed sends text to an LLM API. Monitor your API usage regularly.
-- **Text length limits**: Up to 8000 characters are sent to the LLM per file. Large documents may be truncated.
-- **Caching helps reduce costs**: Extracted text and metadata are cached. Use `--update-metadata` only when necessary.
-- **Estimate your budget**: For 1000 files at ~$0.001 per file (approximate), expect ~$1 in API costs. Actual costs vary by provider and model.
-- **Rate limits**: Some providers enforce rate limits. Use `--workers` to control concurrency if needed.
-
-
-5. **OCR Quality**: When working with scanned documents, use `--ocr-enhanced --use-mutool` for better results (but expect higher API costs due to more text).
-6. **Skew Correction**: For rotated/skewed documents, the enhanced OCR mode includes automatic skew correction using OpenCV (install with `pip install opencv-python`).
-
----
-
-## 🚀 Features
-
-- **Multi-Format Support:** Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, and MD files.
-- **Multiple PDF Extractors:** Choose from PyMuPDF, pdfplumber, pypdf, or pypdfium2 for text extraction.
-- **AI-Driven Metadata Extraction:** Uses DeepInfra, OpenRouter (OpenAI-compatible), or OpenAI to identify titles, authors, years, and categories.
-- **Advanced OCR:** Integrated Tesseract OCR with an "Enhanced Mode" for cleaning and sharpening low-quality scans.
-- **mutool Integration:** Support for `mutool` to extract high-quality images from fixed-layout PDFs.
-- **Smart Caching:** Uses MD5 hashing to cache extracted text and metadata, saving API costs and time.
-- **Flexible Modes:**
-  - `rename`: Renames files based on extracted metadata.
-  - `organize`: Moves renamed files into automatically created category folders.
-  - `benchmark`: Compares different PDF extraction libraries (`PyMuPDF`, `pdfplumber`, etc.).
-  - `eval-model`: Evaluates different LLM models for metadata accuracy. (Models are managed via `eval_models_{provider}.txt` files).
-
----
-
-## 🛠️ Installation
-
-### 1. Prerequisites
-- **Python 3.10+**
-- **Tesseract OCR:** [Download and install](https://github.com/UB-Mannheim/tesseract/wiki/Tesseract-at-UB-Mannheim).
-- **mutool (Optional but recommended):** Part of [MuPDF](https://mupdf.com/releases/index.html).
-
-### 2. API Keys
-Get your API keys from:
-- **DeepInfra:** [https://deepinfra.com](https://deepinfra.com)
-- **OpenRouter:** [https://openrouter.ai](https://openrouter.ai)
-- **OpenAI:** [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-
-### 3. Clone the Repository
-```bash
-git clone https://github.com/ozgurulukir/renAI.git
-cd renAI
-```
-
-### 4. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## ⚙️ Configuration
-
-Set your API keys as environment variables:
-
-```bash
-# Windows (PowerShell)
-$env:DEEPINFRA_API_KEY = "your_key_here"
-$env:OPENROUTER_API_KEY = "your_key_here"
-$env:OPENAI_API_KEY = "your_key_here"
-
-# Linux/Mac
-export DEEPINFRA_API_KEY="your_key_here"
-export OPENROUTER_API_KEY="your_key_here"
-export OPENAI_API_KEY="your_key_here"
-```
-
-You can also customize settings in `config.py`, such as default models and Tesseract paths.
-
----
-
-## 📖 Usage
-
-### Basic Renaming
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename
-```
-
-### Organizing into Folders
-```bash
-python main.py "C:/Path/To/Your/Books" --mode organize
-```
-
-### High-Quality OCR (for scans)
-```bash
-python main.py "C:/Path/To/Your/Books" --ocr-enhanced --use-mutool
-```
-
-### Using Different AI Providers
-
-#### DeepInfra (default)
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --provider deepinfra
-```
-
-#### OpenRouter
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --provider openrouter
-```
-
-#### OpenAI
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --provider openai
-```
-
-### Using Different PDF Extractors
-
-#### Using pdfplumber instead of default PyMuPDF
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --extractor pdfplumber
-```
-
-#### Using pypdf
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --extractor pypdf
-```
-
-#### Using pypdfium2
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --extractor pypdfium2
-```
-
-### Custom Model Selection
-
-#### Specify a custom model for DeepInfra
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --model Qwen/Qwen2.5-72B-Instruct
-```
-
-#### Specify a custom model for OpenRouter
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
-```
-
-#### Specify a custom model for OpenAI
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --provider openai --model gpt-4o
-```
-
-### Processing Multiple Files Concurrently
-
-#### Increase workers for faster processing
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --workers 8
-```
-
-### Force Refresh Metadata
-
-#### Bypass cache and re-extract metadata
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --update-metadata
-```
-
-### Debug OCR Processing
-
-#### Save OCR debug images for troubleshooting
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --debug-ocr
-```
-
-#### Skip OCR processing for files that require OCR fallback
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --skip-needs-ocr
-```
-
-### Benchmark PDF Extractors
-
-#### Compare performance of different extractors
-```bash
-python main.py "C:/Path/To/Your/Books" --benchmark
-```
-
-### Evaluate LLM Models
-
-#### Test multiple models for metadata accuracy
-```bash
-python main.py "C:/Path/To/Your/Books" --eval-model --provider deepinfra
-```
-
-#### Evaluate OpenAI models
-```bash
-python main.py "C:/Path/To/Your/Books" --eval-model --provider openai
-```
-
-### Advanced Options
 | Option | Description |
-| :--- | :--- |
-| `--provider` | Choose between `deepinfra`, `openrouter`, or `openai`. |
-| `--extractor` | Choose PDF extractor (`pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2`). |
-| `--workers` | Number of concurrent files to process (default: 4). |
-| `--update-metadata` | Force fresh extraction and LLM call, bypassing cache. |
-| `--ocr-enhanced` | Enable high-quality OCR with image enhancement. |
-| `--use-mutool` | Use mutool for higher quality PDF image extraction. |
-| `--debug-ocr` | Save OCR debug images to `.ocr_debug/` folder. |
-| `--benchmark` | Run extraction benchmark on first 3 files. |
-| `--eval-model` | Evaluate multiple models for the selected provider. |
-| `--clear-cache` | Clear all cache or cache for files in the specified directory (removes text and metadata). |
-| `--skip-needs-ocr` | Skip OCR processing for files that require OCR fallback (text extraction failed) and move them directly to Needs_OCR folder. |
-| `--move-ocr-failures` | Move files that cannot be processed (no text extracted, even with OCR) to OCR_Failures folder. |
-| `--recursive` | Recursively process subdirectories (default: True). |
-| `--no-recursive` | Process only the root directory (no recursion). |
-
-### Clearing the Cache
-
-#### Clear all cached text and metadata (no directory required)
-```bash
-python main.py --clear-cache
-```
-
-#### Clear cache for a directory (removes text and metadata for files to be processed)
-```bash
-python main.py "C:/Path/To/Your/Books" --clear-cache
-```
-
-#### Clear cache for a single file
-```bash
-python main.py "C:/Path/To/Your/Books/book.pdf" --clear-cache
-```
-
-This will remove cache files:
-- Cached extracted text files (e.g., `hash_enhanced.txt`, `hash_basic.txt`)
-- Cached metadata files (e.g., `hash_metadata.json`)
+|--------|-------------|
+| `--provider` | `deepinfra`, `openrouter`, or `openai` |
+| `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
+| `--workers` | Concurrent workers (default: 4) |
+| `--ocr-enhanced` | Enable enhanced OCR |
+| `--use-mutool` | Use mutool for extraction |
+| `--debug-ocr` | Save debug images |
+| `--recursive` | Process subdirectories (default: True) |
+| `--no-recursive` | Process root only |
+| `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
 
 ---
 
-### Recursive Processing
+## 🏗️ Architecture
 
-#### Process only root directory (no recursion)
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --no-recursive
 ```
-
-#### Process recursively (default behavior)
-```bash
-python main.py "C:/Path/To/Your/Books" --mode rename --recursive
+renAI/
+├── main.py              # Entry point & CLI
+├── config.py            # Configuration & API settings
+├── utils.py             # Helper functions
+├── llm_engine.py        # LLM provider integration
+├── ocr_engine.py        # OCR processing
+├── file_processor.py    # Core processing logic
+├── extractors/          # Document parsers
+│   ├── base.py          # Abstract base class
+│   └── pdf_extractors.py # PDF extraction implementations
+├── test_file_processor.py # Unit tests
+└── requirements.txt     # Dependencies
 ```
-
-For `organize` mode, recursive is enabled by default to organize files from all subdirectories into category folders at the root level.
-
-#### OCR Handling Options
-
-renAI provides two distinct OCR handling options:
-
-- **`--skip-needs-ocr`**: Skips OCR processing entirely for files that require OCR fallback and moves them directly to a `Needs_OCR` folder. These files have insufficient text from direct extraction. Use this option to save processing time and API costs by avoiding OCR attempts on files that are likely to need manual review.
-
-- **`--move-ocr-failures`**: Moves files that completely fail processing (no text extracted, even with OCR) to an `OCR_Failures` folder. These files cannot be processed and require manual review.
-
-**Key Difference**: `--skip-needs-ocr` prevents OCR processing entirely for efficiency, while `--move-ocr-failures` handles files that have *completely failed* processing after OCR was attempted.
-
-#### OCR Failures Folder
-When using `--move-ocr-failures`, files that cannot be processed (no extractable text, even with OCR fallback) are moved to an `OCR_Failures` folder within the target directory. This helps identify problematic files that may need manual review.
-
-#### Re-processing Behavior:
-The script supports re-running organize mode on the same directory. Files in category folders will be re-evaluated and potentially renamed/moved again. This is useful when:
-- Switching to a different LLM provider or model
-- Updating category definitions in `categories.txt`
-- Correcting manually moved files
-- Re-processing with different settings
-
-The caching mechanism still applies - text and metadata extraction is skipped if cached results exist for a file.
-
----
-
-## 🏗️ Technical Architecture
-
-- **`main.py`:** Entry point and CLI manager.
-- **`config.py`:** Configuration for API keys, paths, and evaluation models.
-- **`utils.py`:** Helper functions for hashing, sanitization, and text chunking.
-- **`file_processor.py`:** Orchestrates the flow: extract → LLM → rename/move.
-- **`ocr_engine.py`:** Manages image preprocessing and Tesseract integration.
-- **`llm_engine.py`:** Handles communication with AI providers (DeepInfra, OpenRouter, OpenAI) and validates JSON output.
-- **`extractors/`:** Modular package for various document parsing engines.
-
----
-
-## 📝 License
-
-[MIT License](LICENSE)
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome!
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
+2. Create a feature branch: `git checkout -b feature/NewFeature`
+3. Commit changes: `git commit -m 'Add NewFeature'`
+4. Push to branch: `git push origin feature/NewFeature`
 5. Open a Pull Request
+
+---
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
 ## 📧 Support
 
-For support, please open an issue in the GitHub repository or contact the maintainers.
+- **Issues**: Open an issue on GitHub
+- **Discussions**: Use GitHub Discussions
+- **Email**: Contact maintainers
+
+---
+
+## 🧪 Testing
+
+Run the test suite:
+
+```bash
+# Run all tests
+pytest test_file_processor.py -v
+
+# Run with coverage
+pytest test_file_processor.py --cov=file_processor
+```
+
+---
+
+*renAI - Organize your digital library with AI*

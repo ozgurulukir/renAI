@@ -65,7 +65,7 @@ Desktop.ini
 .coverage
 htmlcov/
 .tox/
-test_*
+
 
 # Build artifacts
 *.pyc

@@ -94,9 +94,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--provider",
-        choices=["deepinfra", "openrouter", "openai"],
+        choices=["deepinfra", "openrouter", "openai", "custom"],
         default="deepinfra",
-        help="LLM Provider",
+        help="LLM Provider (custom for local inference like Ollama/LM Studio)",
     )
     parser.add_argument("--model", type=str, help="LLM Model name (overrides default)")
     parser.add_argument(
@@ -215,10 +215,10 @@ def main() -> None:
             "Files that require OCR will be moved to Needs_OCR folder, "
             "while complete OCR failures will go to OCR_Failures folder."
         )
-    
+
     if args.skip_needs_ocr:
         processor.set_needs_ocr_folder(root_dir, skip=True)
-    
+
     if args.move_ocr_failures:
         processor.set_ocr_failures_folder(root_dir, enabled=True)
 

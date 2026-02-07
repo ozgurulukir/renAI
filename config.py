@@ -121,6 +121,11 @@ PROVIDERS = {
         "api_key": os.getenv("OPENAI_API_KEY"),
         "default_model": "gpt-4o-mini",
     },
+    "custom": {
+        "base_url": os.getenv("CUSTOM_API_BASE_URL", "http://localhost:8000/v1"),
+        "api_key": os.getenv("CUSTOM_API_KEY", "not-required"),
+        "default_model": os.getenv("CUSTOM_MODEL", "llama3"),
+    },
 }
 
 
