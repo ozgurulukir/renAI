@@ -167,10 +167,10 @@ python main.py "C:/Path/To/Books" --mode rename --provider custom --model mistra
 | LocalAI | `http://localhost:8080/v1` |
 | Text Generation WebUI | `http://localhost:5001/v1` |
 
-### Custom Models
+### Different Models
 
 ```bash
-# DeepInfra with custom model
+# DeepInfra with Qwen model
 python main.py "C:/Path/To/Books" --mode rename --model Qwen/Qwen2.5-72B-Instruct
 
 # OpenRouter with Gemini
