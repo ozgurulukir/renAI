@@ -260,6 +260,47 @@ When using `--mode organize`:
 7. **Clear Cache**: Use `--clear-cache` when switching models or settings
 8. **Protect Privacy**: For sensitive or private documents, use a local LLM (Ollama, LM Studio) with the `custom` provider. This keeps your document content on your machine rather than sending it to cloud services.
 
+### Caching Strategy
+
+renAI uses an intelligent caching system that includes provider-model awareness:
+
+| Cache Type | Key Components | Invalidation |
+|------------|----------------|--------------|
+| **Text Cache** | File hash + OCR settings | When file content or OCR mode changes |
+| **Metadata Cache** | File hash + provider + model | When file content, provider, or model changes |
+
+**How it works:**
+- Each file is identified by its MD5 hash
+- Metadata cache keys include a hash of the provider-model pair
+- Switching providers or models automatically invalidates old cache
+- Use `--update-metadata` to force fresh extraction regardless of cache
+
+**Example:**
+```bash
+# First run with DeepInfra - caches metadata
+python main.py "C:/Books" --provider deepinfra
+
+# Same files with OpenRouter - NEW cache entry (old one preserved)
+python main.py "C:/Books" --provider openrouter
+
+# Same provider/model - uses cached metadata
+python main.py "C:/Books" --provider deepinfra
+
+# Force refresh - bypasses cache
+python main.py "C:/Books" --provider deepinfra --update-metadata
+```
+
+**Cache Location:** `.renamer_cache/` directory
+
+**Clear Cache:**
+```bash
+# Clear all cache
+python main.py --clear-cache
+
+# Clear cache for specific directory
+python main.py "C:/Books" --clear-cache
+```
+
 ### Privacy Considerations
 
 | Scenario | Recommended Provider |

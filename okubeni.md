@@ -262,6 +262,47 @@ python main.py "C:/Kitaplar/Yolu" --clear-cache
 7. **Önbelleği Temizleyin**: Modelleri veya ayarları değiştirdiğinde `--clear-cache` kullanın
 8. **Gizliliği Koruyun**: Hassas veya özel belgeler için yerel bir LLM (Ollama, LM Studio) kullanarak `custom` sağlayıcısını tercih edin. Bu, belge içeriğinizi bulut hizmetlerine göndermek yerine makinenizde tutar.
 
+### Önbellek Stratejisi
+
+renAI, sağlayıcı-model farkındalığına sahip akıllı bir önbellek sistemi kullanır:
+
+| Önbellek Türü | Anahtar Bileşenleri | Geçersiz Kılma |
+|---------------|---------------------|----------------|
+| **Metin Önbelleği** | Dosya hash + OCR ayarları | Dosya içeriği veya OCR modu değiştiğinde |
+| **Meta Veri Önbelleği** | Dosya hash + sağlayıcı + model | Dosya içeriği, sağlayıcı veya model değiştiğinde |
+
+**Nasıl çalışır:**
+- Her dosya MD5 hash'i ile tanımlanır
+- Meta veri önbellek anahtarları sağlayıcı-model çiftinin hash'ini içerir
+- Sağlayıcı veya model değiştirmek eski önbelleği otomatik olarak geçersiz kılar
+- `--update-metadata` gerektiğinde taze çıkarma zorlar
+
+**Örnek:**
+```bash
+# DeepInfra ile ilk çalıştırma - meta verileri önbelleğe alır
+python main.py "C:/Kitaplar" --provider deepinfra
+
+# OpenRouter ile aynı dosyalar - YENİ önbellek girişi (eski korunur)
+python main.py "C:/Kitaplar" --provider openrouter
+
+# Aynı sağlayıcı/model - önbelleğe alınmış meta verileri kullanır
+python main.py "C:/Kitaplar" --provider deepinfra
+
+# Zorla yenileme - önbelleği atlar
+python main.py "C:/Kitaplar" --provider deepinfra --update-metadata
+```
+
+**Önbellek Konumu:** `.renamer_cache/` dizini
+
+**Önbelleği Temizle:**
+```bash
+# Tüm önbelleği temizle
+python main.py --clear-cache
+
+# Belirli dizin için önbelleği temizle
+python main.py "C:/Kitaplar" --clear-cache
+```
+
 ### Gizlilik Değerlendirmeleri
 
 | Senaryo | Önerilen Sağlayıcı |

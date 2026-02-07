@@ -10,7 +10,14 @@ from config import CACHE_DIR, EVAL_LOG_FILE, PROVIDERS
 from extractors import get_extractor
 from llm_engine import LLMEngine
 from ocr_engine import OCREngine
-from utils import get_file_hash, proportional_chunk_trim, sanitize_filename
+from utils import (
+    get_file_hash,
+    get_metadata_cache_path,
+    get_provider_model_key,
+    get_text_cache_path,
+    proportional_chunk_trim,
+    sanitize_filename,
+)
 
 
 def safe_move_file(
@@ -78,6 +85,8 @@ class BookProcessor:
         ocr_engine: OCREngine,
         llm_engine: LLMEngine,
         extractor_name: str = "pymupdf",
+        provider: str = "deepinfra",
+        model: str = "",
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
@@ -100,6 +109,10 @@ class BookProcessor:
         self.ocr_failed_files: set[Path] = set()
         self.needs_ocr_dir: Optional[Path] = None
         self.skip_ocr_files = False
+        # Provider-model tracking for cache invalidation
+        self.provider = provider
+        self.model = model or getattr(llm_engine, "model_name", "")
+        self.provider_model_key = get_provider_model_key(self.provider, self.model)
 
     def set_ocr_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
         """Set up the OCR failures folder for moving files that require OCR."""
@@ -124,11 +137,13 @@ class BookProcessor:
         ext = file_path.suffix.lower()
         file_hash = get_file_hash(file_path)
 
-        # Cache naming includes OCR details if fallback happens
-        method_suffix = "_mutool" if self.ocr_engine.use_mutool else ""
-        quality_suffix = "enhanced" if self.ocr_engine.enhanced else "basic"
-        cache_filename = f"{file_hash}_{quality_suffix}{method_suffix}.txt"
-        cache_path = CACHE_DIR / cache_filename
+        # Use new cache path function with OCR details
+        cache_path = get_text_cache_path(
+            file_hash,
+            self.ocr_engine.enhanced,
+            self.ocr_engine.use_mutool,
+            CACHE_DIR,
+        )
 
         if cache_path.exists():
             logging.info(f"Using cached text for {file_path.name}")
@@ -206,23 +221,52 @@ class BookProcessor:
     def process_single_book(
         self, file_path: Path, mode: str, update_metadata: bool = False
     ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str]]:
-        """Process a single book: extract text, get metadata, rename."""
+        """Process a single book: extract text, get metadata, rename.
+
+        Cache Strategy:
+        - Metadata cache key includes provider-model hash
+        - Cache is invalidated when provider or model changes
+        - Use --update-metadata to force fresh extraction
+        """
         try:
             logging.info(f"Processing: {file_path.name}")
 
             # 1. Get File Hash for caching
             file_hash = get_file_hash(file_path)
-            metadata_cache_path = CACHE_DIR / f"{file_hash}_metadata.json"
+
+            # 2. Generate provider-model-aware cache path
+            metadata_cache_path = get_metadata_cache_path(
+                file_hash, self.provider, self.model, CACHE_DIR
+            )
 
             book_data = None
 
-            # 2. Check Metadata Cache (unless update is forced)
+            # 3. Check Metadata Cache (unless update is forced)
+            # Cache is provider-model aware - different LLMs get different cache entries
             if not update_metadata and metadata_cache_path.exists():
                 try:
-                    book_data = json.loads(
-                        metadata_cache_path.read_text(encoding="utf-8")
-                    )
-                    logging.info(f"Using cached metadata for {file_path.name}")
+                    # Verify cache is valid by checking provider-model match
+                    cache_content = metadata_cache_path.read_text(encoding="utf-8")
+                    cache_data = json.loads(cache_content)
+                    cached_provider = cache_data.get("_provider", "")
+                    cached_model = cache_data.get("_model", "")
+
+                    if cached_provider == self.provider and cached_model == self.model:
+                        # Valid cache - use it
+                        # Remove internal cache fields before returning
+                        cache_data.pop("_provider", None)
+                        cache_data.pop("_model", None)
+                        book_data = cache_data
+                        logging.info(
+                            f"Using cached metadata for {file_path.name} "
+                            f"(provider: {self.provider}, model: {self.model})"
+                        )
+                    else:
+                        # Provider or model changed - invalidate cache
+                        logging.info(
+                            f"Cache invalidated for {file_path.name} "
+                            f"(was {cached_provider}/{cached_model}, now {self.provider}/{self.model})"
+                        )
                 except Exception as e:
                     logging.warning(
                         f"Failed to read metadata cache for {file_path.name}: {e}"
@@ -239,11 +283,22 @@ class BookProcessor:
 
                 book_data = self.llm_engine.get_book_metadata(text)
                 if book_data:
-                    # Save to cache
+                    # Save to cache with provider-model info for future validation
                     try:
+                        # Add provider-model info to cache for validation
+                        cache_data = {
+                            **book_data,
+                            "_provider": self.provider,
+                            "_model": self.model,
+                            "_cached_at": str(Path(__file__).stat().st_mtime),
+                        }
                         metadata_cache_path.write_text(
-                            json.dumps(book_data, ensure_ascii=False, indent=4),
+                            json.dumps(cache_data, ensure_ascii=False, indent=4),
                             encoding="utf-8",
+                        )
+                        logging.info(
+                            f"Cached metadata for {file_path.name} "
+                            f"(provider: {self.provider}, model: {self.model})"
                         )
                     except Exception as e:
                         logging.warning(

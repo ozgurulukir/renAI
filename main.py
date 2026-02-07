@@ -200,13 +200,24 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # Determine the actual model to use
+    model_name = args.model or provider_config.get("default_model", "")
+
     llm_engine = LLMEngine(
         provider=args.provider,
         api_key=api_key,
         base_url=provider_config["base_url"],  # type: ignore
-        model_name=args.model or provider_config["default_model"],  # type: ignore
+        model_name=model_name,
     )
-    processor = BookProcessor(ocr_engine, llm_engine, extractor_name=args.extractor)
+
+    # Initialize processor with provider-model tracking for cache invalidation
+    processor = BookProcessor(
+        ocr_engine,
+        llm_engine,
+        extractor_name=args.extractor,
+        provider=args.provider,
+        model=model_name,
+    )
 
     # Set up OCR folders if enabled
     if args.skip_needs_ocr and args.move_ocr_failures:
