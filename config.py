@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -96,7 +97,7 @@ def load_categories_from_file() -> dict:
 
             return categories
     except Exception as e:
-        print(f"Error loading custom categories from {CUSTOM_CATEGORIES_FILE}: {e}")
+        logging.error(f"Error loading custom categories from {CUSTOM_CATEGORIES_FILE}: {e}")
         return {}
 
 
@@ -163,7 +164,7 @@ def load_eval_models(provider: str) -> list:
                 # Read non-empty lines, stripping whitespace
                 return [line.strip() for line in f if line.strip()]
         except Exception as e:
-            print(f"Error loading {file_path}: {e}")
+            logging.error(f"Error loading {file_path}: {e}")
     return []
 
 
@@ -198,45 +199,65 @@ def display_warnings(mode: str, recursive: bool) -> None:
     if not SHOW_WARNINGS:
         return
 
-    print("\n" + "=" * 70)
-    print("⚠️  IMPORTANT WARNINGS")
-    print("=" * 70)
+    msg = [
+        "\n" + "=" * 70,
+        "⚠️  IMPORTANT WARNINGS",
+        "=" * 70
+    ]
 
     # Directory layout warning for organize mode
     if mode == "organize":
-        print("\n📁 DIRECTORY LAYOUT WARNING:")
-        print("   When using --mode organize, files will be moved into category")
-        print("   folders at the target directory root. This may disrupt your")
-        print("   existing directory layout:")
-        print("   - Files from all subdirectories will be moved to category folders")
-        print("   - Empty subdirectories may remain after files are moved")
-        print("   - Category folders are created at the root level")
-        print("   - Running multiple times will re-process files")
+        msg.extend([
+            "\n📁 DIRECTORY LAYOUT WARNING:",
+            "   When using --mode organize, files will be moved into category",
+            "   folders at the target directory root. This may disrupt your",
+            "   existing directory layout:",
+            "   - Files from all subdirectories will be moved to category folders",
+            "   - Empty subdirectories may remain after files are moved",
+            "   - Category folders are created at the root level",
+            "   - Running multiple times will re-process files"
+        ])
 
     # Data loss warning
-    print("\n💾 DATA LOSS PREVENTION:")
-    print("   - Always backup your files before running renAI")
-    print("   - Test with a small directory first")
-    print("   - Review the naming convention: Title -- Subtitle -- Author (Year).ext")
+    msg.extend([
+        "\n💾 DATA LOSS PREVENTION:",
+        "   - Always backup your files before running renAI",
+        "   - Test with a small directory first",
+        "   - Review the naming convention: Title -- Subtitle -- Author (Year).ext"
+    ])
 
     # Token usage warning
-    print("\n📊 TOKEN USAGE & BUDGET:")
-    print("   - LLM API costs apply for each file processed")
-    print("   - Up to 8000 characters sent per file")
-    print("   - Caching helps reduce costs")
-    print("   - Estimate: ~$0.001/file (varies by provider/model)")
+    msg.extend([
+        "\n📊 TOKEN USAGE & BUDGET:",
+        "   - LLM API costs apply for each file processed",
+        "   - Up to 8000 characters sent per file",
+        "   - Caching helps reduce costs",
+        "   - Estimate: ~$0.001/file (varies by provider/model)"
+    ])
 
     # Recursive warning
     if recursive:
-        print("\n🔄 RECURSIVE MODE:")
-        print("   - Processing subdirectories recursively")
-        print("   - Files in category folders will be re-evaluated")
-        print("   - Cache still applies to avoid re-extraction")
+        msg.extend([
+            "\n🔄 RECURSIVE MODE:",
+            "   - Processing subdirectories recursively",
+            "   - Files in category folders will be re-evaluated",
+            "   - Cache still applies to avoid re-extraction"
+        ])
 
-    print("\n" + "=" * 70)
-    print("Press Enter to proceed or Ctrl+C to cancel...")
-    print("=" * 70 + "\n")
-    input("Press Enter to continue...")
+    msg.extend([
+        "\n" + "=" * 70,
+        "Press Enter to proceed or Ctrl+C to cancel...",
+        "=" * 70 + "\n"
+    ])
+
+    logging.warning("\n".join(msg))
+
+    try:
+        input("Press Enter to continue...")
+    except (KeyboardInterrupt, EOFError):
+        logging.info("\nOperation cancelled by user.")
+        import sys
+        sys.exit(0)
 
 
 if __name__ == "__main__":
