@@ -1,5 +1,8 @@
 import hashlib
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -107,6 +110,41 @@ def sanitize_filename(filename: str, max_length: int = 150) -> str:
         sanitized = sanitized[:max_length].strip()
 
     return sanitized
+
+
+def ensure_secure_dir(path: Path) -> None:
+    """
+    Ensure a directory exists with secure permissions (owner only).
+    Works on both Unix (chmod 700) and Windows (icacls restricted).
+    """
+    path.mkdir(parents=True, exist_ok=True)
+
+    if sys.platform != "win32":
+        try:
+            path.chmod(0o700)
+        except Exception:
+            pass
+    else:
+        # Windows: Best effort to restrict permissions to current user using icacls
+        try:
+            username = os.environ.get("USERNAME")
+            if username:
+                # /inheritance:r - remove inherited ACEs
+                # /grant:r %USERNAME%:F - grant full control to current user
+                # (OI)(CI) - Object Inherit, Container Inherit
+                subprocess.run(
+                    [
+                        "icacls",
+                        str(path),
+                        "/inheritance:r",
+                        "/grant:r",
+                        f"{username}:(OI)(CI)F",
+                    ],
+                    capture_output=True,
+                    check=False,
+                )
+        except Exception:
+            pass
 
 
 def proportional_chunk_trim(text: str, target_length: int, num_chunks: int) -> str:

@@ -9,7 +9,7 @@ import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from config import CACHE_DIR, DEBUG_DIR, OCR_LANG, TESSERACT_PATH
-from utils import sanitize_filename
+from utils import ensure_secure_dir, sanitize_filename
 
 # Try to import OpenCV for skew correction
 try:
@@ -173,7 +173,7 @@ class OCREngine:
             if self.debug:
                 base_name = file_path.stem
                 file_debug_dir = DEBUG_DIR / sanitize_filename(base_name)
-                file_debug_dir.mkdir(parents=True, exist_ok=True)
+                ensure_secure_dir(file_debug_dir)
 
             doc = pymupdf.open(str(file_path))
             total_pages = len(doc)
