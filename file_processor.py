@@ -413,11 +413,13 @@ class BookProcessor:
             PyPdfium2Extractor(),
         ]
 
-        print("\n" + "=" * 60)
-        print(f"BENCHMARK: {file_path.name}")
-        print("-" * 60)
-        print(f"{'Extractor':<15} | {'Time (s)':<10} | {'Chars':<10} | {'Words':<10}")
-        print("-" * 60)
+        logging.info("\n" + "=" * 60)
+        logging.info(f"BENCHMARK: {file_path.name}")
+        logging.info("-" * 60)
+        logging.info(
+            f"{'Extractor':<15} | {'Time (s)':<10} | {'Chars':<10} | {'Words':<10}"
+        )
+        logging.info("-" * 60)
 
         for ext in extractors:
             start_time = time.time()
@@ -426,29 +428,29 @@ class BookProcessor:
                 elapsed = time.time() - start_time
                 char_count = len(text)
                 word_count = len(text.split())
-                print(
+                logging.info(
                     f"{ext.name:<15} | {elapsed:<10.3f} | {char_count:<10} | {word_count:<10}"
                 )
             except Exception as e:
-                print(f"{ext.name:<15} | FAILED: {e}")
+                logging.error(f"{ext.name:<15} | FAILED: {e}")
 
-        print("=" * 60 + "\n")
+        logging.info("=" * 60 + "\n")
 
     def evaluate_models(
         self, file_path: Path, provider: str, model_names: List[str]
     ) -> None:
         """Evaluate multiple models on a single file for metadata quality."""
-        print("\n" + "=" * 85)
-        print(f"MODEL EVALUATION: {file_path.name}")
-        print(f"Provider: {provider}")
-        print("-" * 85)
-        print(f"{'Model':<45} | {'Status':<10} | {'Result Category'}")
-        print("-" * 85)
+        logging.info("\n" + "=" * 85)
+        logging.info(f"MODEL EVALUATION: {file_path.name}")
+        logging.info(f"Provider: {provider}")
+        logging.info("-" * 85)
+        logging.info(f"{'Model':<45} | {'Status':<10} | {'Result Category'}")
+        logging.info("-" * 85)
 
         # Ensure text is extracted once
         text_content = self.extract_text_from_file(file_path)
         if not text_content:
-            print(f"FAILED: No text extracted for {file_path.name}")
+            logging.error(f"FAILED: No text extracted for {file_path.name}")
             return
 
         p_config = PROVIDERS.get(provider)
@@ -476,7 +478,7 @@ class BookProcessor:
 
                 status = "SUCCESS" if metadata else "FAILED"
                 cat = (metadata.get("category") or "N/A") if metadata else "N/A"
-                print(f"{model[:45]:<45} | {status:<10} | {cat}")
+                logging.info(f"{model[:45]:<45} | {status:<10} | {cat}")
 
                 # Log detailed results
                 with open(EVAL_LOG_FILE, "a", encoding="utf-8") as log:
@@ -486,11 +488,11 @@ class BookProcessor:
                     log.write(f"[{model}] -> {res_json}\n")
 
             except Exception as e:
-                print(f"{model[:45]:<45} | ERROR      | {str(e)[:25]}")
+                logging.error(f"{model[:45]:<45} | ERROR      | {str(e)[:25]}")
                 with open(EVAL_LOG_FILE, "a", encoding="utf-8") as log:
                     log.write(f"[{model}] -> ERROR: {e}\n")
 
-        print("=" * 85 + "\n")
+        logging.info("=" * 85 + "\n")
 
     def get_ocr_failed_files(self) -> list[Path]:
         """Return list of files that required OCR."""

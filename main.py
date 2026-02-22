@@ -35,11 +35,11 @@ def check_requirements() -> bool:
             missing.append((lib, cmd))
 
     if missing:
-        print("\n" + "=" * 50)
-        print("ERROR: MISSING PYTHON LIBRARIES")
+        logging.error("\n" + "=" * 50)
+        logging.error("MISSING PYTHON LIBRARIES")
         for lib, cmd in missing:
-            print(f"- {lib} is missing. Run: {cmd}")
-        print("=" * 50 + "\n")
+            logging.error(f"- {lib} is missing. Run: {cmd}")
+        logging.error("=" * 50 + "\n")
         return False
     return True
 
