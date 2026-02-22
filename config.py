@@ -186,9 +186,11 @@ def get_allowed_categories() -> dict:
 
 
 def initialize_directories() -> None:
-    """Ensure necessary directories exist."""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    """Ensure necessary directories exist with secure permissions."""
+    from utils import ensure_secure_dir
+
+    ensure_secure_dir(CACHE_DIR)
+    ensure_secure_dir(DEBUG_DIR)
 
 
 def display_warnings(mode: str, recursive: bool) -> None:
