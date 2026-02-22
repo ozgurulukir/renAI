@@ -240,7 +240,11 @@ def main() -> None:
     # Collect files
     file_paths = []
     for entry in root_dir.iterdir():
-        if entry.is_file() and entry.suffix.lower() in processor.supported_extensions:
+        if (
+            entry.is_file()
+            and not entry.is_symlink()
+            and entry.suffix.lower() in processor.supported_extensions
+        ):
             file_paths.append(entry)
 
     # Deep search for recursive mode (default for rename, optional for organize)
@@ -248,6 +252,7 @@ def main() -> None:
         for entry in root_dir.rglob("*"):
             if (
                 entry.is_file()
+                and not entry.is_symlink()
                 and entry.suffix.lower() in processor.supported_extensions
             ):
                 if entry not in file_paths:

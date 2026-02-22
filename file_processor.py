@@ -135,6 +135,12 @@ class BookProcessor:
         self, file_path: Path, target_length: int = 10000
     ) -> str:
         """Extract and cache text from a file. Tracks OCR failures in self.ocr_failed_files."""
+        if file_path.is_symlink():
+            logging.warning(
+                f"Skipping symlink to prevent arbitrary file read: {file_path.name}"
+            )
+            return ""
+
         ext = file_path.suffix.lower()
         file_hash = get_file_hash(file_path)
 
@@ -231,6 +237,10 @@ class BookProcessor:
         """
         try:
             logging.info(f"Processing: {file_path.name}")
+
+            if file_path.is_symlink():
+                logging.warning(f"Skipping symlink: {file_path.name}")
+                return False, None, None, None
 
             # 1. Get File Hash for caching
             file_hash = get_file_hash(file_path)
@@ -398,6 +408,10 @@ class BookProcessor:
 
     def benchmark_extractors(self, file_path: Path) -> None:
         """Run all available extractors on a file and report results."""
+        if file_path.is_symlink():
+            logging.warning(f"Skipping symlink for benchmark: {file_path.name}")
+            return
+
         import time
 
         from extractors import (
@@ -441,6 +455,10 @@ class BookProcessor:
         self, file_path: Path, provider: str, model_names: List[str]
     ) -> None:
         """Evaluate multiple models on a single file for metadata quality."""
+        if file_path.is_symlink():
+            logging.warning(f"Skipping symlink for evaluation: {file_path.name}")
+            return
+
         logging.info("\n" + "=" * 85)
         logging.info(f"MODEL EVALUATION: {file_path.name}")
         logging.info(f"Provider: {provider}")
