@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-from config import CACHE_DIR, EVAL_LOG_FILE, PROVIDERS
+from config import CACHE_DIR, EVAL_LOG_FILE, MAX_TEXT_READ_SIZE, PROVIDERS
 from extractors import get_extractor
 from llm_engine import LLMEngine
 from ocr_engine import OCREngine
@@ -17,6 +17,7 @@ from utils import (
     get_provider_model_key,
     get_text_cache_path,
     proportional_chunk_trim,
+    read_text_limited,
     sanitize_filename,
 )
 
@@ -172,7 +173,8 @@ class BookProcessor:
 
         elif ext in {".txt", ".md"}:
             try:
-                content = file_path.read_text(encoding="utf-8", errors="ignore")
+                # Security: Use limited read to prevent Denial of Service with huge files
+                content = read_text_limited(file_path, MAX_TEXT_READ_SIZE)
                 extracted_text = proportional_chunk_trim(content, target_length, 1)
             except Exception as e:
                 logging.error(f"Text read failed for {file_path.name}: {e}")

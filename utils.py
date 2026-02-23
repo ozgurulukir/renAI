@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import re
 import subprocess
@@ -145,6 +146,19 @@ def ensure_secure_dir(path: Path) -> None:
                 )
         except Exception:
             pass
+
+
+def read_text_limited(file_path: Path, max_chars: int) -> str:
+    """
+    Safely read up to max_chars characters from a text file.
+    Uses a stream to avoid loading the entire file into memory.
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read(max_chars)
+    except Exception as e:
+        logging.error(f"Error reading {file_path}: {e}")
+        return ""
 
 
 def proportional_chunk_trim(text: str, target_length: int, num_chunks: int) -> str:
