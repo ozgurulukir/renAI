@@ -39,8 +39,6 @@ def safe_move_file(
         FileNotFoundError: If source file doesn't exist
         OSError: If file operation fails
     """
-    import shutil
-    import uuid
 
     # Check if source file exists
     if not source_path.exists():
