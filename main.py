@@ -25,13 +25,7 @@ def check_requirements() -> bool:
     }
     for lib, cmd in libraries.items():
         try:
-            if lib == "PIL":
-                try:
-                    import PIL  # noqa: F401
-                except ImportError:
-                    pass
-            else:
-                __import__(lib)
+            __import__(lib)
         except ImportError:
             missing.append((lib, cmd))
 
