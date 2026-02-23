@@ -70,31 +70,62 @@ def test_get_text_cache_path(tmp_path):
     path = get_text_cache_path(file_hash, False, True, tmp_path)
     assert path == tmp_path / f"{file_hash}_basic_mutool.txt"
 
-def test_sanitize_filename():
-    """Test filename sanitization for various edge cases."""
-    # Windows invalid characters
-    assert sanitize_filename('test<one>:two"three/four\\five|six?seven*eight') == 'testonetwothreefourfivesixseveneight'
+@pytest.mark.parametrize(
+    "filename, expected",
+    [
+        # Normal filenames
+        ("standard_file.txt", "standard_file.txt"),
+        ("file with spaces.txt", "file with spaces.txt"),
+        # Windows reserved characters: < > : " / \ | ? *
+        (
+            'test<one>:two"three/four\\five|six?seven*eight',
+            "testonetwothreefourfivesixseveneight",
+        ),
+        # Control and non-printable characters
+        ("file\nname\r\t.txt", "filename.txt"),
+        ("file\x00name\x1f.txt", "filename.txt"),
+        # Multiple spaces reduction
+        ("multiple   spaces.txt", "multiple spaces.txt"),
+        ("  leading and trailing  ", "leading and trailing"),
+        # Consecutive dots reduction
+        ("file....txt", "file.txt"),
+        ("file...name..txt", "file.name.txt"),
+        # Leading/trailing spaces and dots
+        (" . file.txt . ", "file.txt"),
+        ("...dots...", "dots"),
+        # Unicode support (printable)
+        ("unicode_✨_rock.txt", "unicode_✨_rock.txt"),
+        ("dokument_📄.pdf", "dokument_📄.pdf"),
+        # Edge cases: strings that become empty
+        ("   .   ", ""),
+        ('<>:"/\\|?*', ""),
+        ("", ""),
+        # Multiple spaces and dots mixed
+        ("  my   file...name..txt  ", "my file.name.txt"),
+    ],
+)
+def test_sanitize_filename_comprehensive(filename, expected):
+    """Test filename sanitization for various scenarios."""
+    assert sanitize_filename(filename) == expected
 
-    # Control characters
-    assert sanitize_filename('file\nname\r\t.txt') == 'filename.txt'
 
-    # Non-printable characters
-    assert sanitize_filename('file\x00name.txt') == 'filename.txt'
-
-    # Multiple spaces and dots
-    assert sanitize_filename('  my   file...name..txt  ') == 'my file.name.txt'
-
-    # Consecutive dots
-    assert sanitize_filename('file....txt') == 'file.txt'
-
-    # Leading/trailing spaces and dots
-    assert sanitize_filename(' . file.txt . ') == 'file.txt'
-
+def test_sanitize_filename_length():
+    """Test length limiting of sanitized filenames."""
     # Length limit
-    long_name = 'a' * 200
+    long_name = "a" * 200
     sanitized = sanitize_filename(long_name, max_length=50)
     assert len(sanitized) == 50
-    assert sanitized == 'a' * 50
+    assert sanitized == "a" * 50
+
+    # Boundary case: exactly max_length
+    assert sanitize_filename("a" * 50, max_length=50) == "a" * 50
+
+    # Boundary case: max_length - 1
+    assert sanitize_filename("a" * 49, max_length=50) == "a" * 49
+
+    # Truncation with trailing space/dot stripping
+    # 'a' * 150 + ' ' -> 'a' * 150 (strip) -> len is 150, not > 150
+    assert sanitize_filename("a" * 50 + " .", max_length=50) == "a" * 50
 
 def test_proportional_chunk_trim_basic():
     """Test basic functionality of proportional_chunk_trim."""
