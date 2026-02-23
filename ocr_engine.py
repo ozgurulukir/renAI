@@ -190,6 +190,7 @@ class OCREngine:
             )
 
             extracted_text = []
+            total_chars = 0
             for pno in pages_to_extract:
                 page = doc.load_page(pno)
                 source_dpi = self.get_page_source_dpi(page)
@@ -276,6 +277,7 @@ class OCREngine:
                     image, lang=OCR_LANG, config=r"--oem 3 --psm 3"
                 )
                 extracted_text.append(page_text)
+                total_chars += len(page_text)
 
                 if temp_img and temp_img.exists():
                     try:
@@ -284,7 +286,7 @@ class OCREngine:
                     except Exception:
                         pass
 
-                if sum(len(t) for t in extracted_text) > 10000:
+                if total_chars > 10000:
                     break
 
             doc.close()
