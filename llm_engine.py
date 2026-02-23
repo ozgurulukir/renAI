@@ -3,7 +3,7 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from openai.types.chat import ChatCompletionMessageParam
 
 from config import get_allowed_categories
