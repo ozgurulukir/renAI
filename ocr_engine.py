@@ -8,7 +8,7 @@ import pymupdf
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-from config import CACHE_DIR, DEBUG_DIR, OCR_LANG, TESSERACT_PATH
+from config import CACHE_DIR, DEBUG_DIR, OCR_LANG, SUBPROCESS_TIMEOUT, TESSERACT_PATH
 from utils import ensure_secure_dir, sanitize_filename
 
 # Try to import OpenCV for skew correction
@@ -218,9 +218,13 @@ class OCREngine:
                             str(file_path),
                             str(pno + 1),
                         ]
-                        subprocess.run(cmd, check=True, capture_output=True)
+                        subprocess.run(
+                            cmd, check=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT
+                        )
                         image = Image.open(temp_img)
                         image.load()
+                    except subprocess.TimeoutExpired:
+                        logging.error(f"mutool timed out for page {pno + 1}")
                     except Exception as e:
                         logging.error(f"mutool failed for page {pno + 1}: {e}")
 
@@ -272,9 +276,19 @@ class OCREngine:
 
                 # OCR with optimized config
                 # --oem 3 (Default, base + LSTM), --psm 3
-                page_text = pytesseract.image_to_string(
-                    image, lang=OCR_LANG, config=r"--oem 3 --psm 3"
-                )
+                try:
+                    page_text = pytesseract.image_to_string(
+                        image,
+                        lang=OCR_LANG,
+                        config=r"--oem 3 --psm 3",
+                        timeout=SUBPROCESS_TIMEOUT,
+                    )
+                except RuntimeError as e:
+                    logging.error(
+                        f"Tesseract timed out or failed for page {pno + 1}: {e}"
+                    )
+                    page_text = ""
+
                 extracted_text.append(page_text)
 
                 if temp_img and temp_img.exists():
