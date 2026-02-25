@@ -139,14 +139,20 @@ OCR_LANG = "tur+eng"
 
 def get_tesseract_path() -> Path:
     """Get Tesseract executable path with environment variable override."""
+    import shutil
     import sys
 
-    # Allow environment variable override
+    # 1. Allow environment variable override (highest priority)
     env_path = os.getenv("TESSERACT_PATH")
     if env_path:
         return Path(env_path)
 
-    # Platform-specific defaults
+    # 2. Try to find in PATH using shutil.which
+    which_path = shutil.which("tesseract")
+    if which_path:
+        return Path(which_path)
+
+    # 3. Platform-specific defaults (last resort)
     if sys.platform == "win32":
         return Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
     elif sys.platform == "darwin":  # macOS

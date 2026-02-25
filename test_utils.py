@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 import pytest
 from utils import (
     get_file_hash,
@@ -11,14 +12,65 @@ from utils import (
     proportional_chunk_trim,
 )
 
-def test_get_file_hash(tmp_path):
-    """Test MD5 calculation for a file."""
+def test_get_file_hash_small(tmp_path):
+    """Test MD5 calculation for a small file."""
     test_file = tmp_path / "test.txt"
     content = b"test content"
     test_file.write_bytes(content)
 
     expected_hash = hashlib.md5(content).hexdigest()
     assert get_file_hash(test_file) == expected_hash
+
+def test_get_file_hash_empty(tmp_path):
+    """Test MD5 calculation for an empty file."""
+    test_file = tmp_path / "empty.txt"
+    test_file.write_bytes(b"")
+
+    expected_hash = hashlib.md5(b"").hexdigest()
+    assert get_file_hash(test_file) == expected_hash
+
+def test_get_file_hash_large(tmp_path):
+    """Test MD5 calculation for a file larger than the chunk size (4096)."""
+    test_file = tmp_path / "large.txt"
+    # Create a 10KB file
+    content = b"a" * 10240
+    test_file.write_bytes(content)
+
+    expected_hash = hashlib.md5(content).hexdigest()
+    assert get_file_hash(test_file) == expected_hash
+
+def test_get_file_hash_nonexistent():
+    """Test that get_file_hash raises FileNotFoundError for non-existent files."""
+    with pytest.raises(FileNotFoundError):
+        get_file_hash(Path("non_existent_file.txt"))
+
+def test_get_file_hash_mocked():
+    """Test get_file_hash with mocking to verify chunked reading."""
+    mock_file_content = b"first chunk" + b"a" * 4085 + b"second chunk"
+    # total length = 11 + 4085 + 12 = 4108 bytes
+    # It should read in 2 chunks (4096 and 12)
+
+    mock_path = Path("mocked_file.txt")
+
+    with patch("builtins.open") as mock_open:
+        mock_file = MagicMock()
+        # Mocking the iterator used in iter(lambda: f.read(4096), b"")
+        # f.read(4096) will be called until it returns b""
+        mock_file.read.side_effect = [
+            mock_file_content[:4096],
+            mock_file_content[4096:],
+            b""
+        ]
+        mock_open.return_value.__enter__.return_value = mock_file
+
+        result_hash = get_file_hash(mock_path)
+
+        expected_hash = hashlib.md5(mock_file_content).hexdigest()
+        assert result_hash == expected_hash
+
+        # Verify read was called with 4096
+        assert mock_file.read.call_count == 3
+        mock_file.read.assert_any_call(4096)
 
 def test_generate_cache_key():
     """Test cache key generation from multiple strings."""
