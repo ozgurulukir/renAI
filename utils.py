@@ -142,6 +142,7 @@ def ensure_secure_dir(path: Path) -> None:
                     ],
                     capture_output=True,
                     check=False,
+                    timeout=10,
                 )
         except Exception:
             pass

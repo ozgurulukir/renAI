@@ -13,6 +13,9 @@ EVAL_LOG_FILE = BASE_DIR / "evaluation.log"
 # Warning Configuration
 SHOW_WARNINGS = os.getenv("RENAI_SHOW_WARNINGS", "true").lower() in ("true", "1", "yes")
 
+# Timeout settings
+SUBPROCESS_TIMEOUT = 60  # seconds
+
 # Category Configuration
 DEFAULT_CATEGORIES = {
     "tr": [
