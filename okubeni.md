@@ -193,15 +193,25 @@ python main.py "C:/Kitaplar/Yolu" --mode rename --workers 8
 python main.py "C:/Kitaplar/Yolu" --mode rename --update-metadata
 ```
 
-### Kıyaslama
+### Kıyaslama ve Model Değerlendirme
 
+#### PDF Çıkarıcı Kıyaslaması
+Farklı PDF çıkarma kütüphanelerinin belgeleriniz üzerindeki performansını ve doğruluğunu karşılaştırın.
 ```bash
-# PDF çıkarıcıları karşılaştır
 python main.py "C:/Kitaplar/Yolu" --benchmark
+```
 
-# LLM modellerini değerlendir
+#### LLM Model Değerlendirmesi
+Özel belge koleksiyonunuz için maliyet ve doğruluk arasındaki en iyi dengeyi bulmak amacıyla bir sağlayıcıdan birden fazla modeli test edin.
+```bash
 python main.py "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
 ```
+
+**Nasıl çalışır:**
+- Modeller sağlayıcıya özel yapılandırma dosyalarından yüklenir: `eval_models_deepinfra.txt`, `eval_models_openai.txt` veya `eval_models_openrouter.txt`.
+- Her dosya, her satırda bir model adı olacak şekilde bir model listesi içermelidir.
+- Araç, dizininizdeki ilk 2 dosyayı listedeki **tüm** modelleri kullanarak işler.
+- Sonuçlar ve güven puanları, ayrıntılı karşılaştırma için `evaluation.log` dosyasına kaydedilir.
 
 ### Önbellek Yönetimi
 
