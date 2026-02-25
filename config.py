@@ -181,6 +181,10 @@ EVAL_MODELS = {
 # Tool Paths
 MUTOOL_PATH = "mutool"
 
+# Security Configuration
+# Maximum characters to read from a text file to prevent Denial of Service
+MAX_TEXT_READ_SIZE = 1_000_000
+
 
 def get_allowed_categories() -> dict:
     """Get allowed categories, preferring custom categories if file exists."""
