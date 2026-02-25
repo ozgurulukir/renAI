@@ -2,7 +2,7 @@
 
 `renAI`, dijital belgelerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen güçlü bir Python aracıdır. Belge içeriğinden doğrudan meta verileri çıkararak tutarlı ve aranabilir dosya adları oluşturur.
 
-**Çıktı Formatı:** `Başlık -- Alt Başlık -- Yazar -- (Yıl).uzantı`
+**Çıktı Formatı:** `Başlık -- Alt Başlık -- 'Baskı' -- Yazar -- (Yıl).uzantı`
 
 ---
 
@@ -21,10 +21,10 @@ Araç birçok belge formatını (PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD) ve 
 
 Dosyalar şu format kullanılarak yeniden adlandırılır:
 ```
-Başlık -- Alt Başlık -- Yazar (Yıl).uzantı
+Başlık -- Alt Başlık -- 'Baskı' -- Yazar -- (Yıl).uzantı
 ```
 
-Örnek: `Makine Öğrenimine Giriş -- Pratik Bir Yaklaşım -- Andrew Ng (2018).pdf`
+Örnek: `Makine Öğrenimine Giriş -- Pratik Bir Yaklaşım -- '1. Baskı' -- Andrew Ng -- (2018).pdf`
 
 ---
 

@@ -337,11 +337,10 @@ class BookProcessor:
             category = sanitize_filename(category_safe) or "Uncategorized"
 
             name_parts = []
-            full_title = title
+            if title:
+                name_parts.append(title)
             if subtitle:
-                full_title += f" - {subtitle}"
-            name_parts.append(full_title)
-
+                name_parts.append(subtitle)
             if edition:
                 name_parts.append(f"'{edition}'")
             if author:

@@ -18,6 +18,7 @@ def test_file_processing_integration():
         # Mock OCR and LLM engines
         mock_ocr_engine = Mock()
         mock_llm_engine = Mock()
+        mock_llm_engine.model_name = "test-model"
         
         # Create processor
         processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
@@ -62,6 +63,7 @@ def test_organize_files_integration():
         # Mock OCR and LLM engines
         mock_ocr_engine = Mock()
         mock_llm_engine = Mock()
+        mock_llm_engine.model_name = "test-model"
         
         # Create processor
         processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
@@ -104,6 +106,7 @@ def test_cache_functionality():
         # Mock OCR and LLM engines
         mock_ocr_engine = Mock()
         mock_llm_engine = Mock()
+        mock_llm_engine.model_name = "test-model"
         
         # Create processor
         processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
@@ -127,10 +130,11 @@ def test_cache_functionality():
         mock_llm_engine.get_book_metadata.return_value = metadata
         
         # Process file with update_metadata=False (should use cache if exists)
-        success1, _, _, _ = processor.process_single_book(test_file, "rename", update_metadata=False)
+        success1, new_path1, _, _ = processor.process_single_book(test_file, "rename", update_metadata=False)
         
         # Process same file again with update_metadata=False (should use cache)
-        success2, _, _, _ = processor.process_single_book(test_file, "rename", update_metadata=False)
+        # Use new_path1 because the file was renamed
+        success2, _, _, _ = processor.process_single_book(new_path1, "rename", update_metadata=False)
         
         assert success1 == True
         assert success2 == True

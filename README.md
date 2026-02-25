@@ -19,10 +19,10 @@ The tool supports multiple document formats (PDF, EPUB, MOBI, DOCX, PPTX, XLSX, 
 
 Files are renamed using the format:
 ```
-Title -- Subtitle -- Author -- (Year).ext
+Title -- Subtitle -- 'Edition' -- Author -- (Year).ext
 ```
 
-Example: `Introduction to Machine Learning -- A Practical Approach -- Andrew Ng -- (2018).pdf`
+Example: `Introduction to Machine Learning -- A Practical Approach -- '1st Edition' -- Andrew Ng -- (2018).pdf`
 
 ---
 
@@ -376,7 +376,7 @@ Sözlük
 
 | Option | Description |
 |--------|-------------|
-| `--provider` | `deepinfra`, `openrouter`, or `openai` |
+| `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Concurrent workers (default: 4) |
 | `--ocr-enhanced` | Enable enhanced OCR |
@@ -384,7 +384,6 @@ Sözlük
 | `--debug-ocr` | Save debug images |
 | `--recursive` | Process subdirectories (default: True) |
 | `--no-recursive` | Process root only |
-| `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
 
 ---
 
