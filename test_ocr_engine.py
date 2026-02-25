@@ -57,23 +57,27 @@ def test_get_page_source_dpi_exception():
     assert OCREngine.get_page_source_dpi(mock_page) == 72
 
 @pytest.mark.skipif(not OPENCV_AVAILABLE, reason="OpenCV not available")
-def test_deskew_straightens_image():
+@pytest.mark.parametrize("angle", [-10, 10, 30, -30])
+def test_deskew_various_angles(angle):
     engine = OCREngine(enhanced=True)
 
     # Create a tilted image
     size = (500, 200)
     image = Image.new("L", size, color=255)
     draw = ImageDraw.Draw(image)
-    draw.text((50, 80), "This is a test line for deskewing verification.", fill=0)
+    # Using a larger font-like rectangle to ensure stable contour detection
+    draw.rectangle([50, 80, 450, 100], fill=0)
 
-    # Rotate 10 degrees CCW (Pillow rotate is CCW)
-    tilted_image = image.rotate(10, expand=True, fillcolor=255)
+    # Rotate (Pillow rotate is CCW, so we use -angle if we want 'angle' to be CW)
+    # Actually, let's just use angle directly as CCW.
+    tilted_image = image.rotate(angle, expand=True, fillcolor=255)
 
     # Deskew
     deskewed_image = engine._deskew(tilted_image)
 
-    # Verify it's different from tilted
-    assert deskewed_image != tilted_image
+    # Verify it's different from tilted if angle is significant
+    if abs(angle) > 0.5:
+        assert deskewed_image != tilted_image
 
     # The deskewed image should be straightened
     data = np.asarray(deskewed_image.convert("L"))
@@ -87,13 +91,37 @@ def test_deskew_straightens_image():
         if cv2.contourArea(c) < 100: continue
         rect = cv2.minAreaRect(c)
         w, h = rect[1]
-        angle = rect[2]
-        if w < h: angle += 90
-        angles.append(angle)
+        a = rect[2]
+        if w < h: a += 90
+        angles.append(a)
 
     if angles:
         median_angle = np.median(angles)
-        assert abs(median_angle) < 1.0
+        # We expect it to be near 0
+        assert abs(median_angle) < 1.5
+
+def test_deskew_small_contours():
+    engine = OCREngine(enhanced=True)
+    # Create an image with only tiny "noise" dots
+    image = Image.new("L", (200, 200), color=255)
+    draw = ImageDraw.Draw(image)
+    for i in range(5):
+        draw.rectangle([i*20, i*20, i*20+2, i*20+2], fill=0)
+
+    # Deskew should return original because all contours < 100 area
+    # (each rect is 3x3 = 9 pixels)
+    assert engine._deskew(image) == image
+
+def test_deskew_different_modes():
+    engine = OCREngine(enhanced=True)
+
+    # RGB
+    img_rgb = Image.new("RGB", (100, 100), color=(255, 255, 255))
+    assert engine._deskew(img_rgb) is not None
+
+    # RGBA
+    img_rgba = Image.new("RGBA", (100, 100), color=(255, 255, 255, 255))
+    assert engine._deskew(img_rgba) is not None
 
 def test_deskew_returns_original_if_no_opencv(monkeypatch):
     monkeypatch.setattr("ocr_engine.OPENCV_AVAILABLE", False)

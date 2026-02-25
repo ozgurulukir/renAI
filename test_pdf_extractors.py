@@ -4,7 +4,33 @@ from unittest.mock import MagicMock, patch
 import sys
 import pytest
 
-from extractors.pdf_extractors import PDFPlumberExtractor
+from extractors.pdf_extractors import PDFPlumberExtractor, PyMuPDFExtractor
+
+class TestPyMuPDFExtractor:
+    def test_pymupdf_extract_text_success(self):
+        """Test successful text extraction with PyMuPDF."""
+        mock_doc = MagicMock()
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = "PyMuPDF text"
+        mock_doc.__len__.return_value = 1
+        mock_doc.__getitem__.return_value = mock_page
+
+        with patch("pymupdf.open") as mock_open:
+            mock_open.return_value.__enter__.return_value = mock_doc
+            extractor = PyMuPDFExtractor()
+            result = extractor.extract_text(Path("test.pdf"))
+            assert result == "PyMuPDF text"
+            mock_open.assert_called_once_with("test.pdf")
+
+    def test_pymupdf_extract_text_exception(self, caplog):
+        """Test handling of exceptions during pymupdf.open."""
+        with patch("pymupdf.open", side_effect=Exception("PyMuPDF failed")):
+            extractor = PyMuPDFExtractor()
+            with caplog.at_level(logging.ERROR):
+                result = extractor.extract_text(Path("test.pdf"))
+
+            assert result is None
+            assert "PyMuPDF extraction failed for test.pdf: PyMuPDF failed" in caplog.text
 
 class TestPDFPlumberExtractor:
     def test_pdfplumber_extract_text_success(self):
