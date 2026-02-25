@@ -2,9 +2,60 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, mock_open
 import pytest
-from config import get_tesseract_path
+from config import get_tesseract_path, load_categories_from_file
+
+def test_load_categories_file_not_exists():
+    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
+        mock_file.exists.return_value = False
+        assert load_categories_from_file() == {}
+
+def test_load_categories_empty_file():
+    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
+        mock_file.exists.return_value = True
+        with patch("builtins.open", mock_open(read_data="")):
+            assert load_categories_from_file() == {"en": []}
+
+def test_load_categories_valid_content():
+    content = """
+# Comment
+LANG: en
+Article
+Fiction
+
+LANG: tr
+Makale
+Kurgu
+"""
+    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
+        mock_file.exists.return_value = True
+        with patch("builtins.open", mock_open(read_data=content)):
+            result = load_categories_from_file()
+            assert result["en"] == ["Article", "Fiction"]
+            assert result["tr"] == ["Makale", "Kurgu"]
+
+def test_load_categories_with_whitespace():
+    content = """
+  LANG: en
+  Article
+
+  # another comment
+  Fiction
+"""
+    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
+        mock_file.exists.return_value = True
+        with patch("builtins.open", mock_open(read_data=content)):
+            result = load_categories_from_file()
+            assert result["en"] == ["Article", "Fiction"]
+
+def test_load_categories_exception_handling(caplog):
+    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
+        mock_file.exists.return_value = True
+        with patch("builtins.open", side_effect=OSError("Read error")):
+            result = load_categories_from_file()
+            assert result == {}
+            assert "Error loading custom categories" in caplog.text
 
 def test_get_tesseract_path_env_override():
     with patch("os.getenv") as mock_getenv:
