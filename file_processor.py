@@ -23,7 +23,10 @@ from utils import (
 
 
 def safe_move_file(
-    source_path: Path, dest_path: Path, operation_type: str = "move"
+    source_path: Path,
+    dest_path: Path,
+    operation_type: str = "move",
+    ensure_dirs: bool = True,
 ) -> Path:
     """
     Safely move a file with duplicate detection and error handling.
@@ -67,6 +70,9 @@ def safe_move_file(
 
     # Perform the file operation
     try:
+        # Ensure destination directory exists if requested
+        if ensure_dirs:
+            final_dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source_path), str(final_dest_path))
         logging.info(
             f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
@@ -380,24 +386,35 @@ class BookProcessor:
         root_dir: Path,
     ) -> None:
         """Move successfully renamed files into category folders."""
+        created_dirs = set()
         for success, current_path, name, category in processed_info:
             if not success or not current_path or not category:
                 continue
 
-            category_dir = root_dir / category
-            try:
-                category_dir.mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                logging.error(
-                    f"ERROR: Could not create category directory {category_dir}: {e}. Skipping organization for {name}."
-                )
+            # Skip if source file doesn't exist to avoid redundant directory creation
+            if not current_path.exists():
+                logging.info(f"File {name} was already moved or deleted, skipping")
                 continue
+
+            category_dir = root_dir / category
+            if category_dir not in created_dirs:
+                try:
+                    category_dir.mkdir(parents=True, exist_ok=True)
+                    created_dirs.add(category_dir)
+                except OSError as e:
+                    logging.error(
+                        f"ERROR: Could not create category directory {category_dir}: {e}. Skipping organization for {name}."
+                    )
+                    continue
 
             dest_path = category_dir / name
 
             try:
                 # Attempt move directly - safe_move_file handles non-existent source
-                final_path = safe_move_file(current_path, dest_path, "organize")
+                # We skip redundant directory creation in safe_move_file as we handle it here with caching
+                final_path = safe_move_file(
+                    current_path, dest_path, "organize", ensure_dirs=False
+                )
                 logging.info(f"Organized {name} -> {final_path}")
             except FileNotFoundError:
                 logging.info(f"File {name} was already moved or deleted, skipping")
