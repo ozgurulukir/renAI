@@ -105,52 +105,70 @@ class OCREngine:
 
         try:
             # Convert PIL image to numpy array
-            data = np.asarray(image.convert("L"))
+            image_array = np.asarray(image)
 
-            # Threshold to get binary image
-            _, binary = cv2.threshold(data, 128, 255, cv2.THRESH_BINARY_INV)  # type: ignore
+            # Handle grayscale vs color (ensure we have a 1-channel image for thresholding)
+            if len(image_array.shape) == 3:
+                if image_array.shape[2] == 4:
+                    gray = cv2.cvtColor(image_array, cv2.COLOR_RGBA2GRAY)
+                else:
+                    gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = image_array
 
-            # Find contours
-            contours, _ = cv2.findContours(  # type: ignore
-                binary,
-                cv2.RETR_LIST,
-                cv2.CHAIN_APPROX_SIMPLE,  # type: ignore
+            # Threshold to get binary image (text white, background black)
+            # Use Otsu's thresholding for better results on varying contrast
+            _, binary = cv2.threshold(
+                gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+            )
+
+            # Morphological operations to join text into lines/blocks
+            # This helps in detecting the overall skew of text lines rather than individual chars
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 5))
+            dilated = cv2.dilate(binary, kernel, iterations=1)
+
+            # Find contours of the dilated blocks
+            contours, _ = cv2.findContours(
+                dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
 
             if not contours:
                 return image
 
-            # Fit lines to contours and calculate skew angle
             angles = []
             for contour in contours:
-                if len(contour) < 5:
+                # Filter small contours that might be noise
+                if cv2.contourArea(contour) < 100:
                     continue
-                # Fit ellipse to contour
-                ellipse = cv2.fitEllipse(contour)  # type: ignore
-                angle = ellipse[2]
-                # Store the angle (minimum area rectangle gives angle relative to horizontal)
+
+                rect = cv2.minAreaRect(contour)
+                (w, h) = rect[1]
+                angle = rect[2]
+
+                # Adjust angle to be relative to the horizontal axis
+                # In OpenCV 4.x, minAreaRect angle is usually in [-90, 0)
+                if w < h:
+                    angle += 90
+
+                # After adjustment, angle is in [-45, 45] for horizontal-ish boxes.
                 angles.append(angle)
 
             if not angles:
                 return image
 
-            # Calculate median angle
+            # Calculate median angle to avoid outliers
             median_angle = np.median(angles)
 
-            # Convert to degrees and adjust
-            angle_degrees = median_angle
-
-            # If angle is close to 90, it's actually 0 (vertical text)
-            if abs(angle_degrees) > 45:
-                angle_degrees = 90 - angle_degrees
+            # If the angle is very small, don't bother rotating
+            if abs(median_angle) < 0.1:
+                return image
 
             # Rotate image to correct skew
-            image_array = np.asarray(image)
             height, width = image_array.shape[:2]
             center = (width // 2, height // 2)
 
-            # Get rotation matrix
-            rotation_matrix = cv2.getRotationMatrix2D(center, angle_degrees, 1.0)  # type: ignore
+            # Get rotation matrix (positive values mean counter-clockwise rotation)
+            rotation_matrix = cv2.getRotationMatrix2D(center, median_angle, 1.0)
 
             # Calculate new bounding dimensions
             cos = np.abs(rotation_matrix[0, 0])
@@ -162,13 +180,15 @@ class OCREngine:
             rotation_matrix[0, 2] += (new_width / 2) - center[0]
             rotation_matrix[1, 2] += (new_height / 2) - center[1]
 
-            # Perform rotation
-            rotated_array = cv2.warpAffine(  # type: ignore
+            # Perform rotation - Use white background for documents
+            border_value = 255 if len(image_array.shape) == 2 else (255, 255, 255)
+            rotated_array = cv2.warpAffine(
                 image_array,
                 rotation_matrix,
                 (new_width, new_height),
-                flags=cv2.INTER_CUBIC,  # type: ignore
-                borderMode=cv2.BORDER_REPLICATE,  # type: ignore
+                flags=cv2.INTER_CUBIC,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=border_value,
             )
 
             # Convert back to PIL Image
