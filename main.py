@@ -243,14 +243,16 @@ def main() -> None:
 
     # Deep search for recursive mode (default for rename, optional for organize)
     if args.recursive:
+        seen_paths = set(file_paths)
         for entry in root_dir.rglob("*"):
             if (
                 entry.is_file()
                 and not entry.is_symlink()
                 and entry.suffix.lower() in processor.supported_extensions
             ):
-                if entry not in file_paths:
+                if entry not in seen_paths:
                     file_paths.append(entry)
+                    seen_paths.add(entry)
 
     if not file_paths:
         logging.warning("No supported files found.")
