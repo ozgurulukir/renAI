@@ -236,7 +236,7 @@ def display_warnings(mode: str, recursive: bool) -> None:
         "\n💾 DATA LOSS PREVENTION:",
         "   - Always backup your files before running renAI",
         "   - Test with a small directory first",
-        "   - Review the naming convention: Title -- Subtitle -- Author (Year).ext"
+        "   - Review the naming convention: Title -- Subtitle -- 'Edition' -- Author -- (Year).ext"
     ])
 
     # Token usage warning

@@ -23,6 +23,7 @@ def check_requirements() -> bool:
         "markitdown": "pip install markitdown",
         "openai": "pip install openai",
         "numpy": "pip install numpy",
+        "cv2": "pip install opencv-python",
     }
     for lib, cmd in libraries.items():
         try:
