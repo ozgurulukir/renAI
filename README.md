@@ -191,15 +191,25 @@ python main.py "C:/Path/To/Books" --mode rename --workers 8
 python main.py "C:/Path/To/Books" --mode rename --update-metadata
 ```
 
-### Benchmarking
+### Benchmarking & Model Evaluation
 
+#### PDF Extractor Benchmark
+Compare the performance and accuracy of different PDF extraction libraries on your documents.
 ```bash
-# Compare PDF extractors
 python main.py "C:/Path/To/Books" --benchmark
+```
 
-# Evaluate LLM models
+#### LLM Model Evaluation
+Test multiple models from a provider to find the best balance between cost and accuracy for your specific document collection.
+```bash
 python main.py "C:/Path/To/Books" --eval-model --provider deepinfra
 ```
+
+**How it works:**
+- Models are loaded from provider-specific configuration files: `eval_models_deepinfra.txt`, `eval_models_openai.txt`, or `eval_models_openrouter.txt`.
+- Each file should contain a list of model names, one per line.
+- The tool processes the first 2 files in your directory using **all** listed models.
+- Results and confidence scores are logged to `evaluation.log` for detailed comparison.
 
 ### Cache Management
 
