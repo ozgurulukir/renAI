@@ -1,4 +1,5 @@
 import logging
+import shutil
 import subprocess
 import uuid
 from pathlib import Path
@@ -39,6 +40,18 @@ class OCREngine:
         self.debug = debug
         self.use_mutool = use_mutool
         self.mutool_path = mutool_path
+
+        # Validate mutool if requested
+        if self.use_mutool:
+            resolved_path = shutil.which(self.mutool_path)
+            if resolved_path:
+                self.mutool_path = resolved_path
+            else:
+                logging.warning(
+                    f"mutool not found at {self.mutool_path}. "
+                    "Falling back to standard extraction."
+                )
+                self.use_mutool = False
 
         # Simple two-tier configuration
         if self.enhanced:
