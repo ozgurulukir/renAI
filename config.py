@@ -7,6 +7,9 @@ BASE_DIR = Path(__file__).parent.resolve()
 CACHE_DIR = BASE_DIR / ".renamer_cache"
 DEBUG_DIR = BASE_DIR / ".ocr_debug"
 
+# User-specific configuration directory for persistent storage (e.g. OAuth tokens)
+USER_CONFIG_DIR = Path.home() / ".renai"
+
 # Evaluation log file
 EVAL_LOG_FILE = BASE_DIR / "evaluation.log"
 
@@ -245,6 +248,7 @@ def initialize_directories() -> None:
 
     ensure_secure_dir(CACHE_DIR)
     ensure_secure_dir(DEBUG_DIR)
+    ensure_secure_dir(USER_CONFIG_DIR)
 
 
 def display_warnings(mode: str, recursive: bool) -> None:
