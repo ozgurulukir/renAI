@@ -226,6 +226,8 @@ class BookProcessor:
                     return ""
 
         if extracted_text.strip():
+            # Ensure cache directory exists before writing
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(extracted_text, encoding="utf-8")
             return extracted_text
 
@@ -302,6 +304,8 @@ class BookProcessor:
                 if book_data:
                     # Save to cache with provider-model info for future validation
                     try:
+                        # Ensure cache directory exists before writing
+                        metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
                         # Add provider-model info to cache for validation
                         cache_data = {
                             **book_data,
