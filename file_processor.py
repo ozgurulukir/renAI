@@ -93,6 +93,7 @@ class BookProcessor:
         extractor_name: str = "pymupdf",
         provider: str = "deepinfra",
         model: str = "",
+        target_length: int = 10000,
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
@@ -119,6 +120,8 @@ class BookProcessor:
         self.provider = provider
         self.model = model or getattr(llm_engine, "model_name", "")
         self.provider_model_key = get_provider_model_key(self.provider, self.model)
+        # Target text length for LLM processing
+        self.target_length = target_length
 
     def set_ocr_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
         """Set up the OCR failures folder for moving files that require OCR."""
@@ -293,7 +296,7 @@ class BookProcessor:
 
             # 3. Extract Text and call LLM if no cached metadata
             if not book_data:
-                text = self.extract_text_from_file(file_path)
+                text = self.extract_text_from_file(file_path, target_length=self.target_length)
                 if not text:
                     # Track OCR failure for organize mode
                     self.ocr_failed_files.add(file_path)
@@ -487,7 +490,7 @@ class BookProcessor:
         logging.info("-" * 85)
 
         # Ensure text is extracted once
-        text_content = self.extract_text_from_file(file_path)
+        text_content = self.extract_text_from_file(file_path, target_length=self.target_length)
         if not text_content:
             logging.error(f"FAILED: No text extracted for {file_path.name}")
             return
