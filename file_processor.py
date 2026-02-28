@@ -8,7 +8,7 @@ from typing import Any, List, Optional, Tuple
 
 from config import CACHE_DIR, EVAL_LOG_FILE, MAX_TEXT_READ_SIZE, PROVIDERS
 from extractors import get_extractor
-from llm_engine import LLMEngine, RateLimitError
+from llm_engine import LLMEngine
 from ocr_engine import OCREngine
 from utils import (
     ensure_secure_dir,
@@ -303,12 +303,7 @@ class BookProcessor:
                     logging.warning(f"No text extracted from {file_path.name}")
                     return False, None, None, None
 
-                try:
-                    book_data = self.llm_engine.get_book_metadata(text)
-                except RateLimitError as e:
-                    logging.error(f"RateLimitError encountered for {file_path.name}: {e}")
-                    raise  # Re-raise to be handled by the worker pool or main execution loop
-
+                book_data = self.llm_engine.get_book_metadata(text)
                 if book_data:
                     # Save to cache with provider-model info for future validation
                     try:
