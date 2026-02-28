@@ -343,7 +343,7 @@ python main.py "C:/Books" --provider deepinfra
 python main.py "C:/Books" --provider deepinfra --update-metadata
 ```
 
-**Cache Location:** `.renamer_cache/` directory
+**Cache Location:** `~/.renai/cache/` directory (or `.renai/cache` in your user home folder)
 
 **Clear Cache:**
 ```bash

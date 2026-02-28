@@ -4,14 +4,16 @@ from pathlib import Path
 
 # Directory Configuration (must be defined first for other paths)
 BASE_DIR = Path(__file__).parent.resolve()
-CACHE_DIR = BASE_DIR / ".renamer_cache"
-DEBUG_DIR = BASE_DIR / ".ocr_debug"
 
-# User-specific configuration directory for persistent storage (e.g. OAuth tokens)
+# User-specific configuration directory for persistent storage
 USER_CONFIG_DIR = Path.home() / ".renai"
 
+CACHE_DIR = USER_CONFIG_DIR / "cache"
+DEBUG_DIR = USER_CONFIG_DIR / "debug"
+AUTH_DIR = USER_CONFIG_DIR / "auth"
+
 # Evaluation log file
-EVAL_LOG_FILE = BASE_DIR / "evaluation.log"
+EVAL_LOG_FILE = USER_CONFIG_DIR / "evaluation.log"
 
 # Warning Configuration
 SHOW_WARNINGS = os.getenv("RENAI_SHOW_WARNINGS", "true").lower() in ("true", "1", "yes")
@@ -246,9 +248,10 @@ def initialize_directories() -> None:
     """Ensure necessary directories exist with secure permissions."""
     from utils import ensure_secure_dir
 
+    ensure_secure_dir(USER_CONFIG_DIR)
     ensure_secure_dir(CACHE_DIR)
     ensure_secure_dir(DEBUG_DIR)
-    ensure_secure_dir(USER_CONFIG_DIR)
+    ensure_secure_dir(AUTH_DIR)
 
 
 def display_warnings(mode: str, recursive: bool) -> None:

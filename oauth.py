@@ -5,14 +5,14 @@ import time
 import requests
 from typing import Optional, Dict, Any
 from pathlib import Path
-from config import OAUTH_PROVIDERS, USER_CONFIG_DIR
+from config import OAUTH_PROVIDERS, AUTH_DIR
 from utils import ensure_secure_dir
 
-TOKEN_FILE = USER_CONFIG_DIR / "tokens.json"
+TOKEN_FILE = AUTH_DIR / "tokens.json"
 
 class OAuthManager:
     def __init__(self) -> None:
-        ensure_secure_dir(USER_CONFIG_DIR)
+        ensure_secure_dir(AUTH_DIR)
 
         # Make tokens.json secure if it doesn't exist
         if not TOKEN_FILE.exists():

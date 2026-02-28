@@ -345,7 +345,7 @@ python main.py "C:/Kitaplar" --provider deepinfra
 python main.py "C:/Kitaplar" --provider deepinfra --update-metadata
 ```
 
-**Önbellek Konumu:** `.renamer_cache/` dizini
+**Önbellek Konumu:** `~/.renai/cache/` dizini (veya kullanıcı ana klasörünüzdeki `.renai/cache`)
 
 **Önbelleği Temizle:**
 ```bash
