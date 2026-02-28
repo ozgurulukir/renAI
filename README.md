@@ -138,6 +138,10 @@ python main.py "C:/Path/To/Books" --mode rename --provider openai
 
 Use the `custom` provider to connect to local inference servers like [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/). These tools provide OpenAI-compatible APIs.
 
+> **⚠️ Important: Not all models are capable of structured output, particularly LLMs below 7B parameters. Check the model card README if you are unsure if the model supports structured output.**
+> 
+> renAI requires JSON output from the LLM for reliable metadata extraction. Models with fewer than 7B parameters may struggle with structured output formatting.
+
 ```bash
 # Set environment variables (Windows PowerShell)
 $env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"  # Ollama default
@@ -149,6 +153,22 @@ python main.py "C:/Path/To/Books" --mode rename --provider custom
 # Or override model directly
 python main.py "C:/Path/To/Books" --mode rename --provider custom --model mistral
 ```
+
+#### Controlling Text Length for Local Models
+
+When running local models on consumer hardware, you can reduce the text length sent to the LLM to decrease memory usage and improve performance:
+
+```bash
+# Reduce text length to 5000 characters (default: 10000)
+python main.py "C:/Path/To/Books" --mode rename --provider custom --text-length 5000
+
+# Increase for better context if your model can handle it
+python main.py "C:/Path/To/Books" --mode rename --provider custom --text-length 20000
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--text-length` | Target text length sent to LLM | 10000 |
 
 #### Environment Variables for Custom Provider
 
