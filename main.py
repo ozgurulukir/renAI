@@ -130,6 +130,12 @@ def parse_arguments() -> argparse.Namespace:
         dest="recursive",
         help="Process only the root directory (no recursion)",
     )
+    parser.add_argument(
+        "--text-length",
+        type=int,
+        default=10000,
+        help="Target text length to send to LLM (default: 10000). Lower values reduce load on local models.",
+    )
 
     return parser.parse_args()
 
@@ -190,6 +196,7 @@ def setup_engines(args: argparse.Namespace) -> tuple[OCREngine, LLMEngine, BookP
         extractor_name=args.extractor,
         provider=args.provider,
         model=model_name,
+        target_length=args.text_length,
     )
 
     return ocr_engine, llm_engine, processor

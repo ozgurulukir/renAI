@@ -140,6 +140,10 @@ python main.py "C:/Kitaplar/Yolu" --mode rename --provider openai
 
 `custom` sağlayıcısını kullanarak [Ollama](https://ollama.com/) veya [LM Studio](https://lmstudio.ai/) gibi yerel çıkarım sunucularına bağlanabilirsiniz. Bu araçlar OpenAI uyumlu API sağlar.
 
+> **⚠️ Önemli: Tüm modeller yapılandırılmış çıktı üretemez, özellikle 7B parametrenin altındaki LLM'ler. Modelin yapılandırılmış çıktıyı destekleyip desteklemediğinden emin değilseniz model kartı README'sini kontrol edin.**
+> 
+> renAI güvenilir meta veri çıkarma için LLM'den JSON çıktısı gerektirir. 7B'den daha az parametreye sahip modeller yapılandırılmış çıktı formatlamada zorlanabilir.
+
 ```bash
 # Ortam değişkenlerini ayarla (Windows PowerShell)
 $env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"  # Ollama varsayılanı
@@ -151,6 +155,22 @@ python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom
 # Veya modeli doğrudan geçersiz kıl
 python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
 ```
+
+#### Yerel Modeller için Metin Uzunluğunu Kontrol Etme
+
+Tüketici donanımlarında yerel modeller çalıştırırken, bellek kullanımını azaltmak ve performansı artırmak için LLM'e gönderilen metin uzunluğunu azaltabilirsiniz:
+
+```bash
+# Metin uzunluğunu 5000 karaktere azalt (varsayılan: 10000)
+python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 5000
+
+# Modeliniz kaldırabiliyorsa daha iyi bağlam için artırın
+python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
+```
+
+| Seçenek | Açıklama | Varsayılan |
+|--------|-------------|-----------|
+| `--text-length` | LLM'e gönderilen hedef metin uzunluğu | 10000 |
 
 #### Özel Sağlayıcı için Ortam Değişkenleri
 
