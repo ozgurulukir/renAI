@@ -134,29 +134,6 @@ python main.py "C:/Path/To/Books" --mode rename --provider openrouter
 python main.py "C:/Path/To/Books" --mode rename --provider openai
 ```
 
-### OAuth and Subscription Login (Device Code Flow)
-
-You can use your existing LLM provider subscriptions (e.g., Minimax, Zhipu, Qwen, OpenAI, Claude) via an interactive OAuth Device Code flow instead of using API keys directly.
-
-> **⚠️ IMPORTANT WARNING regarding OAuth usage:** Using interactive OAuth tokens (intended for web/app login) to programmatically process hundreds of files might violate the Terms of Service of some providers and carries a **BAN RISK**.
-> To mitigate this, renAI automatically slows down requests and gracefully handles Rate Limit errors (429) to avoid bans, but please use this feature responsibly.
-
-To log in via OAuth:
-```bash
-# 1. Start the interactive login menu
-python main.py --login
-
-# 2. Select your provider (e.g., minimax, zhipu, qwen, openai, claude)
-# 3. Follow the instructions to open a URL and enter the verification code.
-```
-
-After logging in, use the `--oauth` flag to process files with your token.
-
-```bash
-# Rename files using OAuth token
-python main.py "C:/Path/To/Books" --provider qwen --oauth
-```
-
 ### Local Inference (Ollama / LM Studio)
 
 Use the `custom` provider to connect to local inference servers like [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/). These tools provide OpenAI-compatible APIs.
@@ -343,7 +320,7 @@ python main.py "C:/Books" --provider deepinfra
 python main.py "C:/Books" --provider deepinfra --update-metadata
 ```
 
-**Cache Location:** `~/.renai/cache/` directory (or `.renai/cache` in your user home folder)
+**Cache Location:** `.renamer_cache/` directory
 
 **Clear Cache:**
 ```bash
@@ -419,7 +396,7 @@ Sözlük
 
 | Option | Description |
 |--------|-------------|
-| `--provider` | `deepinfra`, `openrouter`, `openai`, `custom`, `minimax`, `zhipu`, `qwen`, `claude` |
+| `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Concurrent workers (default: 4) |
 | `--ocr-enhanced` | Enable enhanced OCR |
@@ -427,8 +404,6 @@ Sözlük
 | `--debug-ocr` | Save debug images |
 | `--recursive` | Process subdirectories (default: True) |
 | `--no-recursive` | Process root only |
-| `--login` | Open interactive OAuth login menu |
-| `--oauth` | Use OAuth tokens instead of API keys |
 
 ---
 
