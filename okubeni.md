@@ -136,6 +136,29 @@ python main.py "C:/Kitaplar/Yolu" --mode rename --provider openrouter
 python main.py "C:/Kitaplar/Yolu" --mode rename --provider openai
 ```
 
+### OAuth ve Abonelik Girişi (Cihaz Kodu Akışı)
+
+API anahtarlarını doğrudan kullanmak yerine, etkileşimli OAuth Cihaz Kodu akışı aracılığıyla mevcut LLM sağlayıcı aboneliklerinizi (örn. Minimax, Zhipu, Qwen, OpenAI, Claude) kullanabilirsiniz.
+
+> **⚠️ OAuth kullanımıyla ilgili ÖNEMLİ UYARI:** Yüzlerce dosyayı programatik olarak işlemek için (web/uygulama girişi için tasarlanan) etkileşimli OAuth belirteçlerini kullanmak, bazı sağlayıcıların Hizmet Şartlarını ihlal edebilir ve **YASAKLANMA RİSKİ** taşır.
+> Bunu hafifletmek için renAI, yasaklamaları önlemek amacıyla istekleri otomatik olarak yavaşlatır ve Hız Sınırı (Rate Limit - 429) hatalarını incelikle (gracefully) ele alır, ancak lütfen bu özelliği sorumlu bir şekilde kullanın.
+
+OAuth ile giriş yapmak için:
+```bash
+# 1. Etkileşimli giriş menüsünü başlatın
+python main.py --login
+
+# 2. Sağlayıcınızı seçin (örn. minimax, zhipu, qwen, openai, claude)
+# 3. Bir URL açmak ve doğrulama kodunu girmek için talimatları izleyin.
+```
+
+Giriş yaptıktan sonra, dosyaları belirtecinizle işlemek için `--oauth` bayrağını kullanın.
+
+```bash
+# OAuth belirtecini kullanarak dosyaları yeniden adlandırın
+python main.py "C:/Path/To/Books" --provider qwen --oauth
+```
+
 ### Yerel Çıkarım (Ollama / LM Studio)
 
 `custom` sağlayıcısını kullanarak [Ollama](https://ollama.com/) veya [LM Studio](https://lmstudio.ai/) gibi yerel çıkarım sunucularına bağlanabilirsiniz. Bu araçlar OpenAI uyumlu API sağlar.
@@ -322,7 +345,7 @@ python main.py "C:/Kitaplar" --provider deepinfra
 python main.py "C:/Kitaplar" --provider deepinfra --update-metadata
 ```
 
-**Önbellek Konumu:** `.renamer_cache/` dizini
+**Önbellek Konumu:** `~/.renai/cache/` dizini (veya kullanıcı ana klasörünüzdeki `.renai/cache`)
 
 **Önbelleği Temizle:**
 ```bash
@@ -398,7 +421,7 @@ Sözlük
 
 | Seçenek | Açıklama |
 |--------|-------------|
-| `--provider` | `deepinfra`, `openrouter`, `openai` veya `custom` |
+| `--provider` | `deepinfra`, `openrouter`, `openai`, `custom`, `minimax`, `zhipu`, `qwen`, `claude` |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Eşzamanlı çalışanlar (varsayılan: 4) |
 | `--ocr-enhanced` | Geliştirilmiş OCR'yi etkinleştir |
@@ -406,6 +429,8 @@ Sözlük
 | `--debug-ocr` | Hata ayıklama görüntülerini kaydet |
 | `--recursive` | Alt dizinleri işle (varsayılan: True) |
 | `--no-recursive` | Yalnızca kök dizini işle |
+| `--login` | Etkileşimli OAuth giriş menüsünü açar |
+| `--oauth` | API anahtarları yerine OAuth belirteçlerini kullanır |
 
 ---
 
