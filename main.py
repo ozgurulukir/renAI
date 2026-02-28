@@ -11,7 +11,6 @@ from utils import ensure_secure_dir
 from llm_engine import LLMEngine
 from ocr_engine import OCREngine
 
-
 def check_requirements() -> bool:
     """Check for essential libraries and display installation tips."""
     missing = []
@@ -40,19 +39,7 @@ def check_requirements() -> bool:
         return False
     return True
 
-
-def main() -> None:
-    # Setup paths and environment
-    initialize_directories()
-
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
-
-    if not check_requirements():
-        sys.exit(1)
-
+def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="renAI: AI-Powered Book Renamer and Organizer"
     )
@@ -144,8 +131,9 @@ def main() -> None:
         help="Process only the root directory (no recursion)",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
+def handle_clear_cache(args: argparse.Namespace) -> None:
     # Clear cache mode - works without directory (clears all cache)
     if args.clear_cache:
         from config import CACHE_DIR
@@ -165,19 +153,7 @@ def main() -> None:
         logging.info("Cache cleared successfully.")
         sys.exit(0)
 
-    # Directory is required for other operations
-    if not args.directory:
-        logging.error(
-            "Directory argument is required. Use --clear-cache to clear cache without specifying a directory."
-        )
-        sys.exit(1)
-
-    root_dir = Path(args.directory).resolve()
-
-    if not root_dir.is_dir():
-        logging.error(f"Directory not found: {root_dir}")
-        sys.exit(1)
-
+def setup_engines(args: argparse.Namespace) -> tuple[OCREngine, LLMEngine, BookProcessor]:
     # Initialize engines
     ocr_engine = OCREngine(
         enhanced=args.ocr_enhanced,
@@ -216,23 +192,9 @@ def main() -> None:
         model=model_name,
     )
 
-    # Set up OCR folders if enabled
-    if args.skip_needs_ocr and args.move_ocr_failures:
-        logging.warning(
-            "Both --skip-needs-ocr and --move-ocr-failures are enabled. "
-            "Files that require OCR will be moved to Needs_OCR folder, "
-            "while complete OCR failures will go to OCR_Failures folder."
-        )
+    return ocr_engine, llm_engine, processor
 
-    if args.skip_needs_ocr:
-        processor.set_needs_ocr_folder(root_dir, skip=True)
-
-    if args.move_ocr_failures:
-        processor.set_ocr_failures_folder(root_dir, enabled=True)
-
-    # Display warnings before processing (unless disabled)
-    display_warnings(args.mode, args.recursive)
-
+def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> list[Path]:
     # Collect files
     file_paths = []
     for entry in root_dir.iterdir():
@@ -244,7 +206,7 @@ def main() -> None:
             file_paths.append(entry)
 
     # Deep search for recursive mode (default for rename, optional for organize)
-    if args.recursive:
+    if recursive:
         seen_paths = set(file_paths)
         for entry in root_dir.rglob("*"):
             if (
@@ -256,10 +218,9 @@ def main() -> None:
                     file_paths.append(entry)
                     seen_paths.add(entry)
 
-    if not file_paths:
-        logging.warning("No supported files found.")
-        sys.exit(0)
+    return file_paths
 
+def process_special_modes(args: argparse.Namespace, processor: BookProcessor, file_paths: list[Path]) -> None:
     # Benchmark mode logic
     if args.benchmark:
         logging.info("Starting Benchmark Mode...")
@@ -282,8 +243,7 @@ def main() -> None:
             processor.evaluate_models(p, args.provider, eval_models)
         sys.exit(0)
 
-    logging.info(f"Found {len(file_paths)} files to process in {args.mode} mode.")
-
+def process_files(args: argparse.Namespace, processor: BookProcessor, file_paths: list[Path], root_dir: Path) -> None:
     # Process files
     results = []
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
@@ -315,6 +275,65 @@ def main() -> None:
     success_count = sum(1 for r in results if r[0])
     logging.info(f"Finished. Success: {success_count}/{len(file_paths)}")
 
+def main() -> None:
+    # Setup paths and environment
+    initialize_directories()
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
+    if not check_requirements():
+        sys.exit(1)
+
+    args = parse_arguments()
+
+    handle_clear_cache(args)
+
+    # Directory is required for other operations
+    if not args.directory:
+        logging.error(
+            "Directory argument is required. Use --clear-cache to clear cache without specifying a directory."
+        )
+        sys.exit(1)
+
+    root_dir = Path(args.directory).resolve()
+
+    if not root_dir.is_dir():
+        logging.error(f"Directory not found: {root_dir}")
+        sys.exit(1)
+
+    ocr_engine, llm_engine, processor = setup_engines(args)
+
+    # Set up OCR folders if enabled
+    if args.skip_needs_ocr and args.move_ocr_failures:
+        logging.warning(
+            "Both --skip-needs-ocr and --move-ocr-failures are enabled. "
+            "Files that require OCR will be moved to Needs_OCR folder, "
+            "while complete OCR failures will go to OCR_Failures folder."
+        )
+
+    if args.skip_needs_ocr:
+        processor.set_needs_ocr_folder(root_dir, skip=True)
+
+    if args.move_ocr_failures:
+        processor.set_ocr_failures_folder(root_dir, enabled=True)
+
+    # Display warnings before processing (unless disabled)
+    display_warnings(args.mode, args.recursive)
+
+    file_paths = collect_files(root_dir, processor, args.recursive)
+
+    if not file_paths:
+        logging.warning("No supported files found.")
+        sys.exit(0)
+
+    process_special_modes(args, processor, file_paths)
+
+    logging.info(f"Found {len(file_paths)} files to process in {args.mode} mode.")
+
+    process_files(args, processor, file_paths, root_dir)
 
 if __name__ == "__main__":
     main()
