@@ -23,7 +23,7 @@ def test_ocr_skip_functionality():
         
         # Create a test PDF file
         test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf content")
+        test_file.write_bytes(b"fake pdf content 1")
         
         # Mock extractor to return insufficient text (triggering OCR fallback)
         mock_extractor = Mock()
@@ -66,7 +66,7 @@ def test_ocr_skip_disabled():
         
         # Create a test PDF file
         test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf content")
+        test_file.write_bytes(b"fake pdf content 2")
         
         # Mock extractor to return insufficient text
         mock_extractor = Mock()
@@ -107,7 +107,7 @@ def test_sufficient_text_no_ocr_needed():
         
         # Create a test PDF file
         test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf content")
+        test_file.write_bytes(b"fake pdf content 3")
         
         # Mock extractor to return sufficient text
         mock_extractor = Mock()

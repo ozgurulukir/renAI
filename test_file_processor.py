@@ -296,14 +296,15 @@ class TestExtractTextFromFile:
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello World")
 
-        # First extraction
-        text1 = processor.extract_text_from_file(test_file)
+        with patch("file_processor.get_file_hash", return_value="fake_hash_123"):
+            # First extraction
+            text1 = processor.extract_text_from_file(test_file)
 
-        # Modify file
-        test_file.write_text("Modified content")
+            # Modify file
+            test_file.write_text("Modified content")
 
-        # Second extraction should return cached result
-        text2 = processor.extract_text_from_file(test_file)
+            # Second extraction should return cached result
+            text2 = processor.extract_text_from_file(test_file)
 
         assert text1 == text2 == "Hello World"
 
