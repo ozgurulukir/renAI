@@ -132,6 +132,46 @@ PROVIDERS = {
     },
 }
 
+# OAuth Provider Configurations
+# Used for OAuth (Device Code Flow) logins.
+OAUTH_PROVIDERS = {
+    "minimax": {
+        "device_authorization_url": "https://api.minimax.chat/oauth2/device/code",
+        "token_url": "https://api.minimax.chat/oauth2/token",
+        "client_id": os.getenv("MINIMAX_CLIENT_ID", "default_minimax_client_id"),
+        "base_url": "https://api.minimax.chat/v1",
+        "default_model": "abab6.5s-chat",
+    },
+    "zhipu": {
+        "device_authorization_url": "https://open.bigmodel.cn/api/paas/v4/oauth/device/code",
+        "token_url": "https://open.bigmodel.cn/api/paas/v4/oauth/token",
+        "client_id": os.getenv("ZHIPU_CLIENT_ID", "default_zhipu_client_id"),
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "default_model": "glm-4",
+    },
+    "qwen": {
+        "device_authorization_url": "https://dashscope.aliyuncs.com/oauth2/device/code",
+        "token_url": "https://dashscope.aliyuncs.com/oauth2/token",
+        "client_id": os.getenv("QWEN_CLIENT_ID", "default_qwen_client_id"),
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "default_model": "qwen-max",
+    },
+    "openai": {
+        "device_authorization_url": "https://api.openai.com/oauth/device/code",
+        "token_url": "https://api.openai.com/oauth/token",
+        "client_id": os.getenv("OPENAI_CLIENT_ID", "default_openai_client_id"),
+        "base_url": "https://api.openai.com/v1",
+        "default_model": "gpt-4o-mini",
+    },
+    "claude": {
+        "device_authorization_url": "https://api.anthropic.com/oauth/device/code",
+        "token_url": "https://api.anthropic.com/oauth/token",
+        "client_id": os.getenv("CLAUDE_CLIENT_ID", "default_claude_client_id"),
+        "base_url": "https://api.anthropic.com/v1",
+        "default_model": "claude-3-haiku-20240307",
+    },
+}
+
 
 # OCR Configuration
 OCR_LANG = "tur+eng"
