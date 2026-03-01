@@ -10,6 +10,7 @@ from utils import (
     get_text_cache_path,
     sanitize_filename,
     proportional_chunk_trim,
+    read_text_limited,
 )
 
 def test_get_file_hash_small(tmp_path):
@@ -228,3 +229,70 @@ def test_proportional_chunk_trim_rounding_behavior():
     # Another example: 10 chars, target 9, 10 chunks
     # reduction_factor = 0.9. allowed_length = int(1 * 0.9) = 0
     assert proportional_chunk_trim(text, 9, 10) == ""
+
+
+def test_read_text_limited_small(tmp_path):
+    """Test reading a file smaller than max_chars."""
+    test_file = tmp_path / "small.txt"
+    content = "Hello, world!"
+    test_file.write_text(content, encoding="utf-8")
+
+    result = read_text_limited(test_file, max_chars=100)
+    assert result == content
+
+
+def test_read_text_limited_large(tmp_path):
+    """Test reading a file larger than max_chars."""
+    test_file = tmp_path / "large.txt"
+    content = "A" * 1000
+    test_file.write_text(content, encoding="utf-8")
+
+    result = read_text_limited(test_file, max_chars=100)
+    assert len(result) == 100
+    assert result == "A" * 100
+
+
+def test_read_text_limited_empty(tmp_path):
+    """Test reading an empty file."""
+    test_file = tmp_path / "empty.txt"
+    test_file.write_text("", encoding="utf-8")
+
+    result = read_text_limited(test_file, max_chars=100)
+    assert result == ""
+
+
+@patch("utils.logging.error")
+@patch("builtins.open")
+def test_read_text_limited_error_logging(mock_open, mock_logging_error, tmp_path):
+    """Test that an exception triggers logging.error and returns an empty string."""
+    test_file = tmp_path / "error.txt"
+
+    # Make open() raise an exception
+    mock_open.side_effect = PermissionError("Permission denied")
+
+    result = read_text_limited(test_file, max_chars=100)
+
+    # Should return empty string on error
+    assert result == ""
+
+    # Verify logging.error was called
+    mock_logging_error.assert_called_once()
+    assert "Error reading" in mock_logging_error.call_args[0][0]
+    assert "Permission denied" in mock_logging_error.call_args[0][0]
+
+
+def test_read_text_limited_zero_chars(tmp_path):
+    """Test reading with max_chars set to 0."""
+    test_file = tmp_path / "zero.txt"
+    test_file.write_text("Some text", encoding="utf-8")
+
+    result = read_text_limited(test_file, max_chars=0)
+    assert result == ""
+
+
+def test_read_text_limited_nonexistent(tmp_path):
+    """Test reading a file that does not exist."""
+    test_file = tmp_path / "does_not_exist.txt"
+
+    result = read_text_limited(test_file, max_chars=100)
+    assert result == ""
