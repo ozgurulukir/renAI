@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, Optional
 
 from openai import OpenAI, OpenAIError
@@ -9,13 +10,21 @@ from openai.types.chat import ChatCompletionMessageParam
 from config import get_allowed_categories
 
 
+class RateLimitError(Exception):
+    """Custom exception raised when we receive a rate limit error that we should gracefully exit from."""
+    pass
+
+
 class LLMEngine:
     def __init__(
-        self, provider: str, api_key: str, base_url: str, model_name: str
+        self, provider: str, api_key: str, base_url: str, model_name: str, use_oauth: bool = False
     ) -> None:
         self.provider = provider
         self.model_name = model_name
+        # Note: Depending on provider, OpenAI client handles Bearer tokens.
+        # If use_oauth is true, the api_key passed is actually the oauth token.
         self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.use_oauth = use_oauth
         self.allowed_categories = get_allowed_categories()
         self.prompt_template = """
 Imagine you are an experienced librarian specializing in cataloging and categorization.
@@ -168,6 +177,10 @@ Provide ONLY the refined valid JSON object.
                 category = book_data.get("category", "")
                 allowed = self.allowed_categories[lang]
 
+                # Rate limit mitigation for OAuth modes (add slow-down)
+                if self.use_oauth:
+                    time.sleep(1.0) # sleep for 1 second to avoid hitting aggressive rate limits
+
                 if category in allowed:
                     return book_data
                 else:
@@ -188,8 +201,14 @@ Provide ONLY the refined valid JSON object.
 
             except json.JSONDecodeError as e:
                 logging.error(f"JSON parsing failed (Attempt {attempt + 1}): {e}")
-            except (OpenAIError, OSError) as e:
-                logging.error(f"API or network error (Attempt {attempt + 1}): {e}")
+            except OpenAIError as e:
+                # Catch 429 Rate Limit error specifically to trigger graceful exit
+                if "429" in str(e) or "rate_limit" in str(e).lower() or "too many requests" in str(e).lower():
+                    logging.error(f"Rate limit exceeded (Attempt {attempt + 1}): {e}")
+                    raise RateLimitError("Rate limit exceeded. Exiting gracefully.")
+                logging.error(f"API error (Attempt {attempt + 1}): {e}")
+            except OSError as e:
+                logging.error(f"Network error (Attempt {attempt + 1}): {e}")
             except Exception as e:
                 logging.error(f"LLM request failed (Attempt {attempt + 1}): {e}")
 
