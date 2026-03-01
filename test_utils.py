@@ -10,7 +10,11 @@ from utils import (
     get_text_cache_path,
     sanitize_filename,
     proportional_chunk_trim,
+    ensure_secure_dir,
 )
+import sys
+import os
+import subprocess
 
 def test_get_file_hash_small(tmp_path):
     """Test MD5 calculation for a small file."""
@@ -228,3 +232,108 @@ def test_proportional_chunk_trim_rounding_behavior():
     # Another example: 10 chars, target 9, 10 chunks
     # reduction_factor = 0.9. allowed_length = int(1 * 0.9) = 0
     assert proportional_chunk_trim(text, 9, 10) == ""
+
+
+def test_ensure_secure_dir_creates_directory(tmp_path):
+    """Test that ensure_secure_dir creates the directory if it doesn't exist."""
+    new_dir = tmp_path / "new_secure_dir"
+    assert not new_dir.exists()
+
+    ensure_secure_dir(new_dir)
+
+    assert new_dir.exists()
+    assert new_dir.is_dir()
+
+
+@patch("utils.sys.platform", "linux")
+def test_ensure_secure_dir_unix(tmp_path):
+    """Test ensure_secure_dir on Unix systems."""
+    test_dir = tmp_path / "unix_dir"
+
+    with patch.object(Path, "chmod") as mock_chmod:
+        ensure_secure_dir(test_dir)
+
+        mock_chmod.assert_called_once_with(0o700)
+        assert test_dir.exists()
+
+
+@patch("utils.sys.platform", "linux")
+def test_ensure_secure_dir_unix_exception(tmp_path):
+    """Test ensure_secure_dir on Unix systems when chmod fails."""
+    test_dir = tmp_path / "unix_dir_exc"
+
+    with patch.object(Path, "chmod", side_effect=Exception("chmod failed")) as mock_chmod:
+        # Should not raise an exception
+        ensure_secure_dir(test_dir)
+
+        mock_chmod.assert_called_once_with(0o700)
+        assert test_dir.exists()
+
+
+@patch("utils.sys.platform", "win32")
+@patch.dict(os.environ, {"USERNAME": "testuser"}, clear=True)
+def test_ensure_secure_dir_windows_with_username(tmp_path):
+    """Test ensure_secure_dir on Windows when USERNAME is set."""
+    test_dir = tmp_path / "win_dir"
+
+    with patch("utils.subprocess.run") as mock_run:
+        # Mock STARTUPINFO to avoid actual instantiation errors if it's somehow tested on non-Windows
+        # But we also mocked sys.platform in utils, let's just patch subprocess.STARTUPINFO if needed,
+        # but utils uses subprocess.STARTUPINFO which exists in the mock or real subprocess.
+        # It's safer to mock subprocess.STARTUPINFO if we're running tests on linux, as it might not exist.
+        if not hasattr(subprocess, "STARTUPINFO"):
+            with patch("utils.subprocess.STARTUPINFO", create=True) as mock_startupinfo:
+                with patch("utils.subprocess.STARTF_USESHOWWINDOW", create=True):
+                    ensure_secure_dir(test_dir)
+        else:
+            ensure_secure_dir(test_dir)
+
+        assert test_dir.exists()
+
+        # Verify subprocess.run was called with correct arguments
+        mock_run.assert_called_once()
+        args, kwargs = mock_run.call_args
+
+        expected_cmd = [
+            "icacls",
+            str(test_dir),
+            "/inheritance:r",
+            "/grant:r",
+            "testuser:(OI)(CI)F",
+        ]
+        assert args[0] == expected_cmd
+        assert kwargs.get("capture_output") is True
+        assert kwargs.get("check") is False
+
+
+@patch("utils.sys.platform", "win32")
+@patch.dict(os.environ, clear=True) # Ensure USERNAME is not set
+def test_ensure_secure_dir_windows_without_username(tmp_path):
+    """Test ensure_secure_dir on Windows when USERNAME is not set."""
+    test_dir = tmp_path / "win_dir_no_user"
+
+    with patch("utils.subprocess.run") as mock_run:
+        ensure_secure_dir(test_dir)
+
+        assert test_dir.exists()
+        # subprocess.run should not be called if username is missing
+        mock_run.assert_not_called()
+
+
+@patch("utils.sys.platform", "win32")
+@patch.dict(os.environ, {"USERNAME": "testuser"}, clear=True)
+def test_ensure_secure_dir_windows_exception(tmp_path):
+    """Test ensure_secure_dir on Windows when subprocess.run fails."""
+    test_dir = tmp_path / "win_dir_exc"
+
+    with patch("utils.subprocess.run", side_effect=Exception("icacls failed")) as mock_run:
+        if not hasattr(subprocess, "STARTUPINFO"):
+            with patch("utils.subprocess.STARTUPINFO", create=True):
+                with patch("utils.subprocess.STARTF_USESHOWWINDOW", create=True):
+                    # Should not raise an exception
+                    ensure_secure_dir(test_dir)
+        else:
+            ensure_secure_dir(test_dir)
+
+        assert test_dir.exists()
+        mock_run.assert_called_once()
