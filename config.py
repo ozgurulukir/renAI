@@ -4,16 +4,11 @@ from pathlib import Path
 
 # Directory Configuration (must be defined first for other paths)
 BASE_DIR = Path(__file__).parent.resolve()
-
-# User-specific configuration directory for persistent storage
-USER_CONFIG_DIR = Path.home() / ".renai"
-
-CACHE_DIR = USER_CONFIG_DIR / "cache"
-DEBUG_DIR = USER_CONFIG_DIR / "debug"
-AUTH_DIR = USER_CONFIG_DIR / "auth"
+CACHE_DIR = BASE_DIR / ".renamer_cache"
+DEBUG_DIR = BASE_DIR / ".ocr_debug"
 
 # Evaluation log file
-EVAL_LOG_FILE = USER_CONFIG_DIR / "evaluation.log"
+EVAL_LOG_FILE = BASE_DIR / "evaluation.log"
 
 # Warning Configuration
 SHOW_WARNINGS = os.getenv("RENAI_SHOW_WARNINGS", "true").lower() in ("true", "1", "yes")
@@ -135,41 +130,6 @@ PROVIDERS = {
         "api_key": os.getenv("CUSTOM_API_KEY", "not-required"),
         "default_model": os.getenv("CUSTOM_MODEL", "llama3"),
     },
-    "opencode": {
-        "base_url": "https://api.opencode.com/v1",
-        "api_key": os.getenv("OPENCODE_API_KEY"),
-        "default_model": "opencode-default",
-    },
-    "openclaw": {
-        "base_url": "https://api.openclaw.com/v1",
-        "api_key": os.getenv("OPENCLAW_API_KEY"),
-        "default_model": "openclaw-default",
-    },
-}
-
-# OAuth Provider Configurations
-# Used for OAuth (Device Code Flow) logins.
-OAUTH_PROVIDERS = {
-    "opencode": {
-        "device_authorization_url": "https://api.opencode.com/oauth/device/code",
-        "authorization_url": "https://api.opencode.com/oauth/authorize",
-        "token_url": "https://api.opencode.com/oauth/token",
-        "client_id": os.getenv("OPENCODE_CLIENT_ID", "renai-client"),
-        "client_secret": os.getenv("OPENCODE_CLIENT_SECRET", ""),
-        "redirect_uri": "http://localhost:5000/callback",
-        "base_url": "https://api.opencode.com/v1",
-        "default_model": "opencode-default",
-    },
-    "openclaw": {
-        "device_authorization_url": "https://api.openclaw.com/oauth/device/code",
-        "authorization_url": "https://api.openclaw.com/oauth/authorize",
-        "token_url": "https://api.openclaw.com/oauth/token",
-        "client_id": os.getenv("OPENCLAW_CLIENT_ID", "renai-client"),
-        "client_secret": os.getenv("OPENCLAW_CLIENT_SECRET", ""),
-        "redirect_uri": "http://localhost:5000/callback",
-        "base_url": "https://api.openclaw.com/v1",
-        "default_model": "openclaw-default",
-    }
 }
 
 
@@ -243,10 +203,8 @@ def initialize_directories() -> None:
     """Ensure necessary directories exist with secure permissions."""
     from utils import ensure_secure_dir
 
-    ensure_secure_dir(USER_CONFIG_DIR)
     ensure_secure_dir(CACHE_DIR)
     ensure_secure_dir(DEBUG_DIR)
-    ensure_secure_dir(AUTH_DIR)
 
 
 def display_warnings(mode: str, recursive: bool) -> None:

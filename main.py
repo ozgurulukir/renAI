@@ -5,11 +5,10 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from config import PROVIDERS, OAUTH_PROVIDERS, display_warnings, initialize_directories
+from config import PROVIDERS, display_warnings, initialize_directories
 from file_processor import BookProcessor
 from utils import ensure_secure_dir
 from llm_engine import LLMEngine
-from oauth import OAuthManager
 from ocr_engine import OCREngine
 
 def check_requirements() -> bool:
@@ -79,9 +78,9 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["deepinfra", "openrouter", "openai", "custom", "opencode", "openclaw"],
+        choices=["deepinfra", "openrouter", "openai", "custom"],
         default="deepinfra",
-        help="LLM Provider (custom for local inference like Ollama/LM Studio, others for OAuth)",
+        help="LLM Provider (custom for local inference like Ollama/LM Studio)",
     )
     parser.add_argument("--model", type=str, help="LLM Model name (overrides default)")
     parser.add_argument(
@@ -105,16 +104,6 @@ def parse_arguments() -> argparse.Namespace:
         "--clear-cache",
         action="store_true",
         help="Clear extracted text cache and metadata, then exit",
-    )
-    parser.add_argument(
-        "--login",
-        action="store_true",
-        help="Interactive menu to log in to OAuth providers",
-    )
-    parser.add_argument(
-        "--oauth",
-        action="store_true",
-        help="Use OAuth token for authentication instead of API key",
     )
     parser.add_argument(
         "--skip-needs-ocr",
@@ -178,50 +167,26 @@ def setup_engines(args: argparse.Namespace) -> tuple[OCREngine, LLMEngine, BookP
         use_mutool=args.use_mutool,
         mutool_path=args.mutool_path,
     )
+    # LLM initialization with provider selection
+    provider_config = PROVIDERS.get(args.provider)
+    if provider_config is None:
+        logging.error(f"Invalid provider: {args.provider}")
+        sys.exit(1)
+    api_key = provider_config.get("api_key")
+    if not api_key:
+        logging.error(
+            f"API Key for {args.provider} not found in environment variables."
+        )
+        sys.exit(1)
 
-    api_key = None
-    base_url = None
-    model_name = None
-
-    if args.oauth:
-        # LLM initialization for OAuth
-        provider_config = OAUTH_PROVIDERS.get(args.provider)
-        if provider_config is None:
-            logging.error(f"Invalid OAuth provider: {args.provider}. Please choose from supported OAuth providers.")
-            sys.exit(1)
-
-        oauth_manager = OAuthManager()
-        token = oauth_manager.get_token(args.provider)
-        if not token:
-            logging.error(f"Not logged in to {args.provider}. Please run with --login first.")
-            sys.exit(1)
-
-        api_key = token
-        base_url = provider_config["base_url"]
-        model_name = args.model or provider_config.get("default_model", "")
-    else:
-        # LLM initialization with API Key provider selection
-        provider_config = PROVIDERS.get(args.provider)
-        if provider_config is None:
-            logging.error(f"Invalid provider: {args.provider}")
-            sys.exit(1)
-        api_key = provider_config.get("api_key")
-        if not api_key:
-            logging.error(
-                f"API Key for {args.provider} not found in environment variables."
-            )
-            sys.exit(1)
-
-        # Determine the actual model to use
-        base_url = provider_config["base_url"]
-        model_name = args.model or provider_config.get("default_model", "")
+    # Determine the actual model to use
+    model_name = args.model or provider_config.get("default_model", "")
 
     llm_engine = LLMEngine(
         provider=args.provider,
         api_key=api_key,
-        base_url=base_url,  # type: ignore
+        base_url=provider_config["base_url"],  # type: ignore
         model_name=model_name,
-        use_oauth=args.oauth,
     )
 
     # Initialize processor with provider-model tracking for cache invalidation
@@ -288,12 +253,6 @@ def process_special_modes(args: argparse.Namespace, processor: BookProcessor, fi
 def process_files(args: argparse.Namespace, processor: BookProcessor, file_paths: list[Path], root_dir: Path) -> None:
     # Process files
     results = []
-
-    # Check if we should use sequential processing (to better handle graceful exits from Rate Limits)
-    # when using OAuth. If workers=1, we can break cleanly.
-    # With ThreadPoolExecutor, we need to cancel pending futures if a rate limit occurs.
-    rate_limit_hit = False
-
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(
@@ -301,29 +260,11 @@ def process_files(args: argparse.Namespace, processor: BookProcessor, file_paths
             ): p
             for p in file_paths
         }
-
-        from llm_engine import RateLimitError
-        import concurrent.futures
-
-        for future in concurrent.futures.as_completed(futures):
-            p = futures[future]
-            if rate_limit_hit:
-                # If we already hit a rate limit, ignore remaining futures
-                # (they might have started or failed, but we stop collecting success stats)
-                continue
-
+        for future in futures:
             try:
                 results.append(future.result())
-            except RateLimitError as e:
-                logging.error(f"Rate Limit reached while processing {p.name}. Stopping further processing to avoid ban/blocks.")
-                rate_limit_hit = True
-
-                # Try to cancel remaining futures
-                for f in futures:
-                    if not f.done():
-                        f.cancel()
             except Exception as e:
-                logging.error(f"Worker failed for {p.name}: {e}")
+                logging.error(f"Worker failed for {futures[future].name}: {e}")
                 results.append((False, None, None, None))
 
     if args.mode == "organize":
@@ -354,12 +295,6 @@ def main() -> None:
         sys.exit(1)
 
     args = parse_arguments()
-
-    if args.login:
-        from oauth import OAuthManager
-        manager = OAuthManager()
-        manager.display_config_menu()
-        sys.exit(0)
 
     handle_clear_cache(args)
 
