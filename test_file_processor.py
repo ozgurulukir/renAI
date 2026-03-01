@@ -1,3 +1,4 @@
+import logging
 """
 Unit tests for file_processor module.
 
@@ -406,3 +407,102 @@ class TestGetNeedsOCRFiles:
         result = processor.get_needs_ocr_files()
 
         assert len(result) == 2
+
+class TestBenchmarkExtractors:
+    """Test BookProcessor.benchmark_extractors method."""
+
+    def test_benchmark_skips_symlink(self, tmp_path, caplog):
+        """Test that benchmark skips symlink files."""
+        processor = BookProcessor(Mock(), Mock())
+
+        # Create a real file and a symlink to it
+        real_file = tmp_path / "real.pdf"
+        real_file.write_text("content")
+        symlink_file = tmp_path / "link.pdf"
+        try:
+            symlink_file.symlink_to(real_file)
+        except OSError:
+            # If symlinks are not supported (e.g., Windows without admin), skip
+            pytest.skip("Symlinks not supported on this platform")
+
+        with caplog.at_level(logging.WARNING):
+            processor.benchmark_extractors(symlink_file)
+
+        assert "Skipping symlink for benchmark: link.pdf" in caplog.text
+
+    @patch("extractors.PyMuPDFExtractor")
+    @patch("extractors.PDFPlumberExtractor")
+    @patch("extractors.PyPDFExtractor")
+    @patch("extractors.PyPdfium2Extractor")
+    def test_benchmark_success(
+        self, mock_pypdfium2, mock_pypdf, mock_pdfplumber, mock_pymupdf, tmp_path, caplog
+    ):
+        """Test successful extraction cycle across all benchmarked engines."""
+        processor = BookProcessor(Mock(), Mock())
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        # Setup mock returns
+        mock_pymupdf.return_value.extract_text.return_value = "Text from PyMuPDF"
+        mock_pymupdf.return_value.name = "PyMuPDF"
+
+        mock_pdfplumber.return_value.extract_text.return_value = "Text from PDFPlumber"
+        mock_pdfplumber.return_value.name = "PDFPlumber"
+
+        mock_pypdf.return_value.extract_text.return_value = "Text from PyPDF"
+        mock_pypdf.return_value.name = "PyPDF"
+
+        mock_pypdfium2.return_value.extract_text.return_value = "Text from PyPdfium2"
+        mock_pypdfium2.return_value.name = "PyPdfium2"
+
+        with caplog.at_level(logging.INFO):
+            processor.benchmark_extractors(test_file)
+
+        # Verify all mocks were called
+        mock_pymupdf.return_value.extract_text.assert_called_once_with(test_file)
+        mock_pdfplumber.return_value.extract_text.assert_called_once_with(test_file)
+        mock_pypdf.return_value.extract_text.assert_called_once_with(test_file)
+        mock_pypdfium2.return_value.extract_text.assert_called_once_with(test_file)
+
+        # Verify logging
+        assert "BENCHMARK: test.pdf" in caplog.text
+        assert "PyMuPDF" in caplog.text
+        assert "PDFPlumber" in caplog.text
+        assert "PyPDF" in caplog.text
+        assert "PyPdfium2" in caplog.text
+
+    @patch("extractors.PyMuPDFExtractor")
+    @patch("extractors.PDFPlumberExtractor")
+    @patch("extractors.PyPDFExtractor")
+    @patch("extractors.PyPdfium2Extractor")
+    def test_benchmark_extractor_failure(
+        self, mock_pypdfium2, mock_pypdf, mock_pdfplumber, mock_pymupdf, tmp_path, caplog
+    ):
+        """Test graceful handling of individual extractor failures."""
+        processor = BookProcessor(Mock(), Mock())
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        # Setup mock returns - one fails, others succeed
+        mock_pymupdf.return_value.extract_text.side_effect = Exception("Mock failure")
+        mock_pymupdf.return_value.name = "PyMuPDF"
+
+        mock_pdfplumber.return_value.extract_text.return_value = "Success"
+        mock_pdfplumber.return_value.name = "PDFPlumber"
+
+        mock_pypdf.return_value.extract_text.return_value = "Success"
+        mock_pypdf.return_value.name = "PyPDF"
+
+        mock_pypdfium2.return_value.extract_text.return_value = "Success"
+        mock_pypdfium2.return_value.name = "PyPdfium2"
+
+        with caplog.at_level(logging.ERROR):
+            processor.benchmark_extractors(test_file)
+
+        # Verify the failure was logged
+        assert "PyMuPDF         | FAILED: Mock failure" in caplog.text
+
+        # Verify execution continued
+        mock_pdfplumber.return_value.extract_text.assert_called_once_with(test_file)
+        mock_pypdf.return_value.extract_text.assert_called_once_with(test_file)
+        mock_pypdfium2.return_value.extract_text.assert_called_once_with(test_file)
