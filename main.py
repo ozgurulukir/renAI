@@ -1,6 +1,5 @@
 import argparse
 import logging
-import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
