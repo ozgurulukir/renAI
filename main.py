@@ -79,7 +79,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["deepinfra", "openrouter", "openai", "custom", "minimax", "zhipu", "qwen", "claude"],
+        choices=["deepinfra", "openrouter", "openai", "custom", "opencode", "openclaw"],
         default="deepinfra",
         help="LLM Provider (custom for local inference like Ollama/LM Studio, others for OAuth)",
     )

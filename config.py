@@ -135,46 +135,41 @@ PROVIDERS = {
         "api_key": os.getenv("CUSTOM_API_KEY", "not-required"),
         "default_model": os.getenv("CUSTOM_MODEL", "llama3"),
     },
+    "opencode": {
+        "base_url": "https://api.opencode.com/v1",
+        "api_key": os.getenv("OPENCODE_API_KEY"),
+        "default_model": "opencode-default",
+    },
+    "openclaw": {
+        "base_url": "https://api.openclaw.com/v1",
+        "api_key": os.getenv("OPENCLAW_API_KEY"),
+        "default_model": "openclaw-default",
+    },
 }
 
 # OAuth Provider Configurations
 # Used for OAuth (Device Code Flow) logins.
 OAUTH_PROVIDERS = {
-    "minimax": {
-        "device_authorization_url": "https://api.minimax.chat/oauth2/device/code",
-        "token_url": "https://api.minimax.chat/oauth2/token",
-        "client_id": os.getenv("MINIMAX_CLIENT_ID", "default_minimax_client_id"),
-        "base_url": "https://api.minimax.chat/v1",
-        "default_model": "abab6.5s-chat",
+    "opencode": {
+        "device_authorization_url": "https://api.opencode.com/oauth/device/code",
+        "authorization_url": "https://api.opencode.com/oauth/authorize",
+        "token_url": "https://api.opencode.com/oauth/token",
+        "client_id": os.getenv("OPENCODE_CLIENT_ID", "renai-client"),
+        "client_secret": os.getenv("OPENCODE_CLIENT_SECRET", ""),
+        "redirect_uri": "http://localhost:5000/callback",
+        "base_url": "https://api.opencode.com/v1",
+        "default_model": "opencode-default",
     },
-    "zhipu": {
-        "device_authorization_url": "https://open.bigmodel.cn/api/paas/v4/oauth/device/code",
-        "token_url": "https://open.bigmodel.cn/api/paas/v4/oauth/token",
-        "client_id": os.getenv("ZHIPU_CLIENT_ID", "default_zhipu_client_id"),
-        "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "default_model": "glm-4",
-    },
-    "qwen": {
-        "device_authorization_url": "https://dashscope.aliyuncs.com/oauth2/device/code",
-        "token_url": "https://dashscope.aliyuncs.com/oauth2/token",
-        "client_id": os.getenv("QWEN_CLIENT_ID", "default_qwen_client_id"),
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "default_model": "qwen-max",
-    },
-    "openai": {
-        "device_authorization_url": "https://api.openai.com/oauth/device/code",
-        "token_url": "https://api.openai.com/oauth/token",
-        "client_id": os.getenv("OPENAI_CLIENT_ID", "default_openai_client_id"),
-        "base_url": "https://api.openai.com/v1",
-        "default_model": "gpt-4o-mini",
-    },
-    "claude": {
-        "device_authorization_url": "https://api.anthropic.com/oauth/device/code",
-        "token_url": "https://api.anthropic.com/oauth/token",
-        "client_id": os.getenv("CLAUDE_CLIENT_ID", "default_claude_client_id"),
-        "base_url": "https://api.anthropic.com/v1",
-        "default_model": "claude-3-haiku-20240307",
-    },
+    "openclaw": {
+        "device_authorization_url": "https://api.openclaw.com/oauth/device/code",
+        "authorization_url": "https://api.openclaw.com/oauth/authorize",
+        "token_url": "https://api.openclaw.com/oauth/token",
+        "client_id": os.getenv("OPENCLAW_CLIENT_ID", "renai-client"),
+        "client_secret": os.getenv("OPENCLAW_CLIENT_SECRET", ""),
+        "redirect_uri": "http://localhost:5000/callback",
+        "base_url": "https://api.openclaw.com/v1",
+        "default_model": "openclaw-default",
+    }
 }
 
 
