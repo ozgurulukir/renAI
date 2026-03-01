@@ -322,7 +322,7 @@ python main.py "C:/Kitaplar" --provider deepinfra
 python main.py "C:/Kitaplar" --provider deepinfra --update-metadata
 ```
 
-**Önbellek Konumu:** `.renamer_cache/` dizini
+**Önbellek Konumu:** `platformdirs` kullanılarak işletim sistemi tarafından otomatik yönetilir (ör. Linux'ta `~/.cache/renAI`, macOS'te `~/Library/Caches/renAI`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`).
 
 **Önbelleği Temizle:**
 ```bash
@@ -358,9 +358,17 @@ Gerçek maliyetler sağlayıcı ve modele göre değişir.
 
 ## 🔧 Yapılandırma
 
+### İşletim Sisteminden Bağımsız (OS-Agnostic) Dosya Yönetimi
+
+renAI artık `platformdirs` kütüphanesi aracılığıyla modern ve işletim sisteminden bağımsız (OS-agnostic) bir yol yönetimi kullanmaktadır.
+
+- **Önbellek Verileri:** İşletim sisteminin önbellek dizininde yönetilir.
+- **Log ve Hata Ayıklama (Debug) Verileri:** İşletim sisteminin kullanıcı veri dizininde yönetilir.
+- **Yapılandırma (`categories.txt` gibi):** İşletim sisteminin yapılandırma dizininde yönetilir.
+
 ### Özel Kategoriler
 
-Proje kök dizininde `categories.txt` oluşturun:
+Kendi işletim sisteminizin `renAI` için ayrılmış yapılandırma dizininde (örneğin Linux'ta `~/.config/renAI/categories.txt`, Windows'ta `%APPDATA%\renAI\categories.txt`) bir `categories.txt` dosyası oluşturun:
 
 ```txt
 # İngilizce Kategoriler

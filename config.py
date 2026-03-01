@@ -1,14 +1,27 @@
 import logging
 import os
 from pathlib import Path
+from platformdirs import user_cache_dir, user_data_dir, user_config_dir
+
+APP_NAME = "renAI"
+APP_AUTHOR = "renAI"
 
 # Directory Configuration (must be defined first for other paths)
 BASE_DIR = Path(__file__).parent.resolve()
-CACHE_DIR = BASE_DIR / ".renamer_cache"
-DEBUG_DIR = BASE_DIR / ".ocr_debug"
+
+# OS-Agnostic Directories using platformdirs
+CACHE_DIR = Path(user_cache_dir(APP_NAME, APP_AUTHOR))
+DATA_DIR = Path(user_data_dir(APP_NAME, APP_AUTHOR))
+CONFIG_DIR = Path(user_config_dir(APP_NAME, APP_AUTHOR))
+
+DEBUG_DIR = DATA_DIR / "ocr_debug"
 
 # Evaluation log file
-EVAL_LOG_FILE = BASE_DIR / "evaluation.log"
+EVAL_LOG_FILE = DATA_DIR / "evaluation.log"
+
+# Ensure essential directories exist
+for d in [CACHE_DIR, DATA_DIR, CONFIG_DIR, DEBUG_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
 
 # Warning Configuration
 SHOW_WARNINGS = os.getenv("RENAI_SHOW_WARNINGS", "true").lower() in ("true", "1", "yes")
@@ -51,7 +64,7 @@ DEFAULT_CATEGORIES = {
 }
 
 # Custom categories file path
-CUSTOM_CATEGORIES_FILE = BASE_DIR / "categories.txt"
+CUSTOM_CATEGORIES_FILE = CONFIG_DIR / "categories.txt"
 
 
 def load_categories_from_file() -> dict:
@@ -77,7 +90,7 @@ def load_categories_from_file() -> dict:
         return {}
 
     try:
-        with open(CUSTOM_CATEGORIES_FILE, "r", encoding="utf-8") as f:
+        with open(CUSTOM_CATEGORIES_FILE, "r", encoding="utf-8", newline=None) as f:
             current_lang = "en"  # Default language
             categories[current_lang] = []
 
@@ -166,10 +179,14 @@ TESSERACT_PATH = get_tesseract_path()
 
 def load_eval_models(provider: str) -> list:
     """Load evaluation models from provider-specific text files."""
-    file_path = BASE_DIR / f"eval_models_{provider}.txt"
+    # Check config dir first, fallback to base dir for default configs
+    file_path = CONFIG_DIR / f"eval_models_{provider}.txt"
+    if not file_path.exists():
+        file_path = BASE_DIR / f"eval_models_{provider}.txt"
+
     if file_path.exists():
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8", newline=None) as f:
                 # Read non-empty lines, stripping whitespace
                 return [line.strip() for line in f if line.strip()]
         except Exception as e:

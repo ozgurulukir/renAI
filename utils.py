@@ -133,6 +133,9 @@ def ensure_secure_dir(path: Path) -> None:
                 # /inheritance:r - remove inherited ACEs
                 # /grant:r %USERNAME%:F - grant full control to current user
                 # (OI)(CI) - Object Inherit, Container Inherit
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
                 subprocess.run(
                     [
                         "icacls",
@@ -144,6 +147,8 @@ def ensure_secure_dir(path: Path) -> None:
                     capture_output=True,
                     check=False,
                     timeout=10,
+                    startupinfo=startupinfo,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 )
         except Exception:
             pass
@@ -155,7 +160,7 @@ def read_text_limited(file_path: Path, max_chars: int) -> str:
     Uses a stream to avoid loading the entire file into memory.
     """
     try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(file_path, "r", encoding="utf-8", errors="ignore", newline=None) as f:
             return f.read(max_chars)
     except Exception as e:
         logging.error(f"Error reading {file_path}: {e}")
