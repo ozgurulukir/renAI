@@ -500,7 +500,8 @@ class BookProcessor:
             logging.error(f"Invalid provider: {provider}")
             return
 
-        with open(EVAL_LOG_FILE, "a", encoding="utf-8") as log:
+        import os
+        with open(EVAL_LOG_FILE, "a", encoding="utf-8", newline=os.linesep) as log:
             log.write(
                 f"\n{'=' * 20} EVALUATION: {file_path.name} ({provider}) {'=' * 20}\n"
             )
@@ -523,7 +524,7 @@ class BookProcessor:
                 logging.info(f"{model[:45]:<45} | {status:<10} | {cat}")
 
                 # Log detailed results
-                with open(EVAL_LOG_FILE, "a", encoding="utf-8") as log:
+                with open(EVAL_LOG_FILE, "a", encoding="utf-8", newline=os.linesep) as log:
                     res_json = (
                         json.dumps(metadata, ensure_ascii=False) if metadata else "None"
                     )
@@ -531,7 +532,7 @@ class BookProcessor:
 
             except Exception as e:
                 logging.error(f"{model[:45]:<45} | ERROR      | {str(e)[:25]}")
-                with open(EVAL_LOG_FILE, "a", encoding="utf-8") as log:
+                with open(EVAL_LOG_FILE, "a", encoding="utf-8", newline=os.linesep) as log:
                     log.write(f"[{model}] -> ERROR: {e}\n")
 
         logging.info("=" * 85 + "\n")

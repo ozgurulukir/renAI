@@ -26,3 +26,7 @@ markitdown>=0.0.1
 
 # Optional: OpenCV for skew correction in OCR
 opencv-python>=4.8.0
+
+# OS-agnostic and CLI enhancements
+platformdirs>=3.0.0
+colorama>=0.4.6

@@ -252,8 +252,15 @@ class OCREngine:
                             str(file_path),
                             str(pno + 1),
                         ]
+                        kwargs = {}
+                        if sys.platform == "win32":
+                            startupinfo = subprocess.STARTUPINFO()
+                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                            kwargs["startupinfo"] = startupinfo
+                            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
                         subprocess.run(
-                            cmd, check=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT
+                            cmd, check=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT, **kwargs
                         )
                         image = Image.open(temp_img)
                         image.load()

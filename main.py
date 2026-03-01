@@ -11,6 +11,23 @@ from utils import ensure_secure_dir
 from llm_engine import LLMEngine
 from ocr_engine import OCREngine
 
+def setup_environment() -> None:
+    """Setup cross-platform encoding and terminal settings."""
+    # Setup encoding properly for Windows
+    if sys.platform == "win32":
+        import codecs
+        if sys.stdout.encoding != "utf-8":
+            sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
+            sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
+
+    # Enable colorama for cross-platform color support
+    try:
+        from colorama import init
+        init()
+    except ImportError:
+        pass
+
+
 def check_requirements() -> bool:
     """Check for essential libraries and display installation tips."""
     missing = []
@@ -283,6 +300,9 @@ def process_files(args: argparse.Namespace, processor: BookProcessor, file_paths
     logging.info(f"Finished. Success: {success_count}/{len(file_paths)}")
 
 def main() -> None:
+    # Setup cross-platform environment (encoding, colors)
+    setup_environment()
+
     # Setup paths and environment
     initialize_directories()
 
