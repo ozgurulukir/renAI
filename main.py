@@ -7,7 +7,6 @@ from pathlib import Path
 
 from config import PROVIDERS, display_warnings, initialize_directories
 from file_processor import BookProcessor
-from utils import ensure_secure_dir
 from llm_engine import LLMEngine
 from ocr_engine import OCREngine
 
@@ -154,7 +153,7 @@ def main() -> None:
     if args.clear_cache:
         from config import CACHE_DIR
 
-        ensure_secure_dir(CACHE_DIR)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache_files = list(CACHE_DIR.iterdir())
         if cache_files:
             for cache_file in cache_files:

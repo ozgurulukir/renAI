@@ -11,7 +11,6 @@ from extractors import get_extractor
 from llm_engine import LLMEngine
 from ocr_engine import OCREngine
 from utils import (
-    ensure_secure_dir,
     get_file_hash,
     get_metadata_cache_path,
     get_provider_model_key,
@@ -120,7 +119,7 @@ class BookProcessor:
         self.move_ocr_failures = enabled
         if enabled:
             self.ocr_failures_dir = root_dir / "OCR_Failures"
-            ensure_secure_dir(self.ocr_failures_dir)
+            self.ocr_failures_dir.mkdir(parents=True, exist_ok=True)
             logging.info(f"OCR failures folder set up: {self.ocr_failures_dir}")
 
     def set_needs_ocr_folder(self, root_dir: Path, skip: bool = True) -> None:
@@ -128,7 +127,7 @@ class BookProcessor:
         self.skip_ocr_files = skip
         if skip:
             self.needs_ocr_dir = root_dir / "Needs_OCR"
-            ensure_secure_dir(self.needs_ocr_dir)
+            self.needs_ocr_dir.mkdir(parents=True, exist_ok=True)
             logging.info(f"Needs OCR folder set up: {self.needs_ocr_dir}")
 
     def extract_text_from_file(
