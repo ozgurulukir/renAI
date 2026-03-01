@@ -220,26 +220,14 @@ def setup_engines(args: argparse.Namespace) -> tuple[OCREngine, LLMEngine, BookP
 def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> list[Path]:
     # Collect files
     file_paths = []
-    for entry in root_dir.iterdir():
+    iterator = root_dir.rglob("*") if recursive else root_dir.iterdir()
+    for entry in iterator:
         if (
             entry.is_file()
             and not entry.is_symlink()
             and entry.suffix.lower() in processor.supported_extensions
         ):
             file_paths.append(entry)
-
-    # Deep search for recursive mode (default for rename, optional for organize)
-    if recursive:
-        seen_paths = set(file_paths)
-        for entry in root_dir.rglob("*"):
-            if (
-                entry.is_file()
-                and not entry.is_symlink()
-                and entry.suffix.lower() in processor.supported_extensions
-            ):
-                if entry not in seen_paths:
-                    file_paths.append(entry)
-                    seen_paths.add(entry)
 
     return file_paths
 
