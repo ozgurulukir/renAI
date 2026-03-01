@@ -40,3 +40,79 @@ def test_check_requirements_missing_multiple(caplog):
     assert "pymupdf is missing. Run: pip install pymupdf" in caplog.text
     assert "openai is missing. Run: pip install openai" in caplog.text
     assert "numpy is missing. Run: pip install numpy" in caplog.text
+
+class MockProcessor:
+    supported_extensions = {".pdf", ".epub"}
+
+def test_collect_files_non_recursive(tmp_path):
+    """Test collect_files without recursive search."""
+    (tmp_path / "file1.pdf").touch()
+    (tmp_path / "file2.epub").touch()
+    (tmp_path / "file3.txt").touch() # unsupported
+
+    subdir = tmp_path / "subdir"
+    subdir.mkdir()
+    (subdir / "file4.pdf").touch()
+
+    processor = MockProcessor()
+
+    files = main.collect_files(tmp_path, processor, recursive=False)
+
+    assert len(files) == 2
+    assert tmp_path / "file1.pdf" in files
+    assert tmp_path / "file2.epub" in files
+    assert tmp_path / "file3.txt" not in files
+    assert subdir / "file4.pdf" not in files
+
+def test_collect_files_recursive(tmp_path):
+    """Test collect_files with recursive search."""
+    (tmp_path / "file1.pdf").touch()
+    (tmp_path / "file2.epub").touch()
+
+    subdir = tmp_path / "subdir"
+    subdir.mkdir()
+    (subdir / "file3.pdf").touch()
+
+    subsubdir = subdir / "subsubdir"
+    subsubdir.mkdir()
+    (subsubdir / "file4.pdf").touch()
+
+    processor = MockProcessor()
+
+    files = main.collect_files(tmp_path, processor, recursive=True)
+
+    assert len(files) == 4
+    assert tmp_path / "file1.pdf" in files
+    assert tmp_path / "file2.epub" in files
+    assert subdir / "file3.pdf" in files
+    assert subsubdir / "file4.pdf" in files
+
+def test_collect_files_ignores_symlinks(tmp_path):
+    """Test collect_files ignores symlinks even if they point to valid files."""
+    (tmp_path / "real_file.pdf").touch()
+
+    symlink_path = tmp_path / "symlink.pdf"
+    symlink_path.symlink_to(tmp_path / "real_file.pdf")
+
+    processor = MockProcessor()
+
+    files = main.collect_files(tmp_path, processor, recursive=True)
+
+    assert len(files) == 1
+    assert tmp_path / "real_file.pdf" in files
+    assert symlink_path not in files
+
+def test_collect_files_ignores_unsupported_extensions(tmp_path):
+    """Test collect_files correctly filters based on processor's supported_extensions."""
+    (tmp_path / "file1.PDF").touch() # uppercase, should be supported
+    (tmp_path / "file2.mobi").touch() # unsupported
+    (tmp_path / "file3").touch() # no extension
+
+    processor = MockProcessor()
+
+    files = main.collect_files(tmp_path, processor, recursive=False)
+
+    assert len(files) == 1
+    assert tmp_path / "file1.PDF" in files
+    assert tmp_path / "file2.mobi" not in files
+    assert tmp_path / "file3" not in files
