@@ -46,32 +46,29 @@ def test_get_file_hash_nonexistent():
         get_file_hash(Path("non_existent_file.txt"))
 
 def test_get_file_hash_mocked():
-    """Test get_file_hash with mocking to verify chunked reading."""
-    mock_file_content = b"first chunk" + b"a" * 4085 + b"second chunk"
-    # total length = 11 + 4085 + 12 = 4108 bytes
-    # It should read in 2 chunks (4096 and 12)
+    """Test get_file_hash with mocking to verify file_digest usage."""
+    mock_file_content = b"mocked content for digest"
 
     mock_path = Path("mocked_file.txt")
 
-    with patch("builtins.open") as mock_open:
+    with patch("builtins.open") as mock_open, \
+         patch("hashlib.file_digest") as mock_file_digest:
         mock_file = MagicMock()
-        # Mocking the iterator used in iter(lambda: f.read(4096), b"")
-        # f.read(4096) will be called until it returns b""
-        mock_file.read.side_effect = [
-            mock_file_content[:4096],
-            mock_file_content[4096:],
-            b""
-        ]
         mock_open.return_value.__enter__.return_value = mock_file
+
+        # Mock file_digest to return an object with a hexdigest method
+        mock_digest_obj = MagicMock()
+        expected_hash = hashlib.md5(mock_file_content).hexdigest()
+        mock_digest_obj.hexdigest.return_value = expected_hash
+        mock_file_digest.return_value = mock_digest_obj
 
         result_hash = get_file_hash(mock_path)
 
-        expected_hash = hashlib.md5(mock_file_content).hexdigest()
         assert result_hash == expected_hash
 
-        # Verify read was called with 4096
-        assert mock_file.read.call_count == 3
-        mock_file.read.assert_any_call(4096)
+        # Verify file_digest was called correctly
+        mock_file_digest.assert_called_once_with(mock_file, "md5")
+        mock_digest_obj.hexdigest.assert_called_once()
 
 def test_generate_cache_key():
     """Test cache key generation from multiple strings."""
