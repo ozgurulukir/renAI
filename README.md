@@ -320,7 +320,7 @@ python main.py "C:/Books" --provider deepinfra
 python main.py "C:/Books" --provider deepinfra --update-metadata
 ```
 
-**Cache Location:** `.renamer_cache/` directory
+**Cache Location:** Managed automatically by the OS via `platformdirs` (e.g., `~/.cache/renAI` on Linux, `~/Library/Caches/renAI` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows).
 
 **Clear Cache:**
 ```bash
@@ -356,9 +356,17 @@ Actual costs vary by provider and model.
 
 ## 🔧 Configuration
 
+### OS-Agnostic File Management
+
+renAI now utilizes modern OS-agnostic path management via the `platformdirs` library.
+
+- **Cache Data:** Managed in the OS cache directory.
+- **Log and Debug Data:** Managed in the OS user data directory.
+- **Configuration (like `categories.txt`):** Managed in the OS config directory.
+
 ### Custom Categories
 
-Create `categories.txt` in the project root:
+Create `categories.txt` in your OS's respective user config directory for `renAI` (e.g., `~/.config/renAI/categories.txt` on Linux, `%APPDATA%\renAI` on Windows):
 
 ```txt
 # English Categories
