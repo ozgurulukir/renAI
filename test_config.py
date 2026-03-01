@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, mock_open
 import pytest
-from config import get_tesseract_path, load_categories_from_file
+from config import get_tesseract_path, load_categories_from_file, display_warnings
 
 def test_load_categories_file_not_exists():
     with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
@@ -88,3 +88,61 @@ def test_get_tesseract_path_fallback_macos():
          patch("shutil.which", return_value=None), \
          patch("sys.platform", "darwin"):
         assert get_tesseract_path() == Path("/usr/local/bin/tesseract")
+
+def test_display_warnings_disabled():
+    with patch("config.SHOW_WARNINGS", False):
+        with patch("logging.warning") as mock_warning:
+            display_warnings("organize", True)
+            mock_warning.assert_not_called()
+
+def test_display_warnings_enabled_organize_recursive():
+    with patch("config.SHOW_WARNINGS", True):
+        with patch("logging.warning") as mock_warning:
+            with patch("builtins.input") as mock_input:
+                display_warnings("organize", True)
+
+                mock_input.assert_called_once_with("Press Enter to continue...")
+                mock_warning.assert_called_once()
+
+                warning_text = mock_warning.call_args[0][0]
+                assert "\n📁 DIRECTORY LAYOUT WARNING:" in warning_text
+                assert "\n💾 DATA LOSS PREVENTION:" in warning_text
+                assert "\n📊 TOKEN USAGE & BUDGET:" in warning_text
+                assert "\n🔄 RECURSIVE MODE:" in warning_text
+
+def test_display_warnings_enabled_rename_non_recursive():
+    with patch("config.SHOW_WARNINGS", True):
+        with patch("logging.warning") as mock_warning:
+            with patch("builtins.input") as mock_input:
+                display_warnings("rename", False)
+
+                mock_input.assert_called_once_with("Press Enter to continue...")
+                mock_warning.assert_called_once()
+
+                warning_text = mock_warning.call_args[0][0]
+                assert "\n📁 DIRECTORY LAYOUT WARNING:" not in warning_text
+                assert "\n💾 DATA LOSS PREVENTION:" in warning_text
+                assert "\n📊 TOKEN USAGE & BUDGET:" in warning_text
+                assert "\n🔄 RECURSIVE MODE:" not in warning_text
+
+def test_display_warnings_keyboard_interrupt():
+    with patch("config.SHOW_WARNINGS", True):
+        with patch("logging.warning"):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                with patch("logging.info") as mock_info:
+                    with patch("sys.exit") as mock_exit:
+                        display_warnings("organize", True)
+
+                        mock_info.assert_called_once_with("\nOperation cancelled by user.")
+                        mock_exit.assert_called_once_with(0)
+
+def test_display_warnings_eof_error():
+    with patch("config.SHOW_WARNINGS", True):
+        with patch("logging.warning"):
+            with patch("builtins.input", side_effect=EOFError):
+                with patch("logging.info") as mock_info:
+                    with patch("sys.exit") as mock_exit:
+                        display_warnings("organize", True)
+
+                        mock_info.assert_called_once_with("\nOperation cancelled by user.")
+                        mock_exit.assert_called_once_with(0)
