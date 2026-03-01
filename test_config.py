@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, mock_open
 import pytest
-from config import get_tesseract_path, load_categories_from_file, display_warnings
+from config import get_tesseract_path, load_categories_from_file, display_warnings, load_eval_models
 
 def test_load_categories_file_not_exists():
     with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
@@ -135,6 +135,68 @@ def test_display_warnings_keyboard_interrupt():
 
                         mock_info.assert_called_once_with("\nOperation cancelled by user.")
                         mock_exit.assert_called_once_with(0)
+
+def test_load_eval_models_from_config_dir(tmp_path):
+    with patch("config.CONFIG_DIR", tmp_path), patch("config.BASE_DIR", tmp_path / "base"):
+        (tmp_path / "base").mkdir()
+
+        # Create file in CONFIG_DIR
+        config_file = tmp_path / "eval_models_test_provider.txt"
+        config_file.write_text("model_a\nmodel_b\n", encoding="utf-8")
+
+        # Create file in BASE_DIR (should be ignored)
+        base_file = tmp_path / "base" / "eval_models_test_provider.txt"
+        base_file.write_text("model_c\nmodel_d\n", encoding="utf-8")
+
+        models = load_eval_models("test_provider")
+        assert models == ["model_a", "model_b"]
+
+def test_load_eval_models_fallback_to_base_dir(tmp_path):
+    with patch("config.CONFIG_DIR", tmp_path / "config"), patch("config.BASE_DIR", tmp_path):
+        (tmp_path / "config").mkdir()
+
+        # No file in CONFIG_DIR
+
+        # Create file in BASE_DIR
+        base_file = tmp_path / "eval_models_test_provider.txt"
+        base_file.write_text("model_c\nmodel_d\n", encoding="utf-8")
+
+        models = load_eval_models("test_provider")
+        assert models == ["model_c", "model_d"]
+
+def test_load_eval_models_no_file(tmp_path):
+    with patch("config.CONFIG_DIR", tmp_path / "config"), patch("config.BASE_DIR", tmp_path / "base"):
+        (tmp_path / "config").mkdir()
+        (tmp_path / "base").mkdir()
+
+        models = load_eval_models("test_provider")
+        assert models == []
+
+def test_load_eval_models_with_whitespace_and_empty_lines(tmp_path):
+    with patch("config.CONFIG_DIR", tmp_path), patch("config.BASE_DIR", tmp_path / "base"):
+        (tmp_path / "base").mkdir()
+
+        content = "\n  model_1  \n\n\nmodel_2\n   \n"
+        config_file = tmp_path / "eval_models_test_provider.txt"
+        config_file.write_text(content, encoding="utf-8")
+
+        models = load_eval_models("test_provider")
+        assert models == ["model_1", "model_2"]
+
+def test_load_eval_models_read_exception(tmp_path, caplog):
+    with patch("config.CONFIG_DIR", tmp_path), patch("config.BASE_DIR", tmp_path / "base"):
+        (tmp_path / "base").mkdir()
+
+        config_file = tmp_path / "eval_models_test_provider.txt"
+        config_file.touch()
+
+        with patch("builtins.open", side_effect=OSError("Permission denied")):
+            models = load_eval_models("test_provider")
+
+            assert models == []
+            assert "Error loading" in caplog.text
+            assert "eval_models_test_provider.txt" in caplog.text
+            assert "Permission denied" in caplog.text
 
 def test_display_warnings_eof_error():
     with patch("config.SHOW_WARNINGS", True):
