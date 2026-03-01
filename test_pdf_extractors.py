@@ -4,7 +4,13 @@ from unittest.mock import MagicMock, patch
 import sys
 import pytest
 
-from extractors.pdf_extractors import PDFPlumberExtractor, PyMuPDFExtractor
+from extractors.pdf_extractors import (
+    PDFPlumberExtractor,
+    PyMuPDFExtractor,
+    PyPDFExtractor,
+    PyPdfium2Extractor,
+    get_extractor,
+)
 
 class TestPyMuPDFExtractor:
     def test_pymupdf_extract_text_success(self):
@@ -72,3 +78,42 @@ class TestPDFPlumberExtractor:
 
             assert result is None
             assert "pdfplumber extraction failed for test.pdf: Open failed" in caplog.text
+
+class TestGetExtractor:
+    def test_get_extractor_pymupdf(self):
+        """Test getting PyMuPDF extractor."""
+        extractor = get_extractor("pymupdf")
+        assert isinstance(extractor, PyMuPDFExtractor)
+
+    def test_get_extractor_pdfplumber(self):
+        """Test getting PDFPlumber extractor."""
+        extractor = get_extractor("pdfplumber")
+        assert isinstance(extractor, PDFPlumberExtractor)
+
+    def test_get_extractor_pypdf(self):
+        """Test getting PyPDF extractor."""
+        extractor = get_extractor("pypdf")
+        assert isinstance(extractor, PyPDFExtractor)
+
+    def test_get_extractor_pypdfium2(self):
+        """Test getting PyPdfium2 extractor."""
+        extractor = get_extractor("pypdfium2")
+        assert isinstance(extractor, PyPdfium2Extractor)
+
+    def test_get_extractor_case_insensitive(self):
+        """Test getting an extractor with different casing."""
+        extractor = get_extractor("PyMuPdf")
+        assert isinstance(extractor, PyMuPDFExtractor)
+
+        extractor = get_extractor("PDFPLUMBER")
+        assert isinstance(extractor, PDFPlumberExtractor)
+
+    def test_get_extractor_fallback(self):
+        """Test that unknown extractors fallback to PyMuPDFExtractor."""
+        extractor = get_extractor("unknown_extractor_name")
+        assert isinstance(extractor, PyMuPDFExtractor)
+
+    def test_get_extractor_empty_string(self):
+        """Test that an empty string falls back to PyMuPDFExtractor."""
+        extractor = get_extractor("")
+        assert isinstance(extractor, PyMuPDFExtractor)
