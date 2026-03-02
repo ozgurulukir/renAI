@@ -506,3 +506,146 @@ class TestBenchmarkExtractors:
         mock_pdfplumber.return_value.extract_text.assert_called_once_with(test_file)
         mock_pypdf.return_value.extract_text.assert_called_once_with(test_file)
         mock_pypdfium2.return_value.extract_text.assert_called_once_with(test_file)
+
+class TestEvaluateModels:
+    """Test BookProcessor.evaluate_models method."""
+
+    def test_evaluate_models_skips_symlink(self, tmp_path, caplog):
+        """Test that evaluate_models skips symlink files."""
+        processor = BookProcessor(Mock(), Mock())
+
+        real_file = tmp_path / "real.pdf"
+        real_file.write_text("content")
+        symlink_file = tmp_path / "link.pdf"
+        try:
+            symlink_file.symlink_to(real_file)
+        except OSError:
+            pytest.skip("Symlinks not supported on this platform")
+
+        with caplog.at_level(logging.WARNING):
+            processor.evaluate_models(symlink_file, "openai", ["gpt-4o"])
+
+        assert "Skipping symlink for evaluation: link.pdf" in caplog.text
+
+    @patch("file_processor.BookProcessor.extract_text_from_file")
+    def test_evaluate_models_no_text_extracted(self, mock_extract, tmp_path, caplog):
+        """Test handling when no text is extracted."""
+        processor = BookProcessor(Mock(), Mock())
+        mock_extract.return_value = ""
+
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        with caplog.at_level(logging.ERROR):
+            processor.evaluate_models(test_file, "openai", ["gpt-4o"])
+
+        assert "FAILED: No text extracted for test.pdf" in caplog.text
+
+    @patch("file_processor.BookProcessor.extract_text_from_file")
+    def test_evaluate_models_invalid_provider(self, mock_extract, tmp_path, caplog):
+        """Test handling when provider is invalid."""
+        processor = BookProcessor(Mock(), Mock())
+        mock_extract.return_value = "extracted text"
+
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        with caplog.at_level(logging.ERROR):
+            processor.evaluate_models(test_file, "invalid_provider", ["gpt-4o"])
+
+        assert "Invalid provider: invalid_provider" in caplog.text
+
+    @patch("file_processor.PROVIDERS")
+    @patch("file_processor.BookProcessor.extract_text_from_file")
+    @patch("file_processor.LLMEngine")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_evaluate_models_success(
+        self, mock_open, mock_llm_engine, mock_extract, mock_providers, tmp_path, caplog
+    ):
+        """Test successful evaluation of multiple models."""
+        processor = BookProcessor(Mock(), Mock())
+        mock_extract.return_value = "extracted text"
+
+        mock_providers.get.return_value = {
+            "api_key": "test_key",
+            "base_url": "test_url"
+        }
+
+        # Setup mock LLMEngine
+        mock_engine_instance = Mock()
+        mock_engine_instance.get_book_metadata.return_value = {
+            "title": "Test Title",
+            "category": "Test Category",
+        }
+        mock_llm_engine.return_value = mock_engine_instance
+
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        with caplog.at_level(logging.INFO):
+            processor.evaluate_models(test_file, "openai", ["gpt-4o", "gpt-3.5-turbo"])
+
+        # Verify LLMEngine was instantiated for each model
+        assert mock_llm_engine.call_count == 2
+        mock_llm_engine.assert_any_call(
+            provider="openai",
+            api_key="test_key",
+            base_url="test_url",
+            model_name="gpt-4o",
+        )
+        mock_llm_engine.assert_any_call(
+            provider="openai",
+            api_key="test_key",
+            base_url="test_url",
+            model_name="gpt-3.5-turbo",
+        )
+
+        # Verify get_book_metadata was called
+        assert mock_engine_instance.get_book_metadata.call_count == 2
+        mock_engine_instance.get_book_metadata.assert_called_with("extracted text")
+
+        # Verify logging
+        assert "MODEL EVALUATION: test.pdf" in caplog.text
+        assert "gpt-4o                                        | SUCCESS    | Test Category" in caplog.text
+        assert "gpt-3.5-turbo                                 | SUCCESS    | Test Category" in caplog.text
+
+        # Verify file writing
+        # open() is called once for header, and once per model
+        assert mock_open.call_count == 3
+        mock_file_handle = mock_open.return_value.__enter__.return_value
+        assert mock_file_handle.write.call_count == 3
+
+    @patch("file_processor.PROVIDERS")
+    @patch("file_processor.BookProcessor.extract_text_from_file")
+    @patch("file_processor.LLMEngine")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_evaluate_models_engine_error(
+        self, mock_open, mock_llm_engine, mock_extract, mock_providers, tmp_path, caplog
+    ):
+        """Test handling when LLMEngine raises an exception."""
+        processor = BookProcessor(Mock(), Mock())
+        mock_extract.return_value = "extracted text"
+
+        mock_providers.get.return_value = {
+            "api_key": "test_key",
+            "base_url": "test_url"
+        }
+
+        # Setup mock LLMEngine to raise exception
+        mock_engine_instance = Mock()
+        mock_engine_instance.get_book_metadata.side_effect = Exception("API Error")
+        mock_llm_engine.return_value = mock_engine_instance
+
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        with caplog.at_level(logging.ERROR):
+            processor.evaluate_models(test_file, "openai", ["gpt-4o"])
+
+        # Verify logging
+        assert "gpt-4o                                        | ERROR      | API Error" in caplog.text
+
+        # Verify file writing
+        assert mock_open.call_count == 2
+        mock_file_handle = mock_open.return_value.__enter__.return_value
+        mock_file_handle.write.assert_any_call("[gpt-4o] -> ERROR: API Error\n")
