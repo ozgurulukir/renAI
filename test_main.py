@@ -6,6 +6,86 @@ from unittest.mock import patch, MagicMock
 import pytest
 import main
 
+def test_parse_arguments_defaults():
+    """Test parse_arguments with minimal required arguments."""
+    with patch("sys.argv", ["main.py", "my_book_dir"]):
+        args = main.parse_arguments()
+
+    assert args.directory == "my_book_dir"
+    assert args.mode == "rename"
+    assert args.ocr_enhanced is False
+    assert args.update_metadata is False
+    assert args.debug_ocr is False
+    assert args.use_mutool is False
+    assert args.mutool_path == "mutool"
+    assert args.provider == "deepinfra"
+    assert args.model is None
+    assert args.extractor == "pymupdf"
+    assert args.benchmark is False
+    assert args.eval_model is False
+    assert args.workers == 4
+    assert args.clear_cache is False
+    assert args.skip_needs_ocr is False
+    assert args.move_ocr_failures is False
+    assert args.recursive is True
+    assert args.text_length == 10000
+
+def test_parse_arguments_custom_flags():
+    """Test parse_arguments with custom flags."""
+    test_args = [
+        "main.py",
+        "custom_dir",
+        "--mode", "organize",
+        "--ocr-enhanced",
+        "--update-metadata",
+        "--debug-ocr",
+        "--use-mutool",
+        "--mutool-path", "/usr/bin/mutool",
+        "--provider", "openai",
+        "--model", "gpt-4",
+        "--extractor", "pdfplumber",
+        "--benchmark",
+        "--eval-model",
+        "--workers", "8",
+        "--clear-cache",
+        "--skip-needs-ocr",
+        "--move-ocr-failures",
+        "--no-recursive",
+        "--text-length", "5000",
+    ]
+    with patch("sys.argv", test_args):
+        args = main.parse_arguments()
+
+    assert args.directory == "custom_dir"
+    assert args.mode == "organize"
+    assert args.ocr_enhanced is True
+    assert args.update_metadata is True
+    assert args.debug_ocr is True
+    assert args.use_mutool is True
+    assert args.mutool_path == "/usr/bin/mutool"
+    assert args.provider == "openai"
+    assert args.model == "gpt-4"
+    assert args.extractor == "pdfplumber"
+    assert args.benchmark is True
+    assert args.eval_model is True
+    assert args.workers == 8
+    assert args.clear_cache is True
+    assert args.skip_needs_ocr is True
+    assert args.move_ocr_failures is True
+    assert args.recursive is False
+    assert args.text_length == 5000
+
+def test_parse_arguments_invalid_choice():
+    """Test parse_arguments with invalid choice exits program."""
+    test_args = [
+        "main.py",
+        "my_dir",
+        "--mode", "invalid_mode",
+    ]
+    with patch("sys.argv", test_args), patch("sys.stderr", new_callable=MagicMock):
+        with pytest.raises(SystemExit):
+            main.parse_arguments()
+
 def test_check_requirements_success():
     """Test check_requirements when all libraries are present."""
     # Mock __import__ to always succeed
