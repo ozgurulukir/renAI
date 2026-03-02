@@ -1,6 +1,7 @@
 import logging
 import shutil
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -199,6 +200,125 @@ class OCREngine:
             logging.debug(f"Skew correction failed: {e}")
             return image
 
+    def _get_pages_to_extract(self, total_pages: int) -> list[int]:
+        """Page sampling strategy."""
+        pages_to_extract = list(range(min(15, total_pages)))
+        if total_pages > 30:
+            mid = total_pages // 2
+            pages_to_extract += [mid, mid + 1]
+        if total_pages > 30:
+            pages_to_extract += [total_pages - 1, total_pages]
+        return sorted(
+            set(p for p in pages_to_extract if 0 <= p < total_pages)
+        )
+
+    def _extract_image_from_page(self, doc: pymupdf.Document, pno: int, file_path: Path, target_dpi: int) -> tuple[Image.Image | None, Path | None]:
+        """Handles mutool or pymupdf fallback to extract an image from a page."""
+        page = doc.load_page(pno)
+        use_mutool_for_page = (
+            self.use_mutool and file_path.suffix.lower() == ".pdf"
+        )
+
+        image = None
+        temp_img = None
+
+        if use_mutool_for_page:
+            temp_img = CACHE_DIR / f"temp_page_{pno}_{uuid.uuid4().hex}.png"
+            try:
+                cmd = [
+                    self.mutool_path,
+                    "draw",
+                    "-q",
+                    "-o",
+                    str(temp_img),
+                    "-c",
+                    "gray",
+                    "-r",
+                    str(int(target_dpi)),
+                    str(file_path),
+                    str(pno + 1),
+                ]
+                kwargs = {}
+                if sys.platform == "win32":
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    kwargs["startupinfo"] = startupinfo
+                    kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+                subprocess.run(
+                    cmd, check=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT, **kwargs
+                )
+                image = Image.open(temp_img)
+                image.load()
+            except subprocess.TimeoutExpired:
+                logging.error(f"mutool timed out for page {pno + 1}")
+            except Exception as e:
+                logging.error(f"mutool failed for page {pno + 1}: {e}")
+
+        if not image:
+            zoom = target_dpi / 72
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+            image = Image.frombytes(  # type: ignore
+                "RGB",
+                (pix.width, pix.height),
+                pix.samples,
+            )
+        return image, temp_img
+
+    def _preprocess_image(self, image: Image.Image) -> Image.Image:
+        """Handles resizing, grayscale conversion, deskewing, and enhancements."""
+        # Pre-processing pipeline
+        scale = self.cfg["resize"]
+        if max(image.width, image.height) * scale > self.MAX_DIMENSION:
+            scale = self.MAX_DIMENSION / max(image.width, image.height)
+
+        if scale != 1.0:
+            new_size = (int(image.width * scale), int(image.height * scale))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+
+        # 1. Grayscale
+        image = image.convert("L")
+
+        if self.cfg["enhance"]:
+            # 1. Deskew (if enabled)
+            if self.cfg["deskew"]:
+                image = self._deskew(image)
+
+            # 2. Contrast enhancement (Auto-contrast + Brightness boost)
+            image = ImageOps.autocontrast(image)
+            enhancer = ImageEnhance.Contrast(image)
+            image = enhancer.enhance(1.5)
+
+            # 3. Sharpening (Unsharp Mask equivalent)
+            if self.cfg["sharpen"]:
+                image = image.filter(
+                    ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3)
+                )
+
+            # 4. Thresholding (Binarization)
+            if self.cfg["threshold"]:
+                # Convert to 1-bit black and white
+                image = image.point(lambda x: 0 if x < 140 else 255)  # type: ignore
+        return image
+
+    def _perform_ocr(self, image: Image.Image, pno: int) -> str:
+        """Calls Tesseract to extract text from the processed image."""
+        # OCR with optimized config
+        # --oem 3 (Default, base + LSTM), --psm 3
+        try:
+            page_text = pytesseract.image_to_string(
+                image,
+                lang=OCR_LANG,
+                config=r"--oem 3 --psm 3",
+                timeout=SUBPROCESS_TIMEOUT,
+            )
+            return page_text
+        except RuntimeError as e:
+            logging.error(
+                f"Tesseract timed out or failed for page {pno + 1}: {e}"
+            )
+            return ""
+
     def extract_text(self, file_path: Path) -> str:
         """Extract text from a document using OCR."""
         try:
@@ -212,15 +332,7 @@ class OCREngine:
             total_pages = len(doc)
 
             # Page sampling strategy
-            pages_to_extract = list(range(min(15, total_pages)))
-            if total_pages > 30:
-                mid = total_pages // 2
-                pages_to_extract += [mid, mid + 1]
-            if total_pages > 30:
-                pages_to_extract += [total_pages - 1, total_pages]
-            pages_to_extract = sorted(
-                set(p for p in pages_to_extract if 0 <= p < total_pages)
-            )
+            pages_to_extract = self._get_pages_to_extract(total_pages)
 
             extracted_text = []
             total_chars = 0
@@ -229,116 +341,26 @@ class OCREngine:
                 source_dpi = self.get_page_source_dpi(page)
                 target_dpi = min(self.cfg["dpi"], source_dpi)
 
-                use_mutool_for_page = (
-                    self.use_mutool and file_path.suffix.lower() == ".pdf"
-                )
+                image, temp_img = self._extract_image_from_page(doc, pno, file_path, target_dpi)
 
-                image = None
-                temp_img = None
+                if image:
+                    image = self._preprocess_image(image)
 
-                if use_mutool_for_page:
-                    temp_img = CACHE_DIR / f"temp_page_{pno}_{uuid.uuid4().hex}.png"
-                    try:
-                        cmd = [
-                            self.mutool_path,
-                            "draw",
-                            "-q",
-                            "-o",
-                            str(temp_img),
-                            "-c",
-                            "gray",
-                            "-r",
-                            str(int(target_dpi)),
-                            str(file_path),
-                            str(pno + 1),
-                        ]
-                        kwargs = {}
-                        if sys.platform == "win32":
-                            startupinfo = subprocess.STARTUPINFO()
-                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                            kwargs["startupinfo"] = startupinfo
-                            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    if self.debug and file_debug_dir:
+                        quality_tag = "enhanced" if self.enhanced else "minimal"
+                        image.save(file_debug_dir / f"page_{pno + 1}_{quality_tag}.png")
 
-                        subprocess.run(
-                            cmd, check=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT, **kwargs
-                        )
-                        image = Image.open(temp_img)
-                        image.load()
-                    except subprocess.TimeoutExpired:
-                        logging.error(f"mutool timed out for page {pno + 1}")
-                    except Exception as e:
-                        logging.error(f"mutool failed for page {pno + 1}: {e}")
+                    page_text = self._perform_ocr(image, pno)
 
-                if not image:
-                    zoom = target_dpi / 72
-                    pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
-                    image = Image.frombytes(  # type: ignore
-                        "RGB",
-                        (pix.width, pix.height),
-                        pix.samples,
-                    )
+                    extracted_text.append(page_text)
+                    total_chars += len(page_text)
 
-                # Pre-processing pipeline
-                scale = self.cfg["resize"]
-                if max(image.width, image.height) * scale > self.MAX_DIMENSION:
-                    scale = self.MAX_DIMENSION / max(image.width, image.height)
-
-                if scale != 1.0:
-                    new_size = (int(image.width * scale), int(image.height * scale))
-                    image = image.resize(new_size, Image.Resampling.LANCZOS)
-
-                # 1. Grayscale
-                image = image.convert("L")
-
-                if self.cfg["enhance"]:
-                    # 1. Deskew (if enabled)
-                    if self.cfg["deskew"]:
-                        image = self._deskew(image)
-
-                    # 2. Contrast enhancement (Auto-contrast + Brightness boost)
-                    image = ImageOps.autocontrast(image)
-                    enhancer = ImageEnhance.Contrast(image)
-                    image = enhancer.enhance(1.5)
-
-                    # 3. Sharpening (Unsharp Mask equivalent)
-                    if self.cfg["sharpen"]:
-                        image = image.filter(
-                            ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3)
-                        )
-
-                    # 4. Thresholding (Binarization)
-                    if self.cfg["threshold"]:
-                        # Convert to 1-bit black and white
-                        image = image.point(lambda x: 0 if x < 140 else 255)  # type: ignore
-
-                if self.debug and file_debug_dir:
-                    quality_tag = "enhanced" if self.enhanced else "minimal"
-                    image.save(file_debug_dir / f"page_{pno + 1}_{quality_tag}.png")
-
-                # OCR with optimized config
-                # --oem 3 (Default, base + LSTM), --psm 3
-                try:
-                    page_text = pytesseract.image_to_string(
-                        image,
-                        lang=OCR_LANG,
-                        config=r"--oem 3 --psm 3",
-                        timeout=SUBPROCESS_TIMEOUT,
-                    )
-                except RuntimeError as e:
-                    logging.error(
-                        f"Tesseract timed out or failed for page {pno + 1}: {e}"
-                    )
-                    page_text = ""
-
-                extracted_text.append(page_text)
-                total_chars += len(page_text)
-
-                if temp_img and temp_img.exists():
-                    try:
-                        image.close()
-                        temp_img.unlink()
-                    except Exception:
-                        pass
+                    if temp_img and temp_img.exists():
+                        try:
+                            image.close()
+                            temp_img.unlink()
+                        except Exception:
+                            pass
 
                 if total_chars > 10000:
                     break
