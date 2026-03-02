@@ -136,6 +136,14 @@ def test_display_warnings_keyboard_interrupt():
                         mock_info.assert_called_once_with("\nOperation cancelled by user.")
                         mock_exit.assert_called_once_with(0)
 
+def test_initialize_directories():
+    with patch("utils.ensure_secure_dir") as mock_ensure:
+        from config import initialize_directories, CACHE_DIR, DEBUG_DIR
+        initialize_directories()
+        assert mock_ensure.call_count == 2
+        mock_ensure.assert_any_call(CACHE_DIR)
+        mock_ensure.assert_any_call(DEBUG_DIR)
+
 def test_load_eval_models_from_config_dir(tmp_path):
     with patch("config.CONFIG_DIR", tmp_path), patch("config.BASE_DIR", tmp_path / "base"):
         (tmp_path / "base").mkdir()
