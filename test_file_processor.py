@@ -126,7 +126,7 @@ class TestOrganizeFiles:
         test_file.write_text("content")
 
         # Execute
-        processor.organize_files([(True, test_file, "book.pdf", "Fiction")], tmp_path)
+        processor.organize_files([(True, test_file, "book.pdf", "Fiction", "hash")], tmp_path)
 
         # Verify
         category_dir = tmp_path / "Fiction"
@@ -139,7 +139,7 @@ class TestOrganizeFiles:
 
         # File doesn't exist (already moved)
         result = processor.organize_files(
-            [(True, tmp_path / "book.pdf", "book.pdf", "Fiction")], tmp_path
+            [(True, tmp_path / "book.pdf", "book.pdf", "Fiction", "hash")], tmp_path
         )
 
         # Should not raise, should complete silently
@@ -152,7 +152,7 @@ class TestOrganizeFiles:
         processor = BookProcessor(Mock(), Mock())
 
         # Failed processing (success=False)
-        result = processor.organize_files([(False, None, None, None)], tmp_path)
+        result = processor.organize_files([(False, None, None, None, None)], tmp_path)
 
         assert result is None
 
@@ -165,7 +165,7 @@ class TestOrganizeFiles:
 
         # Turkish category with unicode characters
         processor.organize_files(
-            [(True, test_file, "book.pdf", "Kurgu Dışı")], tmp_path
+            [(True, test_file, "book.pdf", "Kurgu Dışı", "hash")], tmp_path
         )
 
         category_dir = tmp_path / "Kurgu Dışı"
@@ -183,8 +183,8 @@ class TestOrganizeFiles:
 
         processor.organize_files(
             [
-                (True, file1, "book1.pdf", "Science"),
-                (True, file2, "book2.pdf", "Science"),
+                (True, file1, "book1.pdf", "Science", "hash1"),
+                (True, file2, "book2.pdf", "Science", "hash2"),
             ],
             tmp_path,
         )
@@ -205,8 +205,8 @@ class TestOrganizeFiles:
 
         processor.organize_files(
             [
-                (True, file1, "book1.pdf", "Fiction"),
-                (True, file2, "book2.txt", "Non-Fiction"),
+                (True, file1, "book1.pdf", "Fiction", "hash1"),
+                (True, file2, "book2.txt", "Non-Fiction", "hash2"),
             ],
             tmp_path,
         )
@@ -226,7 +226,7 @@ class TestOrganizeFiles:
             Path, "mkdir", side_effect=PermissionError("Permission denied")
         ):
             result = processor.organize_files(
-                [(True, test_file, "book.pdf", "Fiction")], tmp_path
+                [(True, test_file, "book.pdf", "Fiction", "hash")], tmp_path
             )
 
         # Should complete without raising, file should remain
