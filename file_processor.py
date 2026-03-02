@@ -27,6 +27,7 @@ def safe_move_file(
     dest_path: Path,
     operation_type: str = "move",
     ensure_dirs: bool = True,
+    source_hash: Optional[str] = None,
 ) -> Path:
     """
     Safely move a file with duplicate detection and error handling.
@@ -53,7 +54,7 @@ def safe_move_file(
     if dest_path.exists():
         # Check if files have same content (same hash)
         existing_hash = get_file_hash(dest_path)
-        new_hash = get_file_hash(source_path)
+        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
 
         if existing_hash == new_hash:
             # Same content - skip moving
@@ -202,7 +203,7 @@ class BookProcessor:
                 if self.skip_ocr_files and self.needs_ocr_dir:
                     try:
                         dest_path = self.needs_ocr_dir / file_path.name
-                        safe_move_file(file_path, dest_path, "move to Needs_OCR")
+                        safe_move_file(file_path, dest_path, "move to Needs_OCR", source_hash=file_hash)
                         return ""
                     except Exception as e:
                         logging.error(
@@ -221,7 +222,7 @@ class BookProcessor:
                     if self.move_ocr_failures and self.ocr_failures_dir:
                         try:
                             dest_path = self.ocr_failures_dir / file_path.name
-                            safe_move_file(file_path, dest_path, "move to OCR_Failures")
+                            safe_move_file(file_path, dest_path, "move to OCR_Failures", source_hash=file_hash)
                         except Exception as e:
                             logging.error(
                                 f"Failed to move {file_path.name} to OCR_Failures: {e}"
@@ -369,7 +370,7 @@ class BookProcessor:
 
             with self.file_operation_lock:
                 try:
-                    final_path = safe_move_file(file_path, new_path, "rename")
+                    final_path = safe_move_file(file_path, new_path, "rename", source_hash=file_hash)
                     # Update new_name if it was modified due to duplicates
                     if final_path != new_path:
                         new_name = final_path.name
