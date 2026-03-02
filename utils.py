@@ -120,8 +120,8 @@ def ensure_secure_dir(path: Path) -> None:
     if sys.platform != "win32":
         try:
             path.chmod(0o700)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug(f"Failed to set secure permissions on {path}: {e}")
     else:
         # Windows: Best effort to restrict permissions to current user using icacls
         try:
@@ -147,8 +147,8 @@ def ensure_secure_dir(path: Path) -> None:
                     startupinfo=startupinfo,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug(f"Failed to set secure permissions on {path}: {e}")
 
 
 def read_text_limited(file_path: Path, max_chars: int) -> str:
