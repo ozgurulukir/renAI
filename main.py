@@ -269,7 +269,7 @@ def process_files(args: argparse.Namespace, processor: BookProcessor, file_paths
                 results.append(future.result())
             except Exception as e:
                 logging.error(f"Worker failed for {futures[future].name}: {e}")
-                results.append((False, None, None, None))
+                results.append((False, None, None, None, None))
 
     if args.mode == "organize":
         processor.organize_files(results, root_dir)

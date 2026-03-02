@@ -239,7 +239,7 @@ class BookProcessor:
 
     def process_single_book(
         self, file_path: Path, mode: str, update_metadata: bool = False
-    ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str]]:
+    ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str], Optional[str]]:
         """Process a single book: extract text, get metadata, rename.
 
         Cache Strategy:
@@ -252,7 +252,7 @@ class BookProcessor:
 
             if file_path.is_symlink():
                 logging.warning(f"Skipping symlink: {file_path.name}")
-                return False, None, None, None
+                return False, None, None, None, None
 
             # 1. Get File Hash for caching
             file_hash = get_file_hash(file_path)
@@ -302,7 +302,7 @@ class BookProcessor:
                     # Track OCR failure for organize mode
                     self.ocr_failed_files.add(file_path)
                     logging.warning(f"No text extracted from {file_path.name}")
-                    return False, None, None, None
+                    return False, None, None, None, None
 
                 book_data = self.llm_engine.get_book_metadata(text)
                 if book_data:
@@ -330,7 +330,7 @@ class BookProcessor:
                             f"Failed to save metadata cache for {file_path.name}: {e}"
                         )
                 else:
-                    return False, None, None, None
+                    return False, None, None, None, None
 
             # Construct name (handle potential None values from LLM)
             title = (book_data.get("title") or "").strip()
@@ -364,7 +364,7 @@ class BookProcessor:
 
             if new_name == file_path.name:
                 logging.info(f"New name is identical for {file_path.name}")
-                return True, file_path, new_name, category
+                return True, file_path, new_name, category, file_hash
 
             new_path = file_path.parent / new_name
 
@@ -379,22 +379,22 @@ class BookProcessor:
                     logging.error(
                         f"CRITICAL ERROR: Failed to rename {file_path.name}: {e}. Original file is safe."
                     )
-                    return False, None, None, None
+                    return False, None, None, None, None
 
-            return True, new_path, new_name, category
+            return True, new_path, new_name, category, file_hash
 
         except Exception as e:
             logging.error(f"Error processing {file_path.name}: {e}")
-            return False, None, None, None
+            return False, None, None, None, None
 
     def organize_files(
         self,
-        processed_info: List[Tuple[bool, Optional[Path], str, str]],
+        processed_info: List[Tuple[bool, Optional[Path], str, str, str]],
         root_dir: Path,
     ) -> None:
         """Move successfully renamed files into category folders."""
         created_dirs = set()
-        for success, current_path, name, category in processed_info:
+        for success, current_path, name, category, file_hash in processed_info:
             if not success or not current_path or not category:
                 continue
 
@@ -420,7 +420,7 @@ class BookProcessor:
                 # Attempt move directly - safe_move_file handles non-existent source
                 # We skip redundant directory creation in safe_move_file as we handle it here with caching
                 final_path = safe_move_file(
-                    current_path, dest_path, "organize", ensure_dirs=False
+                    current_path, dest_path, "organize", ensure_dirs=False, source_hash=file_hash
                 )
                 logging.info(f"Organized {name} -> {final_path}")
             except FileNotFoundError:
