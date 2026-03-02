@@ -506,3 +506,169 @@ class TestBenchmarkExtractors:
         mock_pdfplumber.return_value.extract_text.assert_called_once_with(test_file)
         mock_pypdf.return_value.extract_text.assert_called_once_with(test_file)
         mock_pypdfium2.return_value.extract_text.assert_called_once_with(test_file)
+
+class TestBookProcessor:
+    """Test BookProcessor methods."""
+
+    def test_evaluate_models_skips_symlink(self, tmp_path, caplog):
+        """Test that evaluate_models skips symlink files."""
+        processor = BookProcessor(Mock(), Mock())
+
+        # Create a real file and a symlink to it
+        real_file = tmp_path / "real.pdf"
+        real_file.write_text("content")
+        symlink_file = tmp_path / "link.pdf"
+        try:
+            symlink_file.symlink_to(real_file)
+        except OSError:
+            # If symlinks are not supported (e.g., Windows without admin), skip
+            import pytest
+            pytest.skip("Symlinks not supported on this platform")
+
+        with caplog.at_level(logging.WARNING):
+            processor.evaluate_models(symlink_file, "openai", ["gpt-4o"])
+
+        assert "Skipping symlink for evaluation: link.pdf" in caplog.text
+
+    def test_evaluate_models_no_text(self, tmp_path, caplog):
+        """Test evaluate_models when no text can be extracted."""
+        processor = BookProcessor(Mock(), Mock())
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        with patch.object(processor, "extract_text_from_file", return_value=""):
+            with caplog.at_level(logging.ERROR):
+                processor.evaluate_models(test_file, "openai", ["gpt-4o"])
+
+        assert f"FAILED: No text extracted for test.pdf" in caplog.text
+
+    def test_evaluate_models_invalid_provider(self, tmp_path, caplog):
+        """Test evaluate_models with an invalid provider."""
+        processor = BookProcessor(Mock(), Mock())
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        with patch.object(processor, "extract_text_from_file", return_value="Some extracted text"):
+            with caplog.at_level(logging.ERROR):
+                processor.evaluate_models(test_file, "invalid_provider", ["gpt-4o"])
+
+        assert "Invalid provider: invalid_provider" in caplog.text
+
+    @patch("file_processor.PROVIDERS")
+    @patch("file_processor.LLMEngine")
+    def test_evaluate_models_success(self, mock_llm_engine_class, mock_providers, tmp_path, caplog):
+        """Test successful evaluation of multiple models."""
+        processor = BookProcessor(Mock(), Mock())
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        # Setup mock EVAL_LOG_FILE
+        log_file_path = tmp_path / "evaluation.log"
+
+        # We need to explicitly patch file_processor.EVAL_LOG_FILE to point to our temp path
+        # since it's used directly in the open() call
+
+        # Setup mock PROVIDERS
+        mock_providers.get.return_value = {"api_key": "test_key", "base_url": "test_url"}
+
+        # Setup mock LLMEngine
+        mock_llm_instance = Mock()
+        mock_llm_engine_class.return_value = mock_llm_instance
+
+        # Return different metadata for each model to verify loop works
+        mock_llm_instance.get_book_metadata.side_effect = [
+            {"title": "Book 1", "category": "Fiction"},
+            {"title": "Book 2", "category": "Non-Fiction"}
+        ]
+
+        model_names = ["model-1", "model-2"]
+
+        with patch.object(processor, "extract_text_from_file", return_value="Some extracted text") as mock_extract:
+            # We need a patch context for open with the mock_eval_log_file path
+            with patch("file_processor.EVAL_LOG_FILE", log_file_path):
+                with caplog.at_level(logging.INFO):
+                    processor.evaluate_models(test_file, "test_provider", model_names)
+
+        # Verify extract_text_from_file was called
+        mock_extract.assert_called_once_with(test_file, target_length=processor.target_length)
+
+        # Verify LLMEngine was instantiated twice with correct parameters
+        assert mock_llm_engine_class.call_count == 2
+        mock_llm_engine_class.assert_any_call(
+            provider="test_provider",
+            api_key="test_key",
+            base_url="test_url",
+            model_name="model-1"
+        )
+        mock_llm_engine_class.assert_any_call(
+            provider="test_provider",
+            api_key="test_key",
+            base_url="test_url",
+            model_name="model-2"
+        )
+
+        # Verify get_book_metadata was called twice with the extracted text
+        assert mock_llm_instance.get_book_metadata.call_count == 2
+        mock_llm_instance.get_book_metadata.assert_called_with("Some extracted text")
+
+        # Verify logging
+        assert "MODEL EVALUATION: test.pdf" in caplog.text
+        assert "SUCCESS" in caplog.text
+        assert "Fiction" in caplog.text
+        assert "Non-Fiction" in caplog.text
+
+        # Verify evaluation log file was written to
+        assert log_file_path.exists()
+        log_content = log_file_path.read_text(encoding="utf-8")
+        assert "EVALUATION: test.pdf (test_provider)" in log_content
+        assert "[model-1] ->" in log_content
+        assert '"Fiction"' in log_content
+        assert "[model-2] ->" in log_content
+        assert '"Non-Fiction"' in log_content
+
+    @patch("file_processor.PROVIDERS")
+    @patch("file_processor.LLMEngine")
+    def test_evaluate_models_model_failure(self, mock_llm_engine_class, mock_providers, tmp_path, caplog):
+        """Test evaluate_models gracefully handles an exception from a model."""
+        processor = BookProcessor(Mock(), Mock())
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("content")
+
+        # Setup mock EVAL_LOG_FILE
+        log_file_path = tmp_path / "evaluation.log"
+
+        # Setup mock PROVIDERS
+        mock_providers.get.return_value = {"api_key": "test_key", "base_url": "test_url"}
+
+        # Setup mock LLMEngine
+        mock_llm_instance = Mock()
+        mock_llm_engine_class.return_value = mock_llm_instance
+
+        # First model fails, second succeeds
+        mock_llm_instance.get_book_metadata.side_effect = [
+            Exception("Model 1 failed mysteriously"),
+            {"title": "Book 2", "category": "Non-Fiction"}
+        ]
+
+        model_names = ["model-1", "model-2"]
+
+        with patch.object(processor, "extract_text_from_file", return_value="Some extracted text"):
+            with patch("file_processor.EVAL_LOG_FILE", log_file_path):
+                with caplog.at_level(logging.ERROR):
+                    processor.evaluate_models(test_file, "test_provider", model_names)
+
+        # Verify first model failure was logged to standard logging
+        assert "model-1" in caplog.text
+        assert "ERROR" in caplog.text
+        # String is sliced by [:25] in logging
+        assert "Model 1 failed mysterious" in caplog.text
+
+        # Verify the exception didn't stop execution and second model was logged
+        assert mock_llm_instance.get_book_metadata.call_count == 2
+
+        # Verify evaluation log file was written to correctly
+        assert log_file_path.exists()
+        log_content = log_file_path.read_text(encoding="utf-8")
+        assert "[model-1] -> ERROR: Model 1 failed mysteriously" in log_content
+        assert "[model-2] ->" in log_content
+        assert '"Non-Fiction"' in log_content

@@ -41,7 +41,7 @@ def test_file_processing_integration():
         }
         
         # Process the book
-        success, new_path, new_name, category = processor.process_single_book(test_file, "rename")
+        success, new_path, new_name, category, file_hash = processor.process_single_book(test_file, "rename")
         
         # Check results
         assert success == True
@@ -80,7 +80,7 @@ def test_organize_files_integration():
             renamed_file = tmp_path / f"Book {i} -- Author {i} -- ({2020+i}).pdf"
             shutil.copy(test_file, renamed_file)
             
-            test_files.append((True, renamed_file, renamed_file.name, category))
+            test_files.append((True, renamed_file, renamed_file.name, category, "fake_hash"))
         
         # Organize files
         processor.organize_files(test_files, tmp_path)
@@ -130,11 +130,11 @@ def test_cache_functionality():
         mock_llm_engine.get_book_metadata.return_value = metadata
         
         # Process file with update_metadata=False (should use cache if exists)
-        success1, new_path1, _, _ = processor.process_single_book(test_file, "rename", update_metadata=False)
+        success1, new_path1, _, _, _ = processor.process_single_book(test_file, "rename", update_metadata=False)
         
         # Process same file again with update_metadata=False (should use cache)
         # Use new_path1 because the file was renamed
-        success2, _, _, _ = processor.process_single_book(new_path1, "rename", update_metadata=False)
+        success2, _, _, _, _ = processor.process_single_book(new_path1, "rename", update_metadata=False)
         
         assert success1 == True
         assert success2 == True
