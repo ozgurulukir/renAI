@@ -122,33 +122,36 @@ def ensure_secure_dir(path: Path) -> None:
             path.chmod(0o700)
         except Exception as e:
             logging.debug(f"Failed to set secure permissions on {path}: {e}")
-    else:
-        # Windows: Best effort to restrict permissions to current user using icacls
-        try:
-            username = os.environ.get("USERNAME")
-            if username:
-                # /inheritance:r - remove inherited ACEs
-                # /grant:r %USERNAME%:F - grant full control to current user
-                # (OI)(CI) - Object Inherit, Container Inherit
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        return
 
-                subprocess.run(
-                    [
-                        "icacls",
-                        str(path),
-                        "/inheritance:r",
-                        "/grant:r",
-                        f"{username}:(OI)(CI)F",
-                    ],
-                    capture_output=True,
-                    check=False,
-                    timeout=10,
-                    startupinfo=startupinfo,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
-                )
-        except Exception as e:
-            logging.debug(f"Failed to set secure permissions on {path}: {e}")
+    # Windows: Best effort to restrict permissions to current user using icacls
+    username = os.environ.get("USERNAME")
+    if not username:
+        return
+
+    try:
+        # /inheritance:r - remove inherited ACEs
+        # /grant:r %USERNAME%:F - grant full control to current user
+        # (OI)(CI) - Object Inherit, Container Inherit
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+        subprocess.run(
+            [
+                "icacls",
+                str(path),
+                "/inheritance:r",
+                "/grant:r",
+                f"{username}:(OI)(CI)F",
+            ],
+            capture_output=True,
+            check=False,
+            timeout=10,
+            startupinfo=startupinfo,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception as e:
+        logging.debug(f"Failed to set secure permissions on {path}: {e}")
 
 
 def read_text_limited(file_path: Path, max_chars: int) -> str:
