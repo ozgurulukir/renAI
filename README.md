@@ -13,16 +13,23 @@ Managing large digital document collections can be challenging. Files often arri
 - **Applying consistent naming conventions** automatically
 - **Organizing files** into category-based folders when desired
 
-The tool supports multiple document formats (PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD) and works with various LLM providers (DeepInfra, OpenRouter, OpenAI).
+The tool supports multiple document formats (PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD, Images) and works with various LLM providers (DeepInfra, OpenRouter, OpenAI).
 
 ### Naming Convention
 
-Files are renamed using the format:
+**Documents:**
 ```
 Title -- Subtitle -- 'Edition' -- Author -- (Year).ext
 ```
 
 Example: `Introduction to Machine Learning -- A Practical Approach -- '1st Edition' -- Andrew Ng -- (2018).pdf`
+
+**Images:**
+```
+Title -- Category -- (Language).ext
+```
+
+Example: `Sunset at Beach -- Photo -- (en).jpg`
 
 ---
 
@@ -30,9 +37,11 @@ Example: `Introduction to Machine Learning -- A Practical Approach -- '1st Editi
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-Format Support** | Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, and MD files |
+| **Multi-Format Support** | Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD, and image files (JPG, PNG, HEIC, etc.) |
 | **Multiple PDF Extractors** | Choose from PyMuPDF, pdfplumber, pypdf, or pypdfium2 |
 | **AI-Driven Metadata** | Uses LLMs to extract titles, authors, years, and categories |
+| **Vision Mode** | Process PDFs directly with vision-capable LLMs (no OCR needed) |
+| **Image Renaming** | Rename image files using AI vision analysis |
 | **Advanced OCR** | Tesseract integration with Enhanced Mode for low-quality scans |
 | **mutool Support** | Extracts high-quality images from fixed-layout PDFs |
 | **Smart Caching** | MD5-based caching reduces API costs and processing time |
@@ -44,6 +53,8 @@ Example: `Introduction to Machine Learning -- A Practical Approach -- '1st Editi
 - **`organize`**: Moves renamed files into category folders
 - **`benchmark`**: Compares PDF extraction library performance
 - **`eval-model`**: Tests different LLM models for accuracy
+- **`--vision`**: Uses vision-capable LLM to process PDFs (no OCR)
+- **`--rename-images`**: Renames image files using AI vision
 
 ---
 
@@ -114,6 +125,45 @@ python main.py "C:/Path/To/Books" --mode rename
 python main.py "C:/Path/To/Books" --mode organize
 ```
 
+### Vision Mode (PDF without OCR)
+
+Vision mode uses vision-capable LLMs to process PDFs directly - no OCR needed! This is faster and more accurate for text-based PDFs.
+
+```bash
+# Process PDFs with vision model (no OCR) - uses default provider/model
+python main.py "C:/Path/To/Books" --vision
+
+# Use specific vision model
+python main.py "C:/Path/To/Books" --vision --vision-provider openrouter --vision-model openai/gpt-4o
+
+# DeepInfra with Llama Vision
+python main.py "C:/Path/To/Books" --vision --vision-provider deepinfra --vision-model meta-llama/Llama-3.2-90B-Vision-Instruct
+
+# OpenAI GPT-4o
+python main.py "C:/Path/To/Books" --vision --vision-provider openai --vision-model gpt-4o
+```
+
+### Image Renaming
+
+Rename image files using AI vision analysis. Requires `--vision-model` to be specified:
+
+```bash
+# Rename images with vision model (required: --vision-model)
+python main.py "C:/Path/To/Photos" --rename-images --vision-model openai/gpt-4o
+
+# With explicit provider
+python main.py "C:/Path/To/Images" --rename-images --vision-provider deepinfra --vision-model Qwen/Qwen2-VL-72B-Instruct
+```
+
+### Mixed Folders (PDF + Images)
+
+Process both PDFs and images in the same folder using vision AI:
+
+```bash
+# PDFs processed with vision, images renamed with vision
+python main.py "C:/Path/To/Mixed" --vision --rename-images --vision-model openai/gpt-4o
+```
+
 ### High-Quality OCR for Scanned Documents
 
 ```bash
@@ -121,10 +171,10 @@ python main.py "C:/Path/To/Books" --mode organize
 python main.py "C:/Path/To/Books" --ocr-enhanced --use-mutool
 ```
 
-### Using Different LLM Providers
+### Using Different```bash
+# LLM Providers
 
-```bash
-# DeepInfra (default)
+ DeepInfra (default)
 python main.py "C:/Path/To/Books" --mode rename --provider deepinfra
 
 # OpenRouter
@@ -243,6 +293,46 @@ python main.py "C:/Path/To/Books" --clear-cache
 
 ---
 
+## 🤖 Vision Models
+
+renAI supports vision-capable LLMs that can process PDFs and images directly without OCR. This is faster and more accurate for text-based documents.
+
+### Recommended Vision Models
+
+| Provider | Model | Best For |
+|----------|-------|----------|
+| **OpenAI** | `gpt-4o` | Best accuracy, reliable |
+| **OpenAI** | `gpt-4o-mini` | Fast, cost-effective |
+| **OpenRouter** | `openai/gpt-4o` | Flexible pricing |
+| **OpenRouter** | `google/gemini-1.5-flash` | Free tier available |
+| **DeepInfra** | `meta-llama/Llama-3.2-90B-Vision-Instruct` | Open source, powerful |
+| **DeepInfra** | `Qwen/Qwen2-VL-72B-Instruct` | Excellent value |
+| **Custom** | `llava`, `qwen-vl` | Local inference |
+
+### Vision Mode vs OCR
+
+| Feature | Vision Mode (`--vision`) | OCR Mode (default) |
+|---------|--------------------------|-------------------|
+| **Speed** | Faster for text PDFs | Slower |
+| **Accuracy** | Higher for clear text | Depends on scan quality |
+| **Scanned Docs** | May struggle | Optimized for scans |
+| **Languages** | Limited to model | Turkish+English optimized |
+| **API Cost** | Image tokens | Text tokens |
+
+**When to use Vision Mode:**
+- Text-based PDFs (books, articles)
+- When you don't have Tesseract installed
+- When OCR is too slow
+- When you want better accuracy on clean documents
+
+**When to use OCR:**
+- Scanned documents
+- Low-quality images
+- Multi-language documents
+- When you need Turkish character support
+
+---
+
 ## ⚠️ Warnings & Limitations
 
 ### Data Loss Prevention
@@ -271,6 +361,7 @@ When using `--mode organize`:
 | **Rate Limits** | Providers may enforce rate limits |
 | **OCR Quality** | Scanned documents require good quality scans |
 | **Language Support** | Optimized for Turkish and English |
+| **Vision Mode** | PDF only (images supported with `--rename-images`) |
 
 ### OCR Handling Options
 
@@ -286,9 +377,10 @@ When using `--mode organize`:
 3. **Monitor Costs**: Set up usage alerts with your LLM provider
 4. **Use Caching**: Avoid `--update-metadata` unless necessary
 5. **Choose OCR Wisely**: Use `--ocr-enhanced --use-mutool` only for scanned documents
-6. **Compare Providers**: OpenRouter often offers competitive pricing
-7. **Clear Cache**: Use `--clear-cache` when switching models or settings
-8. **Protect Privacy**: For sensitive or private documents, use a local LLM (Ollama, LM Studio) with the `custom` provider. This keeps your document content on your machine rather than sending it to cloud services.
+6. **Vision for PDFs**: Use `--vision` for text-based PDFs (faster, more accurate)
+7. **Compare Providers**: OpenRouter often offers competitive pricing
+8. **Clear Cache**: Use `--clear-cache` when switching models or settings
+9. **Protect Privacy**: For sensitive or private documents, use a local LLM (Ollama, LM Studio) with the `custom` provider. This keeps your document content on your machine rather than sending it to cloud services.
 
 ### Caching Strategy
 
@@ -350,7 +442,7 @@ For detailed privacy guidance, data retention policies, and compliance considera
 | 1,000 | $1.00 |
 | 10,000 | $10.00 |
 
-Actual costs vary by provider and model.
+Actual costs vary by provider and model. Vision mode may have different pricing (image tokens vs text tokens).
 
 ---
 
@@ -398,6 +490,27 @@ Tez
 Araştırma
 Diğer
 Sözlük
+
+# Image Categories (for --rename-images)
+LANG: en
+Photo
+Screenshot
+Design
+Art
+Diagram
+Chart
+Document
+Other
+
+LANG: tr
+Fotoğraf
+Ekran Görüntüsü
+Tasarım
+Sanat
+Diyagram
+Grafik
+Belge
+Diğer
 ```
 
 ### Command Options
@@ -405,6 +518,9 @@ Sözlük
 | Option | Description |
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
+| `--model` | Model name for text processing |
+| `--vision-provider` | Provider for vision mode (default: same as --provider) |
+| `--vision-model` | Vision-capable model for --vision and --rename-images |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Concurrent workers (default: 4) |
 | `--ocr-enhanced` | Enable enhanced OCR |
@@ -412,6 +528,13 @@ Sözlük
 | `--debug-ocr` | Save debug images |
 | `--recursive` | Process subdirectories (default: True) |
 | `--no-recursive` | Process root only |
+| `--vision` | Use vision AI for PDFs (no OCR needed) |
+| `--rename-images` | Rename images using vision AI (requires --vision-model) |
+| `--text-length` | Target text length for LLM (default: 10000) |
+| `--update-metadata` | Force refresh metadata cache |
+| `--skip-needs-ocr` | Move files needing OCR to folder |
+| `--move-ocr-failures` | Move failed files to folder |
+| `--clear-cache` | Clear cache and exit |
 
 ---
 
@@ -422,14 +545,14 @@ renAI/
 ├── main.py              # Entry point & CLI
 ├── config.py            # Configuration & API settings
 ├── utils.py             # Helper functions
-├── llm_engine.py        # LLM provider integration
+├── llm_engine.py        # LLM provider integration (including vision)
 ├── ocr_engine.py        # OCR processing
-├── file_processor.py    # Core processing logic
-├── extractors/          # Document parsers
-│   ├── base.py          # Abstract base class
+├── file_processor.py    # Core processing logic (including vision processing)
+├── extractors/         # Document parsers
+│   ├── base.py         # Abstract base class
 │   └── pdf_extractors.py # PDF extraction implementations
-├── test_file_processor.py # Unit tests
-└── requirements.txt     # Dependencies
+├── test_*.py          # Unit tests
+└── requirements.txt    # Dependencies
 ```
 
 ---
@@ -466,7 +589,10 @@ Run the test suite:
 
 ```bash
 # Run all tests
-pytest test_file_processor.py -v
+pytest test_*.py -v
+
+# Run vision-specific tests
+pytest test_vision_*.py -v
 
 # Run with coverage
 pytest test_file_processor.py --cov=file_processor

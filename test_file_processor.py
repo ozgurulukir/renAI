@@ -1,4 +1,5 @@
 import logging
+
 """
 Unit tests for file_processor module.
 
@@ -126,7 +127,9 @@ class TestOrganizeFiles:
         test_file.write_text("content")
 
         # Execute
-        processor.organize_files([(True, test_file, "book.pdf", "Fiction", "hash")], tmp_path)
+        processor.organize_files(
+            [(True, test_file, "book.pdf", "Fiction", "hash")], tmp_path
+        )
 
         # Verify
         category_dir = tmp_path / "Fiction"
@@ -254,6 +257,8 @@ class TestBookProcessorInit:
         }
         assert processor.move_ocr_failures is False
         assert processor.skip_ocr_files is False
+        assert processor.multimodal_provider is None
+        assert processor.multimodal_model is None
 
     def test_init_with_custom_extractor(self):
         """Test initialization with custom extractor."""
@@ -408,6 +413,7 @@ class TestGetNeedsOCRFiles:
 
         assert len(result) == 2
 
+
 class TestBenchmarkExtractors:
     """Test BookProcessor.benchmark_extractors method."""
 
@@ -435,7 +441,13 @@ class TestBenchmarkExtractors:
     @patch("extractors.PyPDFExtractor")
     @patch("extractors.PyPdfium2Extractor")
     def test_benchmark_success(
-        self, mock_pypdfium2, mock_pypdf, mock_pdfplumber, mock_pymupdf, tmp_path, caplog
+        self,
+        mock_pypdfium2,
+        mock_pypdf,
+        mock_pdfplumber,
+        mock_pymupdf,
+        tmp_path,
+        caplog,
     ):
         """Test successful extraction cycle across all benchmarked engines."""
         processor = BookProcessor(Mock(), Mock())
@@ -476,7 +488,13 @@ class TestBenchmarkExtractors:
     @patch("extractors.PyPDFExtractor")
     @patch("extractors.PyPdfium2Extractor")
     def test_benchmark_extractor_failure(
-        self, mock_pypdfium2, mock_pypdf, mock_pdfplumber, mock_pymupdf, tmp_path, caplog
+        self,
+        mock_pypdfium2,
+        mock_pypdf,
+        mock_pdfplumber,
+        mock_pymupdf,
+        tmp_path,
+        caplog,
     ):
         """Test graceful handling of individual extractor failures."""
         processor = BookProcessor(Mock(), Mock())
@@ -507,6 +525,7 @@ class TestBenchmarkExtractors:
         mock_pypdf.return_value.extract_text.assert_called_once_with(test_file)
         mock_pypdfium2.return_value.extract_text.assert_called_once_with(test_file)
 
+
 class TestBookProcessor:
     """Test BookProcessor methods."""
 
@@ -523,6 +542,7 @@ class TestBookProcessor:
         except OSError:
             # If symlinks are not supported (e.g., Windows without admin), skip
             import pytest
+
             pytest.skip("Symlinks not supported on this platform")
 
         with caplog.at_level(logging.WARNING):
@@ -548,7 +568,9 @@ class TestBookProcessor:
         test_file = tmp_path / "test.pdf"
         test_file.write_text("content")
 
-        with patch.object(processor, "extract_text_from_file", return_value="Some extracted text"):
+        with patch.object(
+            processor, "extract_text_from_file", return_value="Some extracted text"
+        ):
             with caplog.at_level(logging.ERROR):
                 processor.evaluate_models(test_file, "invalid_provider", ["gpt-4o"])
 
@@ -556,7 +578,9 @@ class TestBookProcessor:
 
     @patch("file_processor.PROVIDERS")
     @patch("file_processor.LLMEngine")
-    def test_evaluate_models_success(self, mock_llm_engine_class, mock_providers, tmp_path, caplog):
+    def test_evaluate_models_success(
+        self, mock_llm_engine_class, mock_providers, tmp_path, caplog
+    ):
         """Test successful evaluation of multiple models."""
         processor = BookProcessor(Mock(), Mock())
         test_file = tmp_path / "test.pdf"
@@ -569,7 +593,10 @@ class TestBookProcessor:
         # since it's used directly in the open() call
 
         # Setup mock PROVIDERS
-        mock_providers.get.return_value = {"api_key": "test_key", "base_url": "test_url"}
+        mock_providers.get.return_value = {
+            "api_key": "test_key",
+            "base_url": "test_url",
+        }
 
         # Setup mock LLMEngine
         mock_llm_instance = Mock()
@@ -578,19 +605,23 @@ class TestBookProcessor:
         # Return different metadata for each model to verify loop works
         mock_llm_instance.get_book_metadata.side_effect = [
             {"title": "Book 1", "category": "Fiction"},
-            {"title": "Book 2", "category": "Non-Fiction"}
+            {"title": "Book 2", "category": "Non-Fiction"},
         ]
 
         model_names = ["model-1", "model-2"]
 
-        with patch.object(processor, "extract_text_from_file", return_value="Some extracted text") as mock_extract:
+        with patch.object(
+            processor, "extract_text_from_file", return_value="Some extracted text"
+        ) as mock_extract:
             # We need a patch context for open with the mock_eval_log_file path
             with patch("file_processor.EVAL_LOG_FILE", log_file_path):
                 with caplog.at_level(logging.INFO):
                     processor.evaluate_models(test_file, "test_provider", model_names)
 
         # Verify extract_text_from_file was called
-        mock_extract.assert_called_once_with(test_file, target_length=processor.target_length)
+        mock_extract.assert_called_once_with(
+            test_file, target_length=processor.target_length
+        )
 
         # Verify LLMEngine was instantiated twice with correct parameters
         assert mock_llm_engine_class.call_count == 2
@@ -598,13 +629,13 @@ class TestBookProcessor:
             provider="test_provider",
             api_key="test_key",
             base_url="test_url",
-            model_name="model-1"
+            model_name="model-1",
         )
         mock_llm_engine_class.assert_any_call(
             provider="test_provider",
             api_key="test_key",
             base_url="test_url",
-            model_name="model-2"
+            model_name="model-2",
         )
 
         # Verify get_book_metadata was called twice with the extracted text
@@ -628,7 +659,9 @@ class TestBookProcessor:
 
     @patch("file_processor.PROVIDERS")
     @patch("file_processor.LLMEngine")
-    def test_evaluate_models_model_failure(self, mock_llm_engine_class, mock_providers, tmp_path, caplog):
+    def test_evaluate_models_model_failure(
+        self, mock_llm_engine_class, mock_providers, tmp_path, caplog
+    ):
         """Test evaluate_models gracefully handles an exception from a model."""
         processor = BookProcessor(Mock(), Mock())
         test_file = tmp_path / "test.pdf"
@@ -638,7 +671,10 @@ class TestBookProcessor:
         log_file_path = tmp_path / "evaluation.log"
 
         # Setup mock PROVIDERS
-        mock_providers.get.return_value = {"api_key": "test_key", "base_url": "test_url"}
+        mock_providers.get.return_value = {
+            "api_key": "test_key",
+            "base_url": "test_url",
+        }
 
         # Setup mock LLMEngine
         mock_llm_instance = Mock()
@@ -647,12 +683,14 @@ class TestBookProcessor:
         # First model fails, second succeeds
         mock_llm_instance.get_book_metadata.side_effect = [
             Exception("Model 1 failed mysteriously"),
-            {"title": "Book 2", "category": "Non-Fiction"}
+            {"title": "Book 2", "category": "Non-Fiction"},
         ]
 
         model_names = ["model-1", "model-2"]
 
-        with patch.object(processor, "extract_text_from_file", return_value="Some extracted text"):
+        with patch.object(
+            processor, "extract_text_from_file", return_value="Some extracted text"
+        ):
             with patch("file_processor.EVAL_LOG_FILE", log_file_path):
                 with caplog.at_level(logging.ERROR):
                     processor.evaluate_models(test_file, "test_provider", model_names)
