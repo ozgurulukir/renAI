@@ -818,10 +818,11 @@ class BookProcessor:
                 # Save to cache
                 try:
                     metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    # Use vision-specific provider/model for cache (same as cache path key)
                     cache_data = {
                         **book_data,
-                        "_provider": self.provider,
-                        "_model": self.model,
+                        "_provider": vp,
+                        "_model": vm,
                     }
                     metadata_cache_path.write_text(
                         json.dumps(cache_data, ensure_ascii=False, indent=4),
@@ -1008,10 +1009,11 @@ class BookProcessor:
                 # Save to cache
                 try:
                     metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    # Use vision-specific provider/model for cache (same as cache path key)
                     cache_data = {
                         **image_data,
-                        "_provider": self.provider,
-                        "_model": self.model,
+                        "_provider": vp,
+                        "_model": vm,
                     }
                     metadata_cache_path.write_text(
                         json.dumps(cache_data, ensure_ascii=False, indent=4),
