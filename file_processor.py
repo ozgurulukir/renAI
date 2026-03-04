@@ -1,12 +1,25 @@
+import base64
+import io
 import json
 import logging
 import shutil
 import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-from config import CACHE_DIR, EVAL_LOG_FILE, MAX_TEXT_READ_SIZE, PROVIDERS
+import pymupdf
+from PIL import Image
+from PIL.ExifTags import TAGS
+
+from config import (
+    CACHE_DIR,
+    EVAL_LOG_FILE,
+    IMAGE_EXTENSIONS,
+    MAX_TEXT_READ_SIZE,
+    PROVIDERS,
+)
 from extractors import get_extractor
 from llm_engine import LLMEngine
 from ocr_engine import OCREngine
@@ -54,7 +67,9 @@ def safe_move_file(
     if dest_path.exists():
         # Check if files have same content (same hash)
         existing_hash = get_file_hash(dest_path)
-        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
+        new_hash = (
+            source_hash if source_hash is not None else get_file_hash(source_path)
+        )
 
         if existing_hash == new_hash:
             # Same content - skip moving
@@ -95,6 +110,8 @@ class BookProcessor:
         provider: str = "deepinfra",
         model: str = "",
         target_length: int = 10000,
+        multimodal_provider: Optional[str] = None,
+        multimodal_model: Optional[str] = None,
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
@@ -123,6 +140,39 @@ class BookProcessor:
         self.provider_model_key = get_provider_model_key(self.provider, self.model)
         # Target text length for LLM processing
         self.target_length = target_length
+        # Vision-specific provider and model for mixed processing
+        self.multimodal_provider = multimodal_provider
+        self.multimodal_model = multimodal_model
+        self.vision_llm_engine: Optional[LLMEngine] = None
+        # Lazy initialization flag
+        self._vision_llm_initialized = False
+
+    def _get_vision_llm_engine(self, ocr_engine: OCREngine) -> LLMEngine:
+        """Get or create vision LLM engine for image processing.
+
+        This allows using a different provider/model for images vs documents.
+        """
+        if self._vision_llm_initialized and self.vision_llm_engine is not None:
+            return self.vision_llm_engine
+
+        # Use vision-specific provider/model or fall back to default
+        from config import PROVIDERS
+
+        vp = self.multimodal_provider or self.provider
+        vm = self.multimodal_model or self.model
+
+        provider_config = PROVIDERS.get(vp, {})
+        api_key = provider_config.get("api_key", "")
+        base_url = provider_config.get("base_url", "")
+
+        self.vision_llm_engine = LLMEngine(
+            provider=vp,
+            api_key=api_key,
+            base_url=base_url,
+            model_name=vm,
+        )
+        self._vision_llm_initialized = True
+        return self.vision_llm_engine
 
     def set_ocr_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
         """Set up the OCR failures folder for moving files that require OCR."""
@@ -203,7 +253,12 @@ class BookProcessor:
                 if self.skip_ocr_files and self.needs_ocr_dir:
                     try:
                         dest_path = self.needs_ocr_dir / file_path.name
-                        safe_move_file(file_path, dest_path, "move to Needs_OCR", source_hash=file_hash)
+                        safe_move_file(
+                            file_path,
+                            dest_path,
+                            "move to Needs_OCR",
+                            source_hash=file_hash,
+                        )
                         return ""
                     except Exception as e:
                         logging.error(
@@ -222,7 +277,12 @@ class BookProcessor:
                     if self.move_ocr_failures and self.ocr_failures_dir:
                         try:
                             dest_path = self.ocr_failures_dir / file_path.name
-                            safe_move_file(file_path, dest_path, "move to OCR_Failures", source_hash=file_hash)
+                            safe_move_file(
+                                file_path,
+                                dest_path,
+                                "move to OCR_Failures",
+                                source_hash=file_hash,
+                            )
                         except Exception as e:
                             logging.error(
                                 f"Failed to move {file_path.name} to OCR_Failures: {e}"
@@ -297,7 +357,9 @@ class BookProcessor:
 
             # 3. Extract Text and call LLM if no cached metadata
             if not book_data:
-                text = self.extract_text_from_file(file_path, target_length=self.target_length)
+                text = self.extract_text_from_file(
+                    file_path, target_length=self.target_length
+                )
                 if not text:
                     # Track OCR failure for organize mode
                     self.ocr_failed_files.add(file_path)
@@ -370,7 +432,9 @@ class BookProcessor:
 
             with self.file_operation_lock:
                 try:
-                    final_path = safe_move_file(file_path, new_path, "rename", source_hash=file_hash)
+                    final_path = safe_move_file(
+                        file_path, new_path, "rename", source_hash=file_hash
+                    )
                     # Update new_name if it was modified due to duplicates
                     if final_path != new_path:
                         new_name = final_path.name
@@ -420,7 +484,11 @@ class BookProcessor:
                 # Attempt move directly - safe_move_file handles non-existent source
                 # We skip redundant directory creation in safe_move_file as we handle it here with caching
                 final_path = safe_move_file(
-                    current_path, dest_path, "organize", ensure_dirs=False, source_hash=file_hash
+                    current_path,
+                    dest_path,
+                    "organize",
+                    ensure_dirs=False,
+                    source_hash=file_hash,
                 )
                 logging.info(f"Organized {name} -> {final_path}")
             except FileNotFoundError:
@@ -491,7 +559,9 @@ class BookProcessor:
         logging.info("-" * 85)
 
         # Ensure text is extracted once
-        text_content = self.extract_text_from_file(file_path, target_length=self.target_length)
+        text_content = self.extract_text_from_file(
+            file_path, target_length=self.target_length
+        )
         if not text_content:
             logging.error(f"FAILED: No text extracted for {file_path.name}")
             return
@@ -502,6 +572,7 @@ class BookProcessor:
             return
 
         import os
+
         with open(EVAL_LOG_FILE, "a", encoding="utf-8", newline=os.linesep) as log:
             log.write(
                 f"\n{'=' * 20} EVALUATION: {file_path.name} ({provider}) {'=' * 20}\n"
@@ -525,7 +596,9 @@ class BookProcessor:
                 logging.info(f"{model[:45]:<45} | {status:<10} | {cat}")
 
                 # Log detailed results
-                with open(EVAL_LOG_FILE, "a", encoding="utf-8", newline=os.linesep) as log:
+                with open(
+                    EVAL_LOG_FILE, "a", encoding="utf-8", newline=os.linesep
+                ) as log:
                     res_json = (
                         json.dumps(metadata, ensure_ascii=False) if metadata else "None"
                     )
@@ -533,7 +606,9 @@ class BookProcessor:
 
             except Exception as e:
                 logging.error(f"{model[:45]:<45} | ERROR      | {str(e)[:25]}")
-                with open(EVAL_LOG_FILE, "a", encoding="utf-8", newline=os.linesep) as log:
+                with open(
+                    EVAL_LOG_FILE, "a", encoding="utf-8", newline=os.linesep
+                ) as log:
                     log.write(f"[{model}] -> ERROR: {e}\n")
 
         logging.info("=" * 85 + "\n")
@@ -547,3 +622,460 @@ class BookProcessor:
         if self.needs_ocr_dir and self.needs_ocr_dir.exists():
             return list(self.needs_ocr_dir.iterdir())
         return []
+
+    # =========================================================================
+    # Vision Mode Methods (--vision)
+    # =========================================================================
+
+    # Vision mode image optimization settings
+    # These settings balance quality vs token cost
+    MULTIMODAL_IMAGE_MAX_SIZE = 1024  # Max width/height in pixels
+    MULTIMODAL_IMAGE_QUALITY = 85  # JPEG quality (1-100)
+    # Note: PIL.Image.save expects uppercase format string
+
+    def _convert_pdf_page_to_image(
+        self, file_path: Path, page_number: int = 0, dpi: int = 150
+    ) -> Optional[bytes]:
+        """Convert a PDF page to optimized image bytes for vision model processing.
+
+        Uses JPEG compression and resizing to reduce token cost while maintaining
+        readability for text extraction.
+
+        Args:
+            file_path: Path to the PDF file
+            page_number: Page number to convert (0-indexed)
+            dpi: Resolution for the rendered image
+
+        Returns:
+            JPEG image bytes or None on failure
+        """
+        try:
+            from io import BytesIO
+
+            from PIL import Image
+
+            with pymupdf.open(str(file_path)) as doc:
+                if page_number >= len(doc):
+                    logging.error(
+                        f"Page {page_number + 1} does not exist in {file_path.name}"
+                    )
+                    return None
+
+                page = doc.load_page(page_number)
+                zoom = dpi / 72
+                pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+
+                # Convert PyMuPDF pixmap to PIL Image
+                img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+                # Resize if larger than max size (maintain aspect ratio)
+                max_size = self.MULTIMODAL_IMAGE_MAX_SIZE
+                if img.width > max_size or img.height > max_size:
+                    img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+                # Compress to JPEG to reduce token cost
+                buffer = BytesIO()
+                img.save(
+                    buffer,
+                    format="JPEG",  # PIL expects uppercase
+                    quality=self.MULTIMODAL_IMAGE_QUALITY,
+                    optimize=True,
+                )
+                return buffer.getvalue()
+
+        except Exception as e:
+            logging.error(
+                f"Failed to convert PDF page to image for {file_path.name}: {e}"
+            )
+            return None
+
+    def process_single_book_vision(
+        self, file_path: Path, mode: str, update_metadata: bool = False
+    ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str], Optional[str]]:
+        """Process a single document using vision model (no OCR needed).
+
+        This method extracts metadata directly from PDF images using a vision-capable LLM.
+        Only works with PDF files in vision mode.
+
+        Args:
+            file_path: Path to the PDF file
+            mode: Processing mode ('rename' or 'organize')
+            update_metadata: Force refresh metadata cache
+
+        Returns:
+            Tuple of (success, new_path, new_name, category, file_hash)
+        """
+        try:
+            logging.info(f"Processing with vision model: {file_path.name}")
+
+            # Use vision-specific LLM engine (or fall back to default)
+            vision_llm = self._get_vision_llm_engine(self.ocr_engine)
+
+            # Check if model supports vision
+            if not vision_llm.is_multimodal_capable():
+                logging.error(
+                    f"Model {vision_llm.model_name} does not support vision. "
+                    f"Please use a vision-capable model. See --vision for details."
+                )
+                return False, None, None, None, None
+
+            # Check file is PDF (vision mode is PDF-only for now)
+            if file_path.suffix.lower() != ".pdf":
+                logging.warning(
+                    f"Vision mode currently supports PDF files only. "
+                    f"Skipping {file_path.name}"
+                )
+                return False, None, None, None, None
+
+            if file_path.is_symlink():
+                logging.warning(f"Skipping symlink: {file_path.name}")
+                return False, None, None, None, None
+
+            # Get file hash for caching
+            file_hash = get_file_hash(file_path)
+
+            # Use vision-specific provider/model for cache key
+            vp = self.multimodal_provider or self.provider
+            vm = self.multimodal_model or self.model
+
+            # Generate provider-model-aware cache path
+            metadata_cache_path = get_metadata_cache_path(file_hash, vp, vm, CACHE_DIR)
+
+            book_data = None
+
+            # Check metadata cache (unless update is forced)
+            if not update_metadata and metadata_cache_path.exists():
+                try:
+                    cache_content = metadata_cache_path.read_text(encoding="utf-8")
+                    cache_data = json.loads(cache_content)
+                    cached_provider = cache_data.get("_provider", "")
+                    cached_model = cache_data.get("_model", "")
+
+                    if cached_provider == vp and cached_model == vm:
+                        cache_data.pop("_provider", None)
+                        cache_data.pop("_model", None)
+                        book_data = cache_data
+                        logging.info(
+                            f"Using cached metadata for {file_path.name} "
+                            f"(provider: {vp}, model: {vm})"
+                        )
+                    else:
+                        logging.info(
+                            f"Cache invalidated for {file_path.name} "
+                            f"(was {cached_provider}/{cached_model}, now {vp}/{vm})"
+                        )
+                except Exception as e:
+                    logging.warning(
+                        f"Failed to read metadata cache for {file_path.name}: {e}"
+                    )
+
+            # Extract metadata from PDF images if not cached
+            if not book_data:
+                # Try first few pages
+                pdf_doc = pymupdf.open(str(file_path))
+                total_pages = len(pdf_doc)
+                pdf_doc.close()
+
+                # Sample pages: first few + middle + last
+                pages_to_process = []
+                if total_pages <= 5:
+                    pages_to_process = list(range(total_pages))
+                else:
+                    pages_to_process = [0, 1, 2, total_pages // 2, total_pages - 1]
+
+                all_metadata = []
+                vision_success = False
+
+                for page_num in pages_to_process:
+                    img_bytes = self._convert_pdf_page_to_image(
+                        file_path, page_number=page_num, dpi=150
+                    )
+                    if not img_bytes:
+                        continue
+
+                    metadata = vision_llm.get_book_metadata_from_image(
+                        file_path, img_bytes
+                    )
+                    if metadata:
+                        all_metadata.append(metadata)
+                        vision_success = True
+
+                if not vision_success:
+                    logging.error(
+                        f"Vision model failed to extract metadata from {file_path.name}. "
+                        f"Please check your API key, model selection, and try again."
+                    )
+                    return False, None, None, None, None
+
+                # Combine metadata from multiple pages (prefer first valid title)
+                book_data = all_metadata[0] if all_metadata else None
+                if not book_data:
+                    logging.error(
+                        f"No metadata extracted from vision model for {file_path.name}"
+                    )
+                    return False, None, None, None, None
+
+                # Save to cache
+                try:
+                    metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    cache_data = {
+                        **book_data,
+                        "_provider": self.provider,
+                        "_model": self.model,
+                    }
+                    metadata_cache_path.write_text(
+                        json.dumps(cache_data, ensure_ascii=False, indent=4),
+                        encoding="utf-8",
+                    )
+                    logging.info(
+                        f"Cached vision metadata for {file_path.name} "
+                        f"(provider: {self.provider}, model: {self.model})"
+                    )
+                except Exception as e:
+                    logging.warning(f"Failed to save metadata cache: {e}")
+
+            # Construct new filename (same logic as regular processing)
+            title = (book_data.get("title") or "").strip()
+            subtitle = (book_data.get("subtitle") or "").strip()
+            edition = (book_data.get("edition") or "").strip()
+            author = (book_data.get("author") or "").strip()
+            year = str(book_data.get("year") or "").strip()
+            category_raw = (book_data.get("category") or "Uncategorized").strip()
+            category_safe = category_raw.replace("/", "&").replace("\\", "&")
+            category = sanitize_filename(category_safe) or "Uncategorized"
+
+            name_parts = []
+            if title:
+                name_parts.append(title)
+            if subtitle:
+                name_parts.append(subtitle)
+            if edition:
+                name_parts.append(f"'{edition}'")
+            if author:
+                name_parts.append(author)
+            if year and year.isdigit():
+                name_parts.append(f"({year})")
+
+            new_name_base = " -- ".join(name_parts)
+            new_name = f"{sanitize_filename(new_name_base)}{file_path.suffix}"
+
+            if new_name == file_path.name:
+                logging.info(f"New name is identical for {file_path.name}")
+                return True, file_path, new_name, category, file_hash
+
+            new_path = file_path.parent / new_name
+
+            with self.file_operation_lock:
+                try:
+                    final_path = safe_move_file(
+                        file_path, new_path, "rename", source_hash=file_hash
+                    )
+                    if final_path != new_path:
+                        new_name = final_path.name
+                        new_path = final_path
+                except Exception as e:
+                    logging.error(
+                        f"CRITICAL ERROR: Failed to rename {file_path.name}: {e}. "
+                        f"Original file is safe."
+                    )
+                    return False, None, None, None, None
+
+            return True, new_path, new_name, category, file_hash
+
+        except Exception as e:
+            logging.error(f"Error processing {file_path.name} with vision: {e}")
+            return False, None, None, None, None
+
+    # =========================================================================
+    # Image Rename Methods (--rename-images)
+    # =========================================================================
+
+    def is_image_file(self, file_path: Path) -> bool:
+        """Check if file is a supported image format."""
+        return file_path.suffix.lower() in IMAGE_EXTENSIONS
+
+    def get_image_exif_date(self, file_path: Path) -> Optional[str]:
+        """Extract EXIF date from image file.
+
+        Args:
+            file_path: Path to the image file
+
+        Returns:
+            Date string in YYYY-MM-DD format, or None if not available
+        """
+        try:
+            with Image.open(file_path) as img:
+                exif_data = img.getexif()
+                if not exif_data:
+                    return None
+
+                # Try to find date in EXIF tags
+                for tag_id, value in exif_data.items():
+                    tag = TAGS.get(tag_id, tag_id)
+                    if tag == "DateTime" and value:
+                        # Format: "YYYY:MM:DD HH:MM:SS"
+                        if isinstance(value, str) and len(value) >= 10:
+                            # Take only the date part
+                            date_part = value.split()[0].replace(":", "-")
+                            return date_part
+        except Exception:
+            pass
+        return None
+
+    def process_single_image(
+        self,
+        file_path: Path,
+        mode: str = "rename",
+        update_metadata: bool = False,
+        add_exif_date: bool = False,
+    ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str], Optional[str]]:
+        """Process a single image file using vision model for renaming.
+
+        Args:
+            file_path: Path to the image file
+            update_metadata: Force refresh metadata cache
+
+        Returns:
+            Tuple of (success, new_path, new_name, category, file_hash)
+        """
+        try:
+            logging.info(f"Processing image: {file_path.name}")
+
+            # Use vision-specific LLM engine (or fall back to default)
+            vision_llm = self._get_vision_llm_engine(self.ocr_engine)
+
+            # Check if model supports vision
+            if not vision_llm.is_multimodal_capable():
+                logging.error(
+                    f"Model {vision_llm.model_name} does not support vision. "
+                    f"Please use a vision-capable model for --rename-images."
+                )
+                return False, None, None, None, None
+
+            if file_path.is_symlink():
+                logging.warning(f"Skipping symlink: {file_path.name}")
+                return False, None, None, None, None
+
+            # Get file hash
+            file_hash = get_file_hash(file_path)
+
+            # Use vision-specific provider/model for cache key
+            vp = self.multimodal_provider or self.provider
+            vm = self.multimodal_model or self.model
+
+            # Check image metadata cache
+            metadata_cache_path = get_metadata_cache_path(file_hash, vp, vm, CACHE_DIR)
+
+            image_data = None
+
+            # Check cache
+            if not update_metadata and metadata_cache_path.exists():
+                try:
+                    cache_content = metadata_cache_path.read_text(encoding="utf-8")
+                    cache_data = json.loads(cache_content)
+                    cached_provider = cache_data.get("_provider", "")
+                    cached_model = cache_data.get("_model", "")
+
+                    if cached_provider == vp and cached_model == vm:
+                        cache_data.pop("_provider", None)
+                        cache_data.pop("_model", None)
+                        image_data = cache_data
+                        logging.info(
+                            f"Using cached metadata for image {file_path.name}"
+                        )
+                    else:
+                        logging.info(f"Cache invalidated for {file_path.name}")
+                except Exception as e:
+                    logging.warning(f"Failed to read image metadata cache: {e}")
+
+            # Extract metadata from image if not cached
+            if not image_data:
+                try:
+                    image_bytes = file_path.read_bytes()
+                except Exception as e:
+                    logging.error(f"Failed to read image {file_path.name}: {e}")
+                    return False, None, None, None, None
+
+                image_data = vision_llm.get_image_metadata(file_path, image_bytes)
+
+                if not image_data:
+                    logging.error(
+                        f"Vision model failed to extract metadata from image {file_path.name}. "
+                        f"Please check your API key and model selection."
+                    )
+                    return False, None, None, None, None
+
+                # Save to cache
+                try:
+                    metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    cache_data = {
+                        **image_data,
+                        "_provider": self.provider,
+                        "_model": self.model,
+                    }
+                    metadata_cache_path.write_text(
+                        json.dumps(cache_data, ensure_ascii=False, indent=4),
+                        encoding="utf-8",
+                    )
+                    logging.info(f"Cached image metadata for {file_path.name}")
+                except Exception as e:
+                    logging.warning(f"Failed to save image metadata cache: {e}")
+
+            # Construct new filename for images
+            # Format: Title -- Category -- (Language).ext
+            title = (image_data.get("title") or "").strip()
+            category = (image_data.get("category") or "Other").strip()
+            language = (image_data.get("language") or "en").strip()
+            description = (image_data.get("description") or "").strip()
+
+            # Build descriptive name
+            name_parts = []
+            if title:
+                name_parts.append(title)
+
+            # Add category if present
+            if category and category.lower() not in ("other", "diğer"):
+                name_parts.append(category)
+
+            # Add EXIF date if requested and available
+            if add_exif_date:
+                exif_date = self.get_image_exif_date(file_path)
+                if exif_date:
+                    name_parts.append(f"[{exif_date}]")
+
+            # Language indicator
+            lang_indicator = "tr" if language.lower() == "tr" else "en"
+
+            new_name_base = " -- ".join(name_parts)
+            if not new_name_base:
+                new_name_base = f"Image_{file_hash[:8]}"
+
+            # Keep original extension
+            new_name = f"{sanitize_filename(new_name_base)} -- ({lang_indicator}){file_path.suffix}"
+
+            if new_name == file_path.name:
+                logging.info(f"New name is identical for {file_path.name}")
+                return True, file_path, new_name, category, file_hash
+
+            new_path = file_path.parent / new_name
+
+            with self.file_operation_lock:
+                try:
+                    final_path = safe_move_file(
+                        file_path, new_path, "rename", source_hash=file_hash
+                    )
+                    if final_path != new_path:
+                        new_name = final_path.name
+                        new_path = final_path
+                except Exception as e:
+                    logging.error(
+                        f"CRITICAL ERROR: Failed to rename image {file_path.name}: {e}. "
+                        f"Original file is safe."
+                    )
+                    return False, None, None, None, None
+
+            return True, new_path, new_name, category, file_hash
+
+        except Exception as e:
+            logging.error(f"Error processing image {file_path.name}: {e}")
+            return False, None, None, None, None

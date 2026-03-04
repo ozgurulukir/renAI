@@ -208,6 +208,40 @@ $ python main.py "C:/Books" --provider custom --model mistral
 [INFO] Cache invalidated for book.pdf (was llama3, now mistral)
 ```
 
+### Scenario 4: Vision Mode
+
+Vision mode uses the same metadata cache but processes PDFs differently:
+
+```bash
+# Process with vision model (no OCR)
+$ python main.py "C:/Books" --vision --provider openrouter --model openai/gpt-4o
+[INFO] Using VISION mode - processing PDFs with vision model
+[INFO] Cached metadata for book.pdf (provider: openrouter, model: gpt-4o)
+
+# Same files with same provider - uses cached metadata
+$ python main.py "C:/Books" --vision --provider openrouter --model openai/gpt-4o
+[INFO] Using cached metadata for book.pdf (provider: openrouter, model: gpt-4o)
+
+# Regular mode with same files - DIFFERENT cache entry
+$ python main.py "C:/Books" --provider openrouter --model openai/gpt-4o
+[INFO] Cache invalidated for book.pdf (different processing mode)
+```
+
+### Scenario 5: Image Renaming
+
+Image files use a separate cache with image-specific metadata:
+
+```bash
+# Rename images with vision model
+$ python main.py "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
+[INFO] Using IMAGE RENAME mode - processing images with vision model
+[INFO] Cached image metadata for photo.jpg (provider: openrouter, model: gpt-4o)
+
+# Same images - uses cached metadata
+$ python main.py "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
+[INFO] Using cached metadata for image photo.jpg
+```
+
 ---
 
 ## API Reference
@@ -287,7 +321,8 @@ rm -rf .renamer_cache/
 | 2025-01-26 | Initial caching strategy implementation |
 | 2025-01-26 | Added provider-model awareness to cache keys |
 | 2025-01-26 | Implemented cache validation on read |
+| 2025-01-27 | Added vision mode and image renaming cache scenarios |
 
 ---
 
-*Last updated: 2025-01-26*
+*Last updated: 2025-01-27*

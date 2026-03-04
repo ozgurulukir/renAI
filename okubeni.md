@@ -32,9 +32,11 @@ Başlık -- Alt Başlık -- 'Baskı' -- Yazar -- (Yıl).uzantı
 
 | Özellik | Açıklama |
 |---------|----------|
-| **Çoklu Format Desteği** | PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT ve MD dosyalarını işler |
+| **Çoklu Format Desteği** | PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD ve görüntü dosyalarını (JPG, PNG, HEIC vb.) işler |
 | **Çoklu PDF Çıkarıcıları** | PyMuPDF, pdfplumber, pypdf veya pypdfium2 arasından seçim yapın |
 | **Yapay Zeka Destekli Meta Veri** | Başlıkları, yazarları, yılları ve kategorileri çıkarmak için LLM'leri kullanır |
+| **Multimodal Modu** | Multimodal (görüntü yetenekli) LLM ile PDF'leri OCR olmadan işle (daha hızlı ve doğru) |
+| **Görüntü Yeniden Adlandırma** | Yapay zeka görüntü analizi ile görüntü dosyalarını yeniden adlandır |
 | **Gelişmiş OCR** | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu |
 | **mutool Desteği** | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır |
 | **Akıllı Önbellekleme** | API maliyetlerini ve işleme süresini azaltan MD5 tabanlı önbellekleme |
@@ -46,6 +48,8 @@ Başlık -- Alt Başlık -- 'Baskı' -- Yazar -- (Yıl).uzantı
 - **`organize`**: Yeniden adlandırılmış dosyaları kategori klasörlerine taşır
 - **`benchmark`**: PDF çıkarma kütüphanesi performansını karşılaştırır
 - **`eval-model`**: Farklı LLM modellerini doğruluk açısından test eder
+- **`--vision`**: Görüntü yetenekli LLM ile PDF'leri işle (OCR gerekmez)
+- **`--rename-images`**: Yapay zeka görüntü kullanarak görüntü dosyalarını yeniden adlandır
 
 ---
 
@@ -121,6 +125,48 @@ python main.py "C:/Kitaplar/Yolu" --mode organize
 ```bash
 # Görüntü ön işleme ile geliştirilmiş OCR
 python main.py "C:/Kitaplar/Yolu" --ocr-enhanced --use-mutool
+```
+
+### Multimodal Modu (OCR'suz PDF)
+
+Multimodal modu, görüntü yetenekli LLM'leri kullanarak PDF'leri doğrudan işler - OCR'ye gerek yok! Bu, metin tabanlı PDF'ler için daha hızlı ve doğrudur.
+
+```bash
+# Multimodal model ile PDF'leri işle (OCR yok) - varsayılan provider/model kullanır
+python main.py "C:/Kitaplar/Yolu" --multimodal
+
+# Belirli multimodal model kullan
+python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider openrouter --multimodal-model openai/gpt-4o
+
+# DeepInfra ile Llama Vision
+python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct
+
+# OpenAI GPT-4o
+python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider openai --multimodal-model gpt-4o
+```
+
+### Görüntü Dosyalarını Yeniden Adlandırma
+
+Yapay zeka görüntü analizi kullanarak görüntü dosyalarını yeniden adlandırın. `--multimodal-model` belirtilmesi zorunludur:
+
+```bash
+# Multimodal model ile görüntüleri yeniden adlandır (zorunlu: --multimodal-model)
+python main.py "C:/Fotoğraflar" --rename-images --multimodal-model openai/gpt-4o
+
+# EXIF tarih ekle (varsa)
+python main.py "C:/Fotoğraflar" --rename-images --multimodal-model gpt-4o --exif
+
+# Açık provider ile
+python main.py "C:/Görüntüler" --rename-images --multimodal-provider deepinfra --multimodal-model Qwen/Qwen2-VL-72B-Instruct
+```
+
+### Karışık Klasörler (PDF + Görüntü)
+
+Aynı klasördeki PDF ve görüntü dosyalarını görüntü AI ile işleyin:
+
+```bash
+# PDF'ler multimodal ile, görüntüler multimodal AI ile yeniden adlandırılır
+python main.py "C:/Karışık" --multimodal --rename-images --multimodal-model openai/gpt-4o
 ```
 
 ### Farklı LLM Sağlayıcıları Kullanma
@@ -281,6 +327,46 @@ python main.py "C:/Kitaplar/Yolu" --clear-cache
 
 ---
 
+## 🤖 Görüntü Modelleri
+
+renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LLM'leri destekler. OCR'ye gerek yoktur.
+
+### Önerilen Görüntü Modelleri
+
+| Sağlayıcı | Model | En İyi İçin |
+|------------|-------|----------|
+| **OpenAI** | `gpt-4o` | En iyi doğruluk, güvenilir |
+| **OpenAI** | `gpt-4o-mini` | Hızlı, uygun maliyetli |
+| **OpenRouter** | `openai/gpt-4o` | Esnek fiyatlandırma |
+| **OpenRouter** | `google/gemini-1.5-flash` | Ücretsiz katman mevcut |
+| **DeepInfra** | `meta-llama/Llama-3.2-90B-Vision-Instruct` | Açık kaynak, güçlü |
+| **DeepInfra** | `Qwen/Qwen2-VL-72B-Instruct` | Mükemmel değer |
+| **Özel** | `llava`, `qwen-vl` | Yerel çıkarım |
+
+### Multimodal Modu vs OCR
+
+| Özellik | Multimodal Modu (`--multimodal`) | OCR Modu (varsayılan) |
+|---------|--------------------------|-------------------|
+| **Hız** | Metin PDF'leri için daha hızlı | Daha yavaş |
+| **Doğruluk** | Temiz metin için daha yüksek | Tarama kalitesine bağlı |
+| **Taranmış Belgeler** | Zorlanabilir | Taramalar için optimize |
+| **Diller** | Model ile sınırlı | Türkçe+İngilizce optimize |
+| **API Maliyeti** | Görüntü tokenleri | Metin tokenleri |
+
+**Görüntü Modu ne zaman kullanılır:**
+- Metin tabanlı PDF'ler (kitaplar, makaleler)
+- Tesseract kurulu olmadığında
+- OCR çok yavaş olduğunda
+- Temiz belgelerde daha iyi doğruluk istendiğinde
+
+**OCR ne zaman kullanılır:**
+- Taranmış belgeler
+- Düşük kaliteli görüntüler
+- Çok dilli belgeler
+- Türkçe karakter desteği gerektiğinde
+
+---
+
 ## ✅ En İyi Uygulamalar
 
 1. **Düzenli Yedekler**: Orijinal dosyalarınızın her zaman bir yedeğini tutun
@@ -400,13 +486,36 @@ Tez
 Araştırma
 Diğer
 Sözlük
-```
+
+# Görüntü Kategoriler (--rename-images için)
+LANG: en
+Photo
+Screenshot
+Design
+Art
+Diagram
+Chart
+Document
+Other
+
+LANG: tr
+Fotoğraf
+Ekran Görüntüsü
+Tasarım
+Sanat
+Diyagram
+Grafik
+Belge
+Diğer
 
 ### Komut Seçenekleri
 
 | Seçenek | Açıklama |
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai` veya `custom` |
+| `--model` | Metin işleme için model adı |
+| `--multimodal-provider` | Multimodal modu için provider (varsayılan: --provider ile aynı) |
+| `--multimodal-model` | --multimodal ve --rename-images için görüntü yetenekli model |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Eşzamanlı çalışanlar (varsayılan: 4) |
 | `--ocr-enhanced` | Geliştirilmiş OCR'yi etkinleştir |
@@ -414,6 +523,14 @@ Sözlük
 | `--debug-ocr` | Hata ayıklama görüntülerini kaydet |
 | `--recursive` | Alt dizinleri işle (varsayılan: True) |
 | `--no-recursive` | Yalnızca kök dizini işle |
+| `--multimodal` | PDF'leri multimodal AI ile işle (OCR gerekmez) |
+| `--rename-images` | Görüntü dosyalarını multimodal AI ile yeniden adlandır (--multimodal-model gerekli) |
+| `--exif` | Varsa görüntülere EXIF tarihi ekle |
+| `--text-length` | LLM'e gönderilecek hedef metin uzunluğu (varsayılan: 10000) |
+| `--update-metaveri` | Önbelleği atla ve meta verileri zorla yenile |
+| `--skip-needs-ocr` | OCR gerektiren dosyaları klasöre taşı |
+| `--move-ocr-failures` | Başarısız dosyaları klasöre taşı |
+| `--clear-cache` | Önbelleği temizle ve çık |
 
 ---
 
@@ -524,7 +641,10 @@ Test paketini çalıştırın:
 
 ```bash
 # Tüm testleri çalıştır
-pytest test_file_processor.py -v
+pytest test_*.py -v
+
+# Görüntü modu testlerini çalıştır
+pytest test_vision_*.py -v
 
 # Kapsam ile çalıştır
 pytest test_file_processor.py --cov=file_processor

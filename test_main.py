@@ -1,46 +1,56 @@
 import argparse
-import logging
 import builtins
+import logging
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, call, patch
+
 import pytest
+
 import main
 from config import PROVIDERS
+
 
 def test_setup_environment_win32():
     """Test setup_environment on Windows platform."""
     mock_codecs = MagicMock()
     mock_stdout_buffer = MagicMock()
     mock_stderr_buffer = MagicMock()
-    
-    with patch.object(sys, 'platform', 'win32'):
-        with patch.object(sys, 'stdout', MagicMock(encoding='cp1252', buffer=mock_stdout_buffer)):
-            with patch.object(sys, 'stderr', MagicMock(encoding='cp1252', buffer=mock_stderr_buffer)):
-                with patch('codecs.getwriter') as mock_getwriter:
+
+    with patch.object(sys, "platform", "win32"):
+        with patch.object(
+            sys, "stdout", MagicMock(encoding="cp1252", buffer=mock_stdout_buffer)
+        ):
+            with patch.object(
+                sys, "stderr", MagicMock(encoding="cp1252", buffer=mock_stderr_buffer)
+            ):
+                with patch("codecs.getwriter") as mock_getwriter:
                     mock_writer = MagicMock()
                     mock_getwriter.return_value = mock_writer
                     main.setup_environment()
-                    
-                    mock_getwriter.assert_any_call('utf-8')
+
+                    mock_getwriter.assert_any_call("utf-8")
                     assert mock_getwriter.call_count >= 1
+
 
 def test_setup_environment_win32_already_utf8():
     """Test setup_environment when already using UTF-8."""
-    with patch.object(sys, 'platform', 'win32'):
-        with patch.object(sys, 'stdout', MagicMock(encoding='utf-8')):
-            with patch.object(sys, 'stderr', MagicMock(encoding='utf-8')):
-                with patch('codecs.getwriter') as mock_getwriter:
+    with patch.object(sys, "platform", "win32"):
+        with patch.object(sys, "stdout", MagicMock(encoding="utf-8")):
+            with patch.object(sys, "stderr", MagicMock(encoding="utf-8")):
+                with patch("codecs.getwriter") as mock_getwriter:
                     main.setup_environment()
                     # Should not call codecs when already UTF-8
                     mock_getwriter.assert_not_called()
 
+
 def test_setup_environment_colorama_import_error():
     """Test setup_environment when colorama is not available."""
-    with patch.object(sys, 'platform', 'linux'):
-        with patch.dict('sys.modules', {'colorama': None}):
+    with patch.object(sys, "platform", "linux"):
+        with patch.dict("sys.modules", {"colorama": None}):
             # Should not raise an exception
             main.setup_environment()
+
 
 def test_parse_arguments_defaults():
     """Test parse_arguments with minimal required arguments."""
@@ -65,29 +75,39 @@ def test_parse_arguments_defaults():
     assert args.move_ocr_failures is False
     assert args.recursive is True
     assert args.text_length == 10000
+    assert args.vision is False
+    assert args.rename_images is False
+
 
 def test_parse_arguments_custom_flags():
     """Test parse_arguments with custom flags."""
     test_args = [
         "main.py",
         "custom_dir",
-        "--mode", "organize",
+        "--mode",
+        "organize",
         "--ocr-enhanced",
         "--update-metadata",
         "--debug-ocr",
         "--use-mutool",
-        "--mutool-path", "/usr/bin/mutool",
-        "--provider", "openai",
-        "--model", "gpt-4",
-        "--extractor", "pdfplumber",
+        "--mutool-path",
+        "/usr/bin/mutool",
+        "--provider",
+        "openai",
+        "--model",
+        "gpt-4",
+        "--extractor",
+        "pdfplumber",
         "--benchmark",
         "--eval-model",
-        "--workers", "8",
+        "--workers",
+        "8",
         "--clear-cache",
         "--skip-needs-ocr",
         "--move-ocr-failures",
         "--no-recursive",
-        "--text-length", "5000",
+        "--text-length",
+        "5000",
     ]
     with patch("sys.argv", test_args):
         args = main.parse_arguments()
@@ -110,17 +130,65 @@ def test_parse_arguments_custom_flags():
     assert args.move_ocr_failures is True
     assert args.recursive is False
     assert args.text_length == 5000
+    assert args.vision is False
+    assert args.rename_images is False
+
 
 def test_parse_arguments_invalid_choice():
     """Test parse_arguments with invalid choice exits program."""
     test_args = [
         "main.py",
         "my_dir",
-        "--mode", "invalid_mode",
+        "--mode",
+        "invalid_mode",
     ]
     with patch("sys.argv", test_args), patch("sys.stderr", new_callable=MagicMock):
         with pytest.raises(SystemExit):
             main.parse_arguments()
+
+
+def test_parse_arguments_vision_mode():
+    """Test parse_arguments with vision mode flags."""
+    test_args = [
+        "main.py",
+        "my_dir",
+        "--vision",
+    ]
+    with patch("sys.argv", test_args):
+        args = main.parse_arguments()
+
+    assert args.vision is True
+    assert args.rename_images is False
+
+
+def test_parse_arguments_rename_images():
+    """Test parse_arguments with rename-images flag."""
+    test_args = [
+        "main.py",
+        "my_dir",
+        "--rename-images",
+    ]
+    with patch("sys.argv", test_args):
+        args = main.parse_arguments()
+
+    assert args.vision is False
+    assert args.rename_images is True
+
+
+def test_parse_arguments_vision_and_rename_images():
+    """Test parse_arguments with both vision flags."""
+    test_args = [
+        "main.py",
+        "my_dir",
+        "--vision",
+        "--rename-images",
+    ]
+    with patch("sys.argv", test_args):
+        args = main.parse_arguments()
+
+    assert args.vision is True
+    assert args.rename_images is True
+
 
 def test_check_requirements_success():
     """Test check_requirements when all libraries are present."""
@@ -129,8 +197,10 @@ def test_check_requirements_success():
         mock_import.return_value = MagicMock()
         assert main.check_requirements() is True
 
+
 def test_check_requirements_missing_one(caplog):
     """Test check_requirements when one library is missing."""
+
     def mocked_import(name, *args, **kwargs):
         if name == "pymupdf":
             raise ImportError(f"No module named '{name}'")
@@ -145,8 +215,10 @@ def test_check_requirements_missing_one(caplog):
     assert "MISSING PYTHON LIBRARIES" in caplog.text
     assert "pymupdf is missing. Run: pip install pymupdf" in caplog.text
 
+
 def test_check_requirements_missing_multiple(caplog):
     """Test check_requirements when multiple libraries are missing."""
+
     def mocked_import(name, *args, **kwargs):
         if name in ["pymupdf", "openai", "numpy"]:
             raise ImportError(f"No module named '{name}'")
@@ -167,12 +239,19 @@ def test_process_files_rename_mode(tmp_path, caplog):
         mode="rename",
         workers=2,
         update_metadata=False,
-        skip_needs_ocr=False
+        skip_needs_ocr=False,
+        vision=False,
+        rename_images=False,
     )
 
     # Setup mock processor
     processor = MagicMock()
-    processor.process_single_book.return_value = (True, Path("fake_path"), "fake_name", "fake_category")
+    processor.process_single_book.return_value = (
+        True,
+        Path("fake_path"),
+        "fake_name",
+        "fake_category",
+    )
 
     # Setup files
     file_paths = [tmp_path / "file1.pdf", tmp_path / "file2.epub"]
@@ -199,9 +278,11 @@ def test_process_files_organize_mode(tmp_path, caplog):
     # Setup mock args
     args = argparse.Namespace(
         mode="organize",
-        workers=1,  # Use 1 worker for deterministic ordering in results list if needed
+        workers=2,
         update_metadata=False,
-        skip_needs_ocr=False
+        skip_needs_ocr=False,
+        vision=False,
+        rename_images=False,
     )
 
     # Setup mock processor
@@ -219,7 +300,9 @@ def test_process_files_organize_mode(tmp_path, caplog):
         main.process_files(args, processor, file_paths, root_dir)
 
     # Verify process_single_book was called
-    processor.process_single_book.assert_called_once_with(file_paths[0], "organize", False)
+    processor.process_single_book.assert_called_once_with(
+        file_paths[0], "organize", False
+    )
 
     # Verify organize_files was called with the results
     processor.organize_files.assert_called_once_with([mock_result], root_dir)
@@ -231,7 +314,9 @@ def test_process_files_worker_exception(tmp_path, caplog):
         mode="rename",
         workers=1,
         update_metadata=False,
-        skip_needs_ocr=False
+        skip_needs_ocr=False,
+        vision=False,
+        rename_images=False,
     )
 
     processor = MagicMock()
@@ -255,12 +340,19 @@ def test_process_files_skip_needs_ocr(tmp_path, caplog):
         mode="rename",
         workers=1,
         update_metadata=False,
-        skip_needs_ocr=True
+        skip_needs_ocr=True,
+        vision=False,
+        rename_images=False,
     )
 
     processor = MagicMock()
     # Mock single book to succeed
-    processor.process_single_book.return_value = (True, Path("fake_path"), "fake_name", "fake_category")
+    processor.process_single_book.return_value = (
+        True,
+        Path("fake_path"),
+        "fake_name",
+        "fake_category",
+    )
 
     # Mock get_needs_ocr_files to return some files
     processor.get_needs_ocr_files.return_value = [Path("needs_ocr.pdf")]
@@ -283,15 +375,15 @@ def test_handle_clear_cache(tmp_path, caplog):
     cache_file2 = tmp_path / "cache2.txt"
     cache_file1.write_text("test1")
     cache_file2.write_text("test2")
-    
+
     args = argparse.Namespace(clear_cache=True)
-    
-    with patch('main.ensure_secure_dir'):
-        with patch('config.CACHE_DIR', tmp_path):
+
+    with patch("main.ensure_secure_dir"):
+        with patch("config.CACHE_DIR", tmp_path):
             with caplog.at_level(logging.INFO):
                 with pytest.raises(SystemExit) as exc_info:
                     main.handle_clear_cache(args)
-    
+
     assert exc_info.value.code == 0
     assert not cache_file1.exists()
     assert not cache_file2.exists()
@@ -301,13 +393,13 @@ def test_handle_clear_cache(tmp_path, caplog):
 def test_handle_clear_cache_empty(tmp_path, caplog):
     """Test handle_clear_cache when cache is empty."""
     args = argparse.Namespace(clear_cache=True)
-    
-    with patch('main.ensure_secure_dir'):
-        with patch('config.CACHE_DIR', tmp_path):
+
+    with patch("main.ensure_secure_dir"):
+        with patch("config.CACHE_DIR", tmp_path):
             with caplog.at_level(logging.INFO):
                 with pytest.raises(SystemExit) as exc_info:
                     main.handle_clear_cache(args)
-    
+
     assert exc_info.value.code == 0
     assert "Cache directory is empty" in caplog.text
 
@@ -316,15 +408,15 @@ def test_handle_clear_cache_delete_error(tmp_path, caplog):
     """Test handle_clear_cache handles deletion errors."""
     cache_file = tmp_path / "cache.txt"
     cache_file.write_text("test")
-    
+
     args = argparse.Namespace(clear_cache=True)
-    
-    with patch('main.ensure_secure_dir'):
-        with patch('config.CACHE_DIR', tmp_path):
-            with patch.object(Path, 'unlink', side_effect=Exception("Delete failed")):
+
+    with patch("main.ensure_secure_dir"):
+        with patch("config.CACHE_DIR", tmp_path):
+            with patch.object(Path, "unlink", side_effect=Exception("Delete failed")):
                 with pytest.raises(SystemExit) as exc_info:
                     main.handle_clear_cache(args)
-    
+
     assert exc_info.value.code == 0
     assert "Failed to delete" in caplog.text
 
@@ -339,12 +431,12 @@ def test_setup_engines_invalid_provider(caplog):
         use_mutool=False,
         mutool_path="mutool",
         extractor="pymupdf",
-        text_length=10000
+        text_length=10000,
     )
-    
+
     with pytest.raises(SystemExit) as exc_info:
         main.setup_engines(args)
-    
+
     assert exc_info.value.code == 1
     assert "Invalid provider" in caplog.text
 
@@ -359,18 +451,21 @@ def test_setup_engines_missing_api_key(caplog):
         use_mutool=False,
         mutool_path="mutool",
         extractor="pymupdf",
-        text_length=10000
+        text_length=10000,
     )
-    
+
     # Mock PROVIDERS to return config without api_key
     mock_providers = {
-        "deepinfra": {"base_url": "https://api.example.com", "default_model": "test-model"}
+        "deepinfra": {
+            "base_url": "https://api.example.com",
+            "default_model": "test-model",
+        }
     }
-    
-    with patch('main.PROVIDERS', mock_providers):
+
+    with patch("main.PROVIDERS", mock_providers):
         with pytest.raises(SystemExit) as exc_info:
             main.setup_engines(args)
-    
+
     assert exc_info.value.code == 1
     assert "API Key" in caplog.text
 
@@ -385,23 +480,25 @@ def test_setup_engines_success():
         use_mutool=True,
         mutool_path="/usr/bin/mutool",
         extractor="pymupdf",
-        text_length=5000
+        text_length=5000,
+        multimodal_provider=None,
+        multimodal_model=None,
     )
-    
+
     mock_providers = {
         "deepinfra": {
             "base_url": "https://api.example.com",
             "default_model": "test-model",
-            "api_key": "test-key"
+            "api_key": "test-key",
         }
     }
-    
-    with patch('main.PROVIDERS', mock_providers):
-        with patch('main.OCREngine') as mock_ocr:
-            with patch('main.LLMEngine') as mock_llm:
-                with patch('main.BookProcessor') as mock_processor:
+
+    with patch("main.PROVIDERS", mock_providers):
+        with patch("main.OCREngine") as mock_ocr:
+            with patch("main.LLMEngine") as mock_llm:
+                with patch("main.BookProcessor") as mock_processor:
                     ocr, llm, processor = main.setup_engines(args)
-                    
+
                     mock_ocr.assert_called_once()
                     mock_llm.assert_called_once()
                     mock_processor.assert_called_once()
@@ -412,17 +509,17 @@ def test_collect_files_recursive(tmp_path):
     # Create directory structure
     subdir = tmp_path / "subdir"
     subdir.mkdir()
-    
+
     file1 = tmp_path / "file1.pdf"
     file2 = subdir / "file2.epub"
     file1.write_text("test1")
     file2.write_text("test2")
-    
+
     processor = MagicMock()
     processor.supported_extensions = {".pdf", ".epub"}
-    
+
     files = main.collect_files(tmp_path, processor, recursive=True)
-    
+
     assert len(files) == 2
     assert file1 in files
     assert file2 in files
@@ -432,17 +529,17 @@ def test_collect_files_non_recursive(tmp_path):
     """Test collect_files with recursive=False."""
     subdir = tmp_path / "subdir"
     subdir.mkdir()
-    
+
     file1 = tmp_path / "file1.pdf"
     file2 = subdir / "file2.epub"
     file1.write_text("test1")
     file2.write_text("test2")
-    
+
     processor = MagicMock()
     processor.supported_extensions = {".pdf", ".epub"}
-    
+
     files = main.collect_files(tmp_path, processor, recursive=False)
-    
+
     assert len(files) == 1
     assert file1 in files
     assert file2 not in files
@@ -452,15 +549,15 @@ def test_collect_files_excludes_symlinks(tmp_path):
     """Test collect_files excludes symlinks."""
     file1 = tmp_path / "file1.pdf"
     file1.write_text("test1")
-    
+
     symlink = tmp_path / "symlink.pdf"
     symlink.symlink_to(file1)
-    
+
     processor = MagicMock()
     processor.supported_extensions = {".pdf"}
-    
+
     files = main.collect_files(tmp_path, processor, recursive=False)
-    
+
     assert len(files) == 1
     assert file1 in files
     assert symlink not in files
@@ -472,12 +569,12 @@ def test_collect_files_unsupported_extension(tmp_path):
     file2 = tmp_path / "file2.txt"
     file1.write_text("test1")
     file2.write_text("test2")
-    
+
     processor = MagicMock()
     processor.supported_extensions = {".pdf"}
-    
+
     files = main.collect_files(tmp_path, processor, recursive=False)
-    
+
     assert len(files) == 1
     assert file1 in files
     assert file2 not in files
@@ -488,11 +585,11 @@ def test_process_special_modes_benchmark(tmp_path, caplog):
     args = argparse.Namespace(benchmark=True, eval_model=False)
     processor = MagicMock()
     file_paths = [tmp_path / "file1.pdf", tmp_path / "file2.pdf"]
-    
+
     with caplog.at_level(logging.INFO):
         with pytest.raises(SystemExit) as exc_info:
             main.process_special_modes(args, processor, file_paths)
-    
+
     assert exc_info.value.code == 0
     assert processor.benchmark_extractors.call_count <= 3  # First 3 files
     assert "Starting Benchmark Mode" in caplog.text
@@ -503,14 +600,14 @@ def test_process_special_modes_eval_model(tmp_path, caplog):
     args = argparse.Namespace(benchmark=False, eval_model=True, provider="deepinfra")
     processor = MagicMock()
     file_paths = [tmp_path / "file1.pdf"]
-    
+
     mock_eval_models = ["model1", "model2"]
-    
-    with patch('config.EVAL_MODELS', {"deepinfra": mock_eval_models}):
+
+    with patch("config.EVAL_MODELS", {"deepinfra": mock_eval_models}):
         with caplog.at_level(logging.INFO):
             with pytest.raises(SystemExit) as exc_info:
                 main.process_special_modes(args, processor, file_paths)
-    
+
     assert exc_info.value.code == 0
     assert processor.evaluate_models.called
     assert "Starting Model Evaluation Mode" in caplog.text
@@ -521,12 +618,12 @@ def test_process_special_modes_eval_model_no_models(caplog):
     args = argparse.Namespace(benchmark=False, eval_model=True, provider="unknown")
     processor = MagicMock()
     file_paths = [MagicMock()]
-    
-    with patch('config.EVAL_MODELS', {}):
+
+    with patch("config.EVAL_MODELS", {}):
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit) as exc_info:
                 main.process_special_modes(args, processor, file_paths)
-    
+
     assert exc_info.value.code == 1
     assert "No evaluation models defined" in caplog.text
 
@@ -536,7 +633,7 @@ def test_process_special_modes_neither_flag():
     args = argparse.Namespace(benchmark=False, eval_model=False)
     processor = MagicMock()
     file_paths = [MagicMock()]
-    
+
     # Should not raise SystemExit
     result = main.process_special_modes(args, processor, file_paths)
     assert result is None
@@ -547,14 +644,14 @@ def test_process_special_modes_neither_flag():
 def test_main_directory_not_found(caplog):
     """Test main when directory doesn't exist."""
     test_args = ["main.py", "/nonexistent/directory"]
-    
+
     with patch("sys.argv", test_args):
-        with patch('main.initialize_directories'):
-            with patch('main.check_requirements', return_value=True):
-                with patch('main.display_warnings'):
+        with patch("main.initialize_directories"):
+            with patch("main.check_requirements", return_value=True):
+                with patch("main.display_warnings"):
                     with pytest.raises(SystemExit) as exc_info:
                         main.main()
-    
+
     assert exc_info.value.code == 1
     assert "Directory not found" in caplog.text
 
@@ -562,17 +659,21 @@ def test_main_directory_not_found(caplog):
 def test_main_no_files_found(caplog):
     """Test main when no supported files found."""
     test_args = ["main.py", "."]
-    
+
     with patch("sys.argv", test_args):
-        with patch('main.initialize_directories'):
-            with patch('main.check_requirements', return_value=True):
-                with patch('main.display_warnings'):
-                    with patch('main.setup_engines') as mock_setup:
-                        mock_setup.return_value = (MagicMock(), MagicMock(), MagicMock())
-                        with patch('main.collect_files', return_value=[]):
+        with patch("main.initialize_directories"):
+            with patch("main.check_requirements", return_value=True):
+                with patch("main.display_warnings"):
+                    with patch("main.setup_engines") as mock_setup:
+                        mock_setup.return_value = (
+                            MagicMock(),
+                            MagicMock(),
+                            MagicMock(),
+                        )
+                        with patch("main.collect_files", return_value=[]):
                             with pytest.raises(SystemExit) as exc_info:
                                 main.main()
-    
+
     assert exc_info.value.code == 0
     assert "No supported files found" in caplog.text
 
@@ -580,34 +681,188 @@ def test_main_no_files_found(caplog):
 def test_main_skip_needs_ocr_and_move_ocr_failures(caplog):
     """Test main with both OCR flags enabled."""
     test_args = ["main.py", ".", "--skip-needs-ocr", "--move-ocr-failures"]
-    
+
     with patch("sys.argv", test_args):
-        with patch('main.initialize_directories'):
-            with patch('main.check_requirements', return_value=True):
-                with patch('main.display_warnings'):
-                    with patch('main.setup_engines') as mock_setup:
+        with patch("main.initialize_directories"):
+            with patch("main.check_requirements", return_value=True):
+                with patch("main.display_warnings"):
+                    with patch("main.setup_engines") as mock_setup:
                         mock_processor = MagicMock()
-                        mock_setup.return_value = (MagicMock(), MagicMock(), mock_processor)
+                        mock_setup.return_value = (
+                            MagicMock(),
+                            MagicMock(),
+                            mock_processor,
+                        )
                         mock_processor.supported_extensions = {".pdf"}
-                        
-                        with patch('main.collect_files', return_value=[MagicMock()]):
-                            with patch('main.process_special_modes'):
-                                with patch('main.process_files'):
+
+                        with patch("main.collect_files", return_value=[MagicMock()]):
+                            with patch("main.process_special_modes"):
+                                with patch("main.process_files"):
                                     main.main()
-                        
+
                         # Verify warning was logged
-                        assert "Both --skip-needs-ocr and --move-ocr-failures" in caplog.text
+                        assert (
+                            "Both --skip-needs-ocr and --move-ocr-failures"
+                            in caplog.text
+                        )
+
+
+def test_main_skip_needs_ocr_and_move_ocr_failures(caplog):
+    """Test main with both OCR flags enabled."""
+    test_args = ["main.py", ".", "--skip-needs-ocr", "--move-ocr-failures"]
+
+    with patch("sys.argv", test_args):
+        with patch("main.initialize_directories"):
+            with patch("main.check_requirements", return_value=True):
+                with patch("main.display_warnings"):
+                    with patch("main.setup_engines") as mock_setup:
+                        mock_processor = MagicMock()
+                        mock_setup.return_value = (
+                            MagicMock(),
+                            MagicMock(),
+                            mock_processor,
+                        )
+                        mock_processor.supported_extensions = {".pdf"}
+
+                        with patch("main.collect_files", return_value=[MagicMock()]):
+                            with patch("main.process_special_modes"):
+                                with patch("main.process_files"):
+                                    main.main()
+
+                        # Verify warning was logged
+                        assert (
+                            "Both --skip-needs-ocr and --move-ocr-failures"
+                            in caplog.text
+                        )
 
 
 def test_main_clear_cache_no_directory():
     """Test main with --clear-cache works without directory."""
     test_args = ["main.py", "--clear-cache"]
-    
+
     with patch("sys.argv", test_args):
-        with patch('main.initialize_directories'):
-            with patch('main.check_requirements', return_value=True):
-                with patch('main.handle_clear_cache') as mock_clear:
+        with patch("main.initialize_directories"):
+            with patch("main.check_requirements", return_value=True):
+                with patch("main.handle_clear_cache") as mock_clear:
                     with pytest.raises(SystemExit):
                         main.main()
-                    
+
                     mock_clear.assert_called_once()
+
+
+def test_main_vision_mode_with_skip_needs_ocr_warning(caplog):
+    """Test warning when --vision is used with --skip-needs-ocr."""
+    test_args = [
+        "main.py",
+        ".",
+        "--vision",
+        "--skip-needs-ocr",
+        "--multimodal-provider",
+        "deepinfra",
+        "--multimodal-model",
+        "meta-llama/Llama-3.2-90B-Vision-Instruct",
+    ]
+
+    # Mock vision-capable model
+    mock_llm = MagicMock()
+    mock_llm.is_multimodal_capable.return_value = True
+    mock_llm.model_name = "meta-llama/Llama-3.2-90B-Vision-Instruct"
+
+    with patch("sys.argv", test_args):
+        with patch("main.initialize_directories"):
+            with patch("main.check_requirements", return_value=True):
+                with patch("main.display_warnings"):
+                    with patch("main.setup_engines") as mock_setup:
+                        mock_processor = MagicMock()
+                        mock_setup.return_value = (
+                            MagicMock(),
+                            mock_llm,
+                            mock_processor,
+                        )
+                        mock_processor.supported_extensions = {".pdf"}
+
+                        with patch("main.collect_files", return_value=[MagicMock()]):
+                            with patch("main.process_special_modes"):
+                                with patch("main.process_files"):
+                                    main.main()
+
+                        # Verify warning was logged
+                        assert "--skip-needs-ocr" in caplog.text
+
+
+def test_main_vision_mode_with_ocr_enhanced_warning(caplog):
+    """Test warning when --vision is used with --ocr-enhanced."""
+    test_args = [
+        "main.py",
+        ".",
+        "--vision",
+        "--ocr-enhanced",
+        "--multimodal-provider",
+        "deepinfra",
+        "--multimodal-model",
+        "meta-llama/Llama-3.2-90B-Vision-Instruct",
+    ]
+
+    mock_llm = MagicMock()
+    mock_llm.is_multimodal_capable.return_value = True
+    mock_llm.model_name = "meta-llama/Llama-3.2-90B-Vision-Instruct"
+
+    with patch("sys.argv", test_args):
+        with patch("main.initialize_directories"):
+            with patch("main.check_requirements", return_value=True):
+                with patch("main.display_warnings"):
+                    with patch("main.setup_engines") as mock_setup:
+                        mock_processor = MagicMock()
+                        mock_setup.return_value = (
+                            MagicMock(),
+                            mock_llm,
+                            mock_processor,
+                        )
+                        mock_processor.supported_extensions = {".pdf"}
+
+                        with patch("main.collect_files", return_value=[MagicMock()]):
+                            with patch("main.process_special_modes"):
+                                with patch("main.process_files"):
+                                    main.main()
+
+                        # Verify warning was logged
+                        assert "--ocr-enhanced" in caplog.text
+
+
+def test_main_vision_mode_with_use_mutool_warning(caplog):
+    """Test warning when --vision is used with --use-mutool."""
+    test_args = [
+        "main.py",
+        ".",
+        "--vision",
+        "--use-mutool",
+        "--multimodal-provider",
+        "deepinfra",
+        "--multimodal-model",
+        "meta-llama/Llama-3.2-90B-Vision-Instruct",
+    ]
+
+    mock_llm = MagicMock()
+    mock_llm.is_multimodal_capable.return_value = True
+    mock_llm.model_name = "meta-llama/Llama-3.2-90B-Vision-Instruct"
+
+    with patch("sys.argv", test_args):
+        with patch("main.initialize_directories"):
+            with patch("main.check_requirements", return_value=True):
+                with patch("main.display_warnings"):
+                    with patch("main.setup_engines") as mock_setup:
+                        mock_processor = MagicMock()
+                        mock_setup.return_value = (
+                            MagicMock(),
+                            mock_llm,
+                            mock_processor,
+                        )
+                        mock_processor.supported_extensions = {".pdf"}
+
+                        with patch("main.collect_files", return_value=[MagicMock()]):
+                            with patch("main.process_special_modes"):
+                                with patch("main.process_files"):
+                                    main.main()
+
+                        # Verify warning was logged
+                        assert "--use-mutool" in caplog.text
