@@ -454,6 +454,62 @@ MIT Lisansı - Ayrıntılar için [LICENSE](LICENSE) dosyasına bakın.
 
 ---
 
+## 🤖 Görüntü Modelleri
+
+Görüntü modu, renAI'nin metin çıkarmadan multimodal yapay zeka modelleri kullanarak belge içeriğini "görmesini" sağlar.
+
+### Resim Yeniden Adlandırma
+
+Yapay zeka kullanarak resim dosyalarını (fotoğraflar, ekran görüntüleri) yeniden adlandırın:
+
+```bash
+python main.py "C:/Fotograflar" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+```
+
+Bu komut her resmi analiz edecek ve görsel içeriğine göre yeniden adlandıracaktır.
+
+### Karışık Klasörler (PDF + Resim)
+
+Hem PDF hem de resim içeren klasörleri işleyin:
+
+```bash
+python main.py "C:/Belgeler" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+```
+
+Bu komut şunları işler:
+- PDF'leri görüntü modeli ile (OCR gerekmez)
+- Resimleri görüntü modeli ile
+
+### EXIF Tarih Desteği
+
+Resimleri işlerken, dosya adlarına EXIF tarih bilgisi ekleyebilirsiniz:
+
+```bash
+python main.py "C:/Fotograflar" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
+```
+
+Bu komut, mevcutsa fotoğrafın EXIF meta verilerinden tarihi dosya adına ekler.
+
+### Önerilen Görüntü Modelleri
+
+| Model | Sağlayıcı | Notlar |
+|-------|----------|--------|
+| `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra | Kalite ve hız arasında en iyi denge |
+| `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra | Daha hızlı, büyük partiler için iyi |
+| `openai/gpt-4o` | OpenAI | En yüksek kalite, daha pahalı |
+| `google/gemini-1.5-pro` | OpenRouter | İyi alternatif |
+
+### Görüntü Modu vs OCR
+
+| Özellik | Görüntü Modu | OCR Modu |
+|---------|-------------|----------|
+| Hız | Daha hızlı (metin çıkarma yok) | Daha yavaş |
+| Doğruluk | Modele bağlı | Temiz metin için iyi |
+| Maliyet | Dosya başına API çağrısı | Dosya başına API çağrısı |
+| En iyi için | Taranmış PDF'ler, resimler | Metin tabanlı PDF'ler |
+
+---
+
 ## 📧 Destek
 
 - **Sorunlar**: GitHub'da sorun açın

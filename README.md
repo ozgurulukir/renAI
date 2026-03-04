@@ -460,6 +460,62 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
+## 🤖 Vision Models
+
+Vision mode allows renAI to process PDFs and images without text extraction, using multimodal AI models that can "see" document content.
+
+### Image Renaming
+
+Rename image files (photos, screenshots) using AI:
+
+```bash
+python main.py "C:/Photos" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+```
+
+This will analyze each image and rename it based on its visual content.
+
+### Mixed Folders (PDF + Images)
+
+Process folders containing both PDFs and images:
+
+```bash
+python main.py "C:/Documents" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+```
+
+This processes:
+- PDFs with vision model (no OCR needed)
+- Images with vision model
+
+### EXIF Date Support
+
+When processing images, you can include EXIF date information in filenames:
+
+```bash
+python main.py "C:/Photos" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
+```
+
+This adds the photo date from EXIF metadata to the filename when available.
+
+### Recommended Vision Models
+
+| Model | Provider | Notes |
+|-------|----------|-------|
+| `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra | Best balance of quality and speed |
+| `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra | Faster, good for large batches |
+| `openai/gpt-4o` | OpenAI | Highest quality, more expensive |
+| `google/gemini-1.5-pro` | OpenRouter | Good alternative |
+
+### Vision Mode vs OCR
+
+| Feature | Vision Mode | OCR Mode |
+|---------|-------------|----------|
+| Speed | Faster (no text extraction) | Slower |
+| Accuracy | Depends on model | Good for clear text |
+| Cost | API calls per file | API calls per file |
+| Best for | Scanned PDFs, images | Text-based PDFs |
+
+---
+
 ## 🧪 Testing
 
 Run the test suite:
