@@ -5,10 +5,13 @@ import logging
 import shutil
 import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 import pymupdf
+from PIL import Image
+from PIL.ExifTags import TAGS
 
 from config import (
     CACHE_DIR,
@@ -891,8 +894,40 @@ class BookProcessor:
         """Check if file is a supported image format."""
         return file_path.suffix.lower() in IMAGE_EXTENSIONS
 
+    def get_image_exif_date(self, file_path: Path) -> Optional[str]:
+        """Extract EXIF date from image file.
+
+        Args:
+            file_path: Path to the image file
+
+        Returns:
+            Date string in YYYY-MM-DD format, or None if not available
+        """
+        try:
+            with Image.open(file_path) as img:
+                exif_data = img.getexif()
+                if not exif_data:
+                    return None
+
+                # Try to find date in EXIF tags
+                for tag_id, value in exif_data.items():
+                    tag = TAGS.get(tag_id, tag_id)
+                    if tag == "DateTime" and value:
+                        # Format: "YYYY:MM:DD HH:MM:SS"
+                        if isinstance(value, str) and len(value) >= 10:
+                            # Take only the date part
+                            date_part = value.split()[0].replace(":", "-")
+                            return date_part
+        except Exception:
+            pass
+        return None
+
     def process_single_image(
-        self, file_path: Path, mode: str = "rename", update_metadata: bool = False
+        self,
+        file_path: Path,
+        mode: str = "rename",
+        update_metadata: bool = False,
+        add_exif_date: bool = False,
     ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str], Optional[str]]:
         """Process a single image file using vision model for renaming.
 
@@ -1001,6 +1036,12 @@ class BookProcessor:
             # Add category if present
             if category and category.lower() not in ("other", "diğer"):
                 name_parts.append(category)
+
+            # Add EXIF date if requested and available
+            if add_exif_date:
+                exif_date = self.get_image_exif_date(file_path)
+                if exif_date:
+                    name_parts.append(f"[{exif_date}]")
 
             # Language indicator
             lang_indicator = "tr" if language.lower() == "tr" else "en"

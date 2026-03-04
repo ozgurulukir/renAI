@@ -125,43 +125,46 @@ python main.py "C:/Path/To/Books" --mode rename
 python main.py "C:/Path/To/Books" --mode organize
 ```
 
-### Vision Mode (PDF without OCR)
+### Multimodal Mode (PDF without OCR)
 
-Vision mode uses vision-capable LLMs to process PDFs directly - no OCR needed! This is faster and more accurate for text-based PDFs.
+Multimodal mode uses vision-capable LLMs to process PDFs directly - no OCR needed! This is faster and more accurate for text-based PDFs.
 
 ```bash
-# Process PDFs with vision model (no OCR) - uses default provider/model
-python main.py "C:/Path/To/Books" --vision
+# Process PDFs with multimodal model (no OCR) - uses default provider/model
+python main.py "C:/Path/To/Books" --multimodal
 
-# Use specific vision model
-python main.py "C:/Path/To/Books" --vision --vision-provider openrouter --vision-model openai/gpt-4o
+# Use specific multimodal model
+python main.py "C:/Path/To/Books" --multimodal --multimodal-provider openrouter --multimodal-model openai/gpt-4o
 
 # DeepInfra with Llama Vision
-python main.py "C:/Path/To/Books" --vision --vision-provider deepinfra --vision-model meta-llama/Llama-3.2-90B-Vision-Instruct
+python main.py "C:/Path/To/Books" --multimodal --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct
 
 # OpenAI GPT-4o
-python main.py "C:/Path/To/Books" --vision --vision-provider openai --vision-model gpt-4o
+python main.py "C:/Path/To/Books" --multimodal --multimodal-provider openai --multimodal-model gpt-4o
 ```
 
 ### Image Renaming
 
-Rename image files using AI vision analysis. Requires `--vision-model` to be specified:
+Rename image files using AI vision analysis. Requires `--multimodal-model` to be specified:
 
 ```bash
-# Rename images with vision model (required: --vision-model)
-python main.py "C:/Path/To/Photos" --rename-images --vision-model openai/gpt-4o
+# Rename images with multimodal model (required: --multimodal-model)
+python main.py "C:/Path/To/Photos" --rename-images --multimodal-model openai/gpt-4o
+
+# With EXIF date (if available)
+python main.py "C:/Path/To/Photos" --rename-images --multimodal-model gpt-4o --exif
 
 # With explicit provider
-python main.py "C:/Path/To/Images" --rename-images --vision-provider deepinfra --vision-model Qwen/Qwen2-VL-72B-Instruct
+python main.py "C:/Path/To/Images" --rename-images --multimodal-provider deepinfra --multimodal-model Qwen/Qwen2-VL-72B-Instruct
 ```
 
 ### Mixed Folders (PDF + Images)
 
-Process both PDFs and images in the same folder using vision AI:
+Process both PDFs and images in the same folder using multimodal AI:
 
 ```bash
-# PDFs processed with vision, images renamed with vision
-python main.py "C:/Path/To/Mixed" --vision --rename-images --vision-model openai/gpt-4o
+# PDFs processed with multimodal, images renamed with multimodal
+python main.py "C:/Path/To/Mixed" --multimodal --rename-images --multimodal-model openai/gpt-4o
 ```
 
 ### High-Quality OCR for Scanned Documents
@@ -519,8 +522,8 @@ Diğer
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
 | `--model` | Model name for text processing |
-| `--vision-provider` | Provider for vision mode (default: same as --provider) |
-| `--vision-model` | Vision-capable model for --vision and --rename-images |
+| `--multimodal-provider` | Provider for multimodal mode (default: same as --provider) |
+| `--multimodal-model` | Multimodal model for --multimodal and --rename-images |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Concurrent workers (default: 4) |
 | `--ocr-enhanced` | Enable enhanced OCR |
@@ -528,8 +531,9 @@ Diğer
 | `--debug-ocr` | Save debug images |
 | `--recursive` | Process subdirectories (default: True) |
 | `--no-recursive` | Process root only |
-| `--vision` | Use vision AI for PDFs (no OCR needed) |
-| `--rename-images` | Rename images using vision AI (requires --vision-model) |
+| `--multimodal` | Use multimodal AI for PDFs (no OCR needed) |
+| `--rename-images` | Rename images using multimodal AI (requires --multimodal-model) |
+| `--exif` | Add EXIF date to image filenames when available |
 | `--text-length` | Target text length for LLM (default: 10000) |
 | `--update-metadata` | Force refresh metadata cache |
 | `--skip-needs-ocr` | Move files needing OCR to folder |

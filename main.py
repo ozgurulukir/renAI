@@ -180,6 +180,11 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Also rename image files using vision-capable LLM. Requires --multimodal-provider and --multimodal-model. Use with mixed document/image folders.",
     )
+    parser.add_argument(
+        "--exif",
+        action="store_true",
+        help="Add EXIF date to image filenames when available. Use with --rename-images.",
+    )
 
     return parser.parse_args()
 
@@ -388,8 +393,9 @@ def process_files(
         for p in file_paths:
             # Determine which processing method to use based on file type
             if is_mixed_mode:
+                # Mixed mode: --vision + --rename-images
                 if p.suffix.lower() == ".pdf":
-                    # PDFs in mixed mode: use vision
+                    # PDFs: use vision model
                     future = executor.submit(
                         processor.process_single_book_vision,
                         p,
@@ -397,15 +403,16 @@ def process_files(
                         args.update_metadata,
                     )
                 else:
-                    # Images in mixed mode: use vision
+                    # Images: use image processing with vision model
                     future = executor.submit(
                         processor.process_single_image,
                         p,
                         args.mode,
                         args.update_metadata,
+                        args.exif,
                     )
             elif args.vision:
-                # Vision mode for PDFs
+                # Vision only mode: only PDFs supported
                 future = executor.submit(
                     processor.process_single_book_vision,
                     p,
@@ -413,9 +420,13 @@ def process_files(
                     args.update_metadata,
                 )
             elif args.rename_images:
-                # Image rename mode
+                # Image rename only mode
                 future = executor.submit(
-                    processor.process_single_image, p, args.mode, args.update_metadata
+                    processor.process_single_image,
+                    p,
+                    args.mode,
+                    args.update_metadata,
+                    args.exif,
                 )
             else:
                 # Regular mode: extract text and use LLM
@@ -445,8 +456,8 @@ def process_files(
     else:
         logging.info("Using regular mode - extracting text with OCR/LLM")
 
-    # Only organize for non-image modes
-    if args.mode == "organize" and not args.rename_images:
+    # Organize files if mode is organize
+    if args.mode == "organize":
         processor.organize_files(results, root_dir)
 
     # Report files moved to Needs_OCR folder if enabled

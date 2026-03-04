@@ -35,7 +35,7 @@ Başlık -- Alt Başlık -- 'Baskı' -- Yazar -- (Yıl).uzantı
 | **Çoklu Format Desteği** | PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD ve görüntü dosyalarını (JPG, PNG, HEIC vb.) işler |
 | **Çoklu PDF Çıkarıcıları** | PyMuPDF, pdfplumber, pypdf veya pypdfium2 arasından seçim yapın |
 | **Yapay Zeka Destekli Meta Veri** | Başlıkları, yazarları, yılları ve kategorileri çıkarmak için LLM'leri kullanır |
-| **Görüntü Modu** | Görüntü yetenekli LLM ile PDF'leri OCR olmadan işle (daha hızlı ve doğru) |
+| **Multimodal Modu** | Multimodal (görüntü yetenekli) LLM ile PDF'leri OCR olmadan işle (daha hızlı ve doğru) |
 | **Görüntü Yeniden Adlandırma** | Yapay zeka görüntü analizi ile görüntü dosyalarını yeniden adlandır |
 | **Gelişmiş OCR** | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu |
 | **mutool Desteği** | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır |
@@ -127,34 +127,37 @@ python main.py "C:/Kitaplar/Yolu" --mode organize
 python main.py "C:/Kitaplar/Yolu" --ocr-enhanced --use-mutool
 ```
 
-### Görüntü Modu (OCR'suz PDF)
+### Multimodal Modu (OCR'suz PDF)
 
-Görüntü modu, görüntü yetenekli LLM'leri kullanarak PDF'leri doğrudan işler - OCR'ye gerek yok! Bu, metin tabanlı PDF'ler için daha hızlı ve doğrudur.
+Multimodal modu, görüntü yetenekli LLM'leri kullanarak PDF'leri doğrudan işler - OCR'ye gerek yok! Bu, metin tabanlı PDF'ler için daha hızlı ve doğrudur.
 
 ```bash
-# Görüntü modeli ile PDF'leri işle (OCR yok) - varsayılan provider/model kullanır
-python main.py "C:/Kitaplar/Yolu" --vision
+# Multimodal model ile PDF'leri işle (OCR yok) - varsayılan provider/model kullanır
+python main.py "C:/Kitaplar/Yolu" --multimodal
 
-# Belirli görüntü modeli kullan
-python main.py "C:/Kitaplar/Yolu" --vision --vision-provider openrouter --vision-model openai/gpt-4o
+# Belirli multimodal model kullan
+python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider openrouter --multimodal-model openai/gpt-4o
 
 # DeepInfra ile Llama Vision
-python main.py "C:/Kitaplar/Yolu" --vision --vision-provider deepinfra --vision-model meta-llama/Llama-3.2-90B-Vision-Instruct
+python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct
 
 # OpenAI GPT-4o
-python main.py "C:/Kitaplar/Yolu" --vision --vision-provider openai --vision-model gpt-4o
+python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider openai --multimodal-model gpt-4o
 ```
 
 ### Görüntü Dosyalarını Yeniden Adlandırma
 
-Yapay zeka görüntü analizi kullanarak görüntü dosyalarını yeniden adlandırın. `--vision-model` belirtilmesi zorunludur:
+Yapay zeka görüntü analizi kullanarak görüntü dosyalarını yeniden adlandırın. `--multimodal-model` belirtilmesi zorunludur:
 
 ```bash
-# Görüntü modeli ile görüntüleri yeniden adlandır (zorunlu: --vision-model)
-python main.py "C:/Fotoğraflar" --rename-images --vision-model openai/gpt-4o
+# Multimodal model ile görüntüleri yeniden adlandır (zorunlu: --multimodal-model)
+python main.py "C:/Fotoğraflar" --rename-images --multimodal-model openai/gpt-4o
+
+# EXIF tarih ekle (varsa)
+python main.py "C:/Fotoğraflar" --rename-images --multimodal-model gpt-4o --exif
 
 # Açık provider ile
-python main.py "C:/Görüntüler" --rename-images --vision-provider deepinfra --vision-model Qwen/Qwen2-VL-72B-Instruct
+python main.py "C:/Görüntüler" --rename-images --multimodal-provider deepinfra --multimodal-model Qwen/Qwen2-VL-72B-Instruct
 ```
 
 ### Karışık Klasörler (PDF + Görüntü)
@@ -162,8 +165,8 @@ python main.py "C:/Görüntüler" --rename-images --vision-provider deepinfra --
 Aynı klasördeki PDF ve görüntü dosyalarını görüntü AI ile işleyin:
 
 ```bash
-# PDF'ler görüntü ile, görüntüler görüntü AI ile yeniden adlandırılır
-python main.py "C:/Karışık" --vision --rename-images --vision-model openai/gpt-4o
+# PDF'ler multimodal ile, görüntüler multimodal AI ile yeniden adlandırılır
+python main.py "C:/Karışık" --multimodal --rename-images --multimodal-model openai/gpt-4o
 ```
 
 ### Farklı LLM Sağlayıcıları Kullanma
@@ -340,9 +343,9 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 | **DeepInfra** | `Qwen/Qwen2-VL-72B-Instruct` | Mükemmel değer |
 | **Özel** | `llava`, `qwen-vl` | Yerel çıkarım |
 
-### Görüntü Modu vs OCR
+### Multimodal Modu vs OCR
 
-| Özellik | Görüntü Modu (`--vision`) | OCR Modu (varsayılan) |
+| Özellik | Multimodal Modu (`--multimodal`) | OCR Modu (varsayılan) |
 |---------|--------------------------|-------------------|
 | **Hız** | Metin PDF'leri için daha hızlı | Daha yavaş |
 | **Doğruluk** | Temiz metin için daha yüksek | Tarama kalitesine bağlı |
@@ -511,8 +514,8 @@ Diğer
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai` veya `custom` |
 | `--model` | Metin işleme için model adı |
-| `--vision-provider` | Görüntü modu için provider (varsayılan: --provider ile aynı) |
-| `--vision-model` | --vision ve --rename-images için görüntü yetenekli model |
+| `--multimodal-provider` | Multimodal modu için provider (varsayılan: --provider ile aynı) |
+| `--multimodal-model` | --multimodal ve --rename-images için görüntü yetenekli model |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Eşzamanlı çalışanlar (varsayılan: 4) |
 | `--ocr-enhanced` | Geliştirilmiş OCR'yi etkinleştir |
@@ -520,8 +523,9 @@ Diğer
 | `--debug-ocr` | Hata ayıklama görüntülerini kaydet |
 | `--recursive` | Alt dizinleri işle (varsayılan: True) |
 | `--no-recursive` | Yalnızca kök dizini işle |
-| `--vision` | PDF'leri görüntü AI ile işle (OCR gerekmez) |
-| `--rename-images` | Görüntü dosyalarını yapay zeka ile yeniden adlandır (--vision-model gerekli) |
+| `--multimodal` | PDF'leri multimodal AI ile işle (OCR gerekmez) |
+| `--rename-images` | Görüntü dosyalarını multimodal AI ile yeniden adlandır (--multimodal-model gerekli) |
+| `--exif` | Varsa görüntülere EXIF tarihi ekle |
 | `--text-length` | LLM'e gönderilecek hedef metin uzunluğu (varsayılan: 10000) |
 | `--update-metaveri` | Önbelleği atla ve meta verileri zorla yenile |
 | `--skip-needs-ocr` | OCR gerektiren dosyaları klasöre taşı |
