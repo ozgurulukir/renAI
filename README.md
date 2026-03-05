@@ -1,35 +1,37 @@
-# renAI: AI-Powered Document Renamer and Organizer
+# renAI: AI-Powered Document and Image Organizer
 
-`renAI` is a powerful Python tool that automatically renames and organizes your digital documents using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts metadata directly from document content to create consistent, searchable filenames.
+`renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
 ---
 
 ## 📖 Introduction
 
-Managing large digital document collections can be challenging. Files often arrive with inconsistent or meaningless names, making them difficult to find and organize. renAI solves this by:
+Managing large collections of digital files can be overwhelming when they arrive with cryptic or inconsistent names. renAI solves this by intelligently analyzing your files and generating descriptive, organized filenames.
 
-- **Reading document content** to identify titles, authors, and publication years
-- **Classifying documents** into customizable categories
-- **Applying consistent naming conventions** automatically
-- **Organizing files** into category-based folders when desired
+**Two Powerful Approaches:**
 
-The tool supports multiple document formats (PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD, Images) and works with various LLM providers (DeepInfra, OpenRouter, OpenAI).
+- **Text Extraction Mode**: Reads document content (PDF, EPUB, DOCX, etc.) to identify titles, authors, and publication years using traditional text-based LLMs
+- **Multimodal Vision Mode**: Uses vision-capable LLMs to "see" and understand both documents and images directly - no text extraction or OCR needed!
+
+Whether you're dealing with scanned PDFs, digital documents, or photos, renAI adapts to give you the best results.
+
+The tool supports both cloud-based LLMs (DeepInfra, OpenRouter, OpenAI) and local inference (Ollama, LM Studio), giving you flexibility between convenience and privacy.
 
 ### Naming Convention
 
-**Documents:**
+**Documents (Text Extraction Mode):**
 ```
-Title -- Subtitle -- 'Edition' -- Author -- (Year).ext
+Title -- Subtitle -- Edition -- Author -- (Year).ext
 ```
+*Example: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
 
-Example: `Introduction to Machine Learning -- A Practical Approach -- '1st Edition' -- Andrew Ng -- (2018).pdf`
-
-**Images:**
+**Documents & Images (Multimodal Vision Mode):**
 ```
-Title -- Category -- (Language).ext
+Description -- Category -- (Language).ext
 ```
+*Example: `Deep Learning Research Paper -- Academic.pdf`*
 
-Example: `Sunset at Beach -- Photo -- (en).jpg`
+*Example: `Sunset at Beach -- Photo -- (en).jpg`*
 
 ---
 
