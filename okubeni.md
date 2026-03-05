@@ -1,32 +1,40 @@
-# renAI: Yapay Zeka Güçlü Belge Yeniden Adlandırıcı ve Düzenleyici
+# renAI: Yapay Zeka Destekli Belge ve Görsel Düzenleyici
 
-`renAI`, dijital belgelerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen güçlü bir Python aracıdır. Belge içeriğinden doğrudan meta verileri çıkararak tutarlı ve aranabilir dosya adları oluşturur.
-
-**Çıktı Formatı:** `Başlık -- Alt Başlık -- 'Baskı' -- Yazar -- (Yıl).uzantı`
+`renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı metadata çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
 
 ---
 
 ## 📖 Giriş
 
-Büyük dijital belge koleksiyonlarını yönetmek zorlu olabilir. Dosyalar genellikle tutarsız veya anlamsız isimlerle gelir, bu da onları bulmayı ve düzenlemeyi zorlaştırır. renAI bunu şu şekilleri çözerek:
+Dijital dosya koleksiyonlarınız anlamsız veya tutarsız isimlerle geldiğinde yönetimi zorlaşabilir. renAI, dosyalarınızı akıllıca analiz ederek açıklayıcı ve düzenli dosya isimleri oluşturur.
 
-- **Belge içeriğini okuyarak** başlıkları, yazarları ve yayın yıllarını belirler
-- **Belgeleri sınıflandırarak** özelleştirilebilir kategorilere ayırır
-- **Tutarlı adlandırma kuralları uygulayarak** otomatik olarak yeniden adlandırır
-- **İstenirse dosyaları** kategori tabanlı klasörlere düzenler
+**İki Güçlü Yaklaşım:**
 
-Araç birçok belge formatını (PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD) ve çeşitli LLM sağlayıcılarını (DeepInfra, OpenRouter, OpenAI) destekler.
+- **Metin Çıkarma Modu**: Geleneksel metin tabanlı LLM'ler kullanarak belge içeriğinden (PDF, EPUB, DOCX, vb.) başlık, yazar ve yayın yılı gibi bilgileri çıkarır
+- **Multimodal Görüş Modu**: Görüş yeteneğine sahip LLM'ler kullanarak hem belgeleri hem de görselleri "görür" ve anlar - metin çıkarma veya OCR gerektirmez!
 
-### Adlandırma Kuralı
+İster taranmış PDF'lerle, ister dijital belgelerle veya fotoğraflarla uğraşıyor olun, renAI size en iyi sonuçları verecek şekilde uyum sağlar.
 
-Dosyalar şu format kullanılarak yeniden adlandırılır:
+Araç hem bulut tabanlı LLM'leri (DeepInfra, OpenRouter, OpenAI) hem de yerel çalışan modelleri (Ollama, LM Studio) destekler, böylece kullanım kolaylığı ve gizlilik arasında seçim yapabilirsiniz.
+
+### İsimlendirme Standardı
+
+**Belgeler (Metin Çıkarma Modu):**
 ```
-Başlık -- Alt Başlık -- 'Baskı' -- Yazar -- (Yıl).uzantı
+Başlık -- Alt Başlık -- Baskı -- Yazar -- (Yıl).uzantı
 ```
+*Örnek: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
 
-Örnek: `Makine Öğrenimine Giriş -- Pratik Bir Yaklaşım -- '1. Baskı' -- Andrew Ng -- (2018).pdf`
+**Belge ve Görseller (Multimodal Görüş Modu):**
+```
+Açıklama -- Kategori -- (Dil).uzantı
+```
+*Örnek: `Deep Learning Research Paper -- Academic -- (en).pdf`*
+
+*Örnel: `Sunset at Beach -- Photo -- (en).jpg`*
 
 ---
+
 
 ## ✨ Özellikler
 
