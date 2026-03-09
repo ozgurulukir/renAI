@@ -4,7 +4,14 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, mock_open
 import pytest
-from config import get_tesseract_path, load_categories_from_file, display_warnings, load_eval_models
+from config import (
+    DEFAULT_CATEGORIES,
+    display_warnings,
+    get_allowed_categories,
+    get_tesseract_path,
+    load_categories_from_file,
+    load_eval_models,
+)
 
 def test_load_categories_file_not_exists():
     with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
@@ -135,6 +142,19 @@ def test_display_warnings_keyboard_interrupt():
 
                         mock_info.assert_called_once_with("\nOperation cancelled by user.")
                         mock_exit.assert_called_once_with(0)
+
+
+def test_get_allowed_categories_default():
+    """Verify that get_allowed_categories returns DEFAULT_CATEGORIES when CUSTOM_CATEGORIES is empty."""
+    with patch("config.CUSTOM_CATEGORIES", {}):
+        assert get_allowed_categories() == DEFAULT_CATEGORIES
+
+
+def test_get_allowed_categories_custom():
+    """Verify that get_allowed_categories returns CUSTOM_CATEGORIES when it is not empty."""
+    custom = {"en": ["Custom"]}
+    with patch("config.CUSTOM_CATEGORIES", custom):
+        assert get_allowed_categories() == custom
 
 def test_initialize_directories():
     with patch("utils.ensure_secure_dir") as mock_ensure:
