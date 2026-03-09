@@ -7,6 +7,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# Pre-compiled regular expressions for filename sanitization
+RE_INVALID_CHARS = re.compile(r'[<>:"/\\|?*]')
+RE_WHITESPACE = re.compile(r"\s+")
+RE_CONSECUTIVE_DOTS = re.compile(r"\.\.+")
+
 
 def get_file_hash(file_path: Path) -> str:
     """Calculate the MD5 hash of a file to uniquely identify its content."""
@@ -89,16 +94,16 @@ def sanitize_filename(filename: str, max_length: int = 150) -> str:
     Limits length to stay within Windows path limits.
     """
     # Remove invalid characters for Windows paths: < > : " / \ | ? *
-    sanitized = re.sub(r'[<>:"/\\|?*]', "", filename)
+    sanitized = RE_INVALID_CHARS.sub("", filename)
 
     # Remove ALL control characters (including \r, \n, \t) and non-printable chars
     sanitized = "".join(char for char in sanitized if char.isprintable())
 
     # Replace any multiple spaces with single space
-    sanitized = re.sub(r"\s+", " ", sanitized)
+    sanitized = RE_WHITESPACE.sub(" ", sanitized)
 
     # Remove consecutive dots
-    sanitized = re.sub(r"\.\.+", ".", sanitized)
+    sanitized = RE_CONSECUTIVE_DOTS.sub(".", sanitized)
 
     # Trim leading/trailing spaces and dots
     sanitized = sanitized.strip(" .")
