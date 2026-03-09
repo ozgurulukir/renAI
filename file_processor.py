@@ -1,11 +1,8 @@
-import base64
-import io
 import json
 import logging
 import shutil
 import threading
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
@@ -156,8 +153,6 @@ class BookProcessor:
             return self.vision_llm_engine
 
         # Use vision-specific provider/model or fall back to default
-        from config import PROVIDERS
-
         vp = self.multimodal_provider or self.provider
         vm = self.multimodal_model or self.model
 
@@ -651,8 +646,6 @@ class BookProcessor:
         """
         try:
             from io import BytesIO
-
-            from PIL import Image
 
             with pymupdf.open(str(file_path)) as doc:
                 if page_number >= len(doc):
