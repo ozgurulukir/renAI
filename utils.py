@@ -129,6 +129,14 @@ def ensure_secure_dir(path: Path) -> None:
     if not username:
         return
 
+    # Security: Validate username to prevent command injection
+    # Allows alphanumeric, spaces, dots, underscores, hyphens, @, and backslashes.
+    # Must start with an alphanumeric character or underscore.
+    # This covers standard local users, domain users (DOMAIN\user), and email-style names.
+    if not re.match(r"^\w[\w\s.@\\-]*$", username):
+        logging.warning(f"Invalid username for secure permissions: {username}")
+        return
+
     try:
         # /inheritance:r - remove inherited ACEs
         # /grant:r %USERNAME%:F - grant full control to current user
