@@ -72,3 +72,4 @@ htmlcov/
 *.pyo
 dist/
 build/
+developer/
