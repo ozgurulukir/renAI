@@ -46,7 +46,7 @@ def get_provider_model_key(provider: str, model: str) -> str:
 
 
 def get_metadata_cache_path(
-    file_hash: str, provider: str, model: str, cache_dir: Path
+    file_hash: str, provider: str, model: str, cache_dir: Path, use_vision: bool = False
 ) -> Path:
     """Get the cache path for metadata with provider-model awareness.
 
@@ -59,12 +59,14 @@ def get_metadata_cache_path(
         provider: LLM provider name
         model: Model name
         cache_dir: Directory for cache files
+        use_vision: If True, creates separate cache for vision mode processing
 
     Returns:
         Path to the metadata cache file
     """
     provider_model_key = get_provider_model_key(provider, model)
-    cache_filename = f"{file_hash}_{provider_model_key}_metadata.json"
+    vision_suffix = "_vision" if use_vision else ""
+    cache_filename = f"{file_hash}_{provider_model_key}{vision_suffix}_metadata.json"
     return cache_dir / cache_filename
 
 

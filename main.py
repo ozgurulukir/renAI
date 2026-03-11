@@ -4,7 +4,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from config import PROVIDERS, display_warnings, initialize_directories
+from config import IMAGE_EXTENSIONS, PROVIDERS, display_warnings, initialize_directories
 from file_processor import BookProcessor
 from llm_engine import LLMEngine
 from ocr_engine import OCREngine
@@ -91,7 +91,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--use-mutool",
         action="store_true",
-        help="Use mutool for higher quality extraction (recommended for fixed PDF)",
+        help="Use mutool for high-quality PDF-to-image conversion during OCR fallback (recommended for scanned PDFs)",
     )
     parser.add_argument(
         "--mutool-path", type=str, default="mutool", help="Path to mutool executable"
@@ -157,28 +157,17 @@ def parse_arguments() -> argparse.Namespace:
         help="Target text length to send to LLM (default: 10000). Lower values reduce load on local models.",
     )
     # Vision mode arguments
-    # Note: --vision is auto-enabled when --multimodal-model is provided
     parser.add_argument(
         "--vision",
         action="store_true",
-        help="Use vision-capable LLM for PDFs. Auto-enabled when --multimodal-model is specified.",
-    )
-    parser.add_argument(
-        "--multimodal-provider",
-        type=str,
-        default=None,
-        help="Provider for vision mode (overrides default). Use with --vision or --rename-images.",
-    )
-    parser.add_argument(
-        "--multimodal-model",
-        type=str,
-        default=None,
-        help="Model for vision mode. Use with --vision or --rename-images. Must be a vision-capable model.",
+        help="Use vision-capable LLM to process PDFs instead of OCR fallback. "
+        "Ignores --ocr-enhanced, --use-mutool, --skip-needs-ocr, --move-ocr-failures.",
     )
     parser.add_argument(
         "--rename-images",
         action="store_true",
-        help="Also rename image files using vision-capable LLM. Requires --multimodal-provider and --multimodal-model. Use with mixed document/image folders.",
+        help="Rename image files using vision-capable LLM. "
+        "Requires vision-capable model. Does not auto-enable --vision.",
     )
     parser.add_argument(
         "--exif",
@@ -215,53 +204,9 @@ def validate_vision_mode(args: argparse.Namespace) -> bool:
 
     Returns True if valid, False otherwise.
     """
-    # Import here to avoid circular import
-    from config import is_multimodal_model
-
-    # --rename-images always requires vision model
-    if args.rename_images:
-        multimodal_provider = args.multimodal_provider or args.provider
-        multimodal_model = args.multimodal_model or args.model
-
-        if not multimodal_model:
-            logging.error(
-                f"\n{'=' * 60}\n"
-                f"VISION MODEL REQUIRED\n"
-                f"{'=' * 60}\n"
-                f"No model specified for --rename-images mode.\n"
-                f"\n"
-                f"You must specify a vision-capable model using --multimodal-model:\n"
-                f"  python main.py ./folder --rename-images --multimodal-provider openrouter --multimodal-model openai/gpt-4o\n"
-                f"\n"
-                f"Or use --vision with default provider:\n"
-                f"  python main.py ./folder --rename-images --multimodal-model gpt-4o\n"
-                f"{'=' * 60}\n"
-            )
-            return False
-
-        if not is_multimodal_model(multimodal_provider, multimodal_model):
-            logging.error(
-                f"\n{'=' * 60}\n"
-                f"VISION MODEL REQUIRED\n"
-                f"{'=' * 60}\n"
-                f"The model '{multimodal_model}' does not support vision.\n"
-                f"\n"
-                f"For --rename-images mode, you need a vision-capable model.\n"
-                f"\n"
-                f"Recommended vision-capable models:\n"
-                f"  - DeepInfra:   meta-llama/Llama-3.2-90B-Vision-Instruct\n"
-                f"  - OpenRouter:  openai/gpt-4o, google/gemini-1.5-flash\n"
-                f"  - OpenAI:      gpt-4o, gpt-4o-mini\n"
-                f"  - Custom:      llava, qwen-vl (local models)\n"
-                f"\n"
-                f"Use --multimodal-model flag to specify a vision model:\n"
-                f"  python main.py ./folder --rename-images --multimodal-provider openrouter --multimodal-model openai/gpt-4o\n"
-                f"{'=' * 60}\n"
-            )
-            return False
-
-    # --vision alone: Use default provider/model (validated by setup_engines)
-    # Vision model validation happens in _get_vision_llm_engine when actually used
+    # Model validation is now user responsibility
+    # The warning is displayed earlier in the main() function
+    # If user selects a non-vision model, API will return an error or unexpected results
 
     return True
 
@@ -270,11 +215,13 @@ def setup_engines(
     args: argparse.Namespace,
 ) -> tuple[OCREngine, LLMEngine, BookProcessor]:
     # Initialize engines
+    # In vision mode, OCR is only used as fallback - suppress initialization logging
     ocr_engine = OCREngine(
         enhanced=args.ocr_enhanced,
         debug=args.debug_ocr,
         use_mutool=args.use_mutool,
         mutool_path=args.mutool_path,
+        silent=args.vision,
     )
     # LLM initialization with provider selection
     provider_config = PROVIDERS.get(args.provider)
@@ -299,7 +246,6 @@ def setup_engines(
     )
 
     # Initialize processor with provider-model tracking for cache invalidation
-    # Also pass vision-specific provider/model for mixed document/image processing
     processor = BookProcessor(
         ocr_engine,
         llm_engine,
@@ -307,8 +253,6 @@ def setup_engines(
         provider=args.provider,
         model=model_name,
         target_length=args.text_length,
-        multimodal_provider=args.multimodal_provider,
-        multimodal_model=args.multimodal_model,
     )
 
     return ocr_engine, llm_engine, processor
@@ -350,9 +294,48 @@ def collect_image_files(
     return file_paths
 
 
+def is_image_file_by_extension(file_path: Path) -> bool:
+    """Check if file is an image based on extension."""
+    from config import IMAGE_EXTENSIONS
+    return file_path.suffix.lower() in IMAGE_EXTENSIONS
+
+
 def process_special_modes(
     args: argparse.Namespace, processor: BookProcessor, file_paths: list[Path]
 ) -> None:
+    # Check for conflicting special modes (these are mutually exclusive)
+    if args.benchmark and args.eval_model:
+        logging.error(
+            "Cannot use --benchmark and --eval-model at the same time. "
+            "Please use only one of these options."
+        )
+        sys.exit(1)
+
+    # Warnings for special modes combined with other flags
+    if args.benchmark and args.vision:
+        logging.warning(
+            "Note: --benchmark ignores --vision. "
+            "Benchmark tests text extraction extractors, not vision models."
+        )
+
+    if args.benchmark and args.rename_images:
+        logging.warning(
+            "Note: --benchmark ignores --rename-images. "
+            "Benchmark tests text extraction extractors only."
+        )
+
+    if args.eval_model and args.vision:
+        logging.warning(
+            "Note: --eval-model will use vision mode for PDF text extraction. "
+            "This tests how vision-capable models perform on metadata extraction."
+        )
+
+    if args.eval_model and args.rename_images:
+        logging.warning(
+            "Note: --eval-model ignores --rename-images. "
+            "Evaluation tests text extraction, not file renaming."
+        )
+
     # Benchmark mode logic
     if args.benchmark:
         logging.info("Starting Benchmark Mode...")
@@ -385,25 +368,18 @@ def process_files(
     """Process files based on mode (regular, vision, or image rename)."""
     results = []
 
-    # For mixed folders (--vision + --rename-images), we need different methods per file type
-    is_mixed_mode = args.vision and args.rename_images
+    # Mixed mode: --rename-images handles both images and non-images
+    # When --rename-images is used, images go to process_single_image,
+    # non-images go to normal processing (with OCR or vision fallback based on --vision)
 
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {}
         for p in file_paths:
             # Determine which processing method to use based on file type
-            if is_mixed_mode:
-                # Mixed mode: --vision + --rename-images
-                if p.suffix.lower() == ".pdf":
-                    # PDFs: use vision model
-                    future = executor.submit(
-                        processor.process_single_book_vision,
-                        p,
-                        args.mode,
-                        args.update_metadata,
-                    )
-                else:
-                    # Images: use image processing with vision model
+            if p.suffix.lower() in IMAGE_EXTENSIONS:
+                # Handle images
+                if args.rename_images:
+                    # --rename-images (with or without --vision): use vision model
                     future = executor.submit(
                         processor.process_single_image,
                         p,
@@ -411,28 +387,28 @@ def process_files(
                         args.update_metadata,
                         args.exif,
                     )
-            elif args.vision:
-                # Vision only mode: only PDFs supported
-                future = executor.submit(
-                    processor.process_single_book_vision,
-                    p,
-                    args.mode,
-                    args.update_metadata,
-                )
-            elif args.rename_images:
-                # Image rename only mode
-                future = executor.submit(
-                    processor.process_single_image,
-                    p,
-                    args.mode,
-                    args.update_metadata,
-                    args.exif,
-                )
+                else:
+                    # --vision alone: skip images
+                    logging.info(f"Skipping image in --vision mode: {p.name}")
+                    continue
             else:
-                # Regular mode: extract text and use LLM
-                future = executor.submit(
-                    processor.process_single_book, p, args.mode, args.update_metadata
-                )
+                # Handle non-image files (PDF, EPUB, TXT, etc.)
+                if args.vision:
+                    # --vision (with or without --rename-images): use vision fallback
+                    future = executor.submit(
+                        processor.process_single_book_vision,
+                        p,
+                        args.mode,
+                        args.update_metadata,
+                    )
+                else:
+                    # Regular mode or --rename-images alone: use normal processing with OCR fallback
+                    future = executor.submit(
+                        processor.process_single_book,
+                        p,
+                        args.mode,
+                        args.update_metadata,
+                    )
             futures[future] = p
 
         for future in futures:
@@ -443,16 +419,29 @@ def process_files(
                 results.append((False, None, None, None, None))
 
     # Log processing mode info
-    if is_mixed_mode:
+    if args.vision and args.rename_images:
+        # Mixed mode: PDFs with vision, images with vision
         pdf_count = sum(1 for p in file_paths if p.suffix.lower() == ".pdf")
-        img_count = len(file_paths) - pdf_count
+        img_count = sum(1 for p in file_paths if p.suffix.lower() in IMAGE_EXTENSIONS)
         logging.info(
-            f"Processed {pdf_count} PDFs and {img_count} images with vision model"
+            f"Processed {pdf_count} PDFs and {img_count} images "
+            f"(PDFs: vision model, Images: vision model)"
         )
     elif args.vision:
-        logging.info("Using VISION mode - processing PDFs with vision model")
+        # Vision only: PDFs with vision, images skipped
+        pdf_count = sum(1 for p in file_paths if p.suffix.lower() == ".pdf")
+        img_count = sum(1 for p in file_paths if p.suffix.lower() in IMAGE_EXTENSIONS)
+        logging.info(
+            f"Processed {pdf_count} PDFs with vision model, skipped {img_count} images"
+        )
     elif args.rename_images:
-        logging.info("Using IMAGE RENAME mode - processing images with vision model")
+        # --rename-images only: PDFs with OCR, images with vision
+        pdf_count = sum(1 for p in file_paths if p.suffix.lower() == ".pdf")
+        img_count = sum(1 for p in file_paths if p.suffix.lower() in IMAGE_EXTENSIONS)
+        logging.info(
+            f"Processed {pdf_count} PDFs and {img_count} images "
+            f"(PDFs: text extraction + OCR, Images: vision model)"
+        )
     else:
         logging.info("Using regular mode - extracting text with OCR/LLM")
 
@@ -505,15 +494,25 @@ def main() -> None:
         logging.error(f"Directory not found: {root_dir}")
         sys.exit(1)
 
-    # Auto-enable --vision when --multimodal-model is provided
-    if args.multimodal_model and not args.vision:
-        args.vision = True
-        logging.info(f"Auto-enabled --vision mode (--multimodal-model was specified)")
+    # Vision mode warning
+    if args.vision or args.rename_images:
+        logging.warning(
+            "Note: --vision and --rename-images require a vision-capable model. "
+            "Your selected model will be used for both text extraction and vision tasks."
+        )
 
     # Setup engines
     ocr_engine, llm_engine, processor = setup_engines(args)
 
     # Validate vision mode requirements
+    if args.rename_images and not args.vision:
+        # --rename-images alone: images get vision, PDFs get regular text extraction
+        logging.info(
+            "Note: --rename-images without --vision will process images with vision model, "
+            "but PDFs will use regular text extraction (not vision). "
+            "Use --vision if you want PDFs processed with vision too."
+        )
+
     if args.vision or args.rename_images:
         # Both flags together = mixed folder processing (valid use case)
         # No warning needed - this is the intended use case for mixed folders
@@ -575,7 +574,7 @@ def main() -> None:
 
     # Collect files based on mode
     if args.vision and args.rename_images:
-        # Mixed folder: collect both PDFs and images
+        # Mixed folder: collect both PDFs and images (all with vision)
         pdf_files = collect_files(root_dir, processor, args.recursive)
         image_files = collect_image_files(root_dir, processor, args.recursive)
         file_paths = pdf_files + image_files
@@ -583,7 +582,14 @@ def main() -> None:
             f"Collected {len(pdf_files)} PDFs and {len(image_files)} images for mixed processing"
         )
     elif args.rename_images:
-        file_paths = collect_image_files(root_dir, processor, args.recursive)
+        # --rename-images alone: PDFs get text extraction, images get vision
+        pdf_files = collect_files(root_dir, processor, args.recursive)
+        image_files = collect_image_files(root_dir, processor, args.recursive)
+        file_paths = pdf_files + image_files
+        logging.info(
+            f"Collected {len(pdf_files)} PDFs and {len(image_files)} images for processing "
+            f"(PDFs: text extraction, Images: vision)"
+        )
     else:
         file_paths = collect_files(root_dir, processor, args.recursive)
 

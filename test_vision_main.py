@@ -53,69 +53,32 @@ def mock_processor():
 
 
 class TestValidateVisionMode:
-    """Test validate_vision_mode function."""
+    """Test validate_vision_mode function.
 
-    def test_vision_alone_uses_default_provider_model(self, mock_args):
-        """Test that --vision alone uses default provider/model (no validation needed)."""
+    Note: Model validation is now user responsibility.
+    The function simply returns True and lets the API handle errors.
+    """
+
+    def test_validate_vision_mode_always_returns_true(self, mock_args):
+        """Test that validate_vision_mode always returns True.
+
+        Model capability validation is now user responsibility.
+        """
+        # Test various combinations - all should return True
         mock_args.vision = True
         mock_args.rename_images = False
-        mock_args.multimodal_model = None
-        mock_args.multimodal_provider = None
-        mock_args.provider = "deepinfra"
-        mock_args.model = "meta-llama/Llama-3.3-70B-Instruct"
-
         result = validate_vision_mode(mock_args)
-
-        # --vision alone doesn't require explicit vision model, uses defaults
         assert result is True
 
-    def test_rename_images_requires_multimodal_model(self, mock_args):
-        """Test that --rename-images requires vision model."""
+        mock_args.vision = False
         mock_args.rename_images = True
-        mock_args.multimodal_model = None
-        mock_args.multimodal_provider = None
-
         result = validate_vision_mode(mock_args)
-
-        assert result is False
-
-    def test_rename_images_with_multimodal_model(self, mock_args):
-        """Test that --rename-images passes with valid vision model."""
-        mock_args.rename_images = True
-        mock_args.multimodal_model = "gpt-4o"
-        mock_args.multimodal_provider = "openai"
-        mock_args.provider = "openai"
-
-        result = validate_vision_mode(mock_args)
-
         assert result is True
 
-    def test_rename_images_non_multimodal_model_fails(self, mock_args):
-        """Test that non-vision model fails for --rename-images."""
+        mock_args.vision = True
         mock_args.rename_images = True
-        mock_args.multimodal_model = "gpt-3.5-turbo"
-        mock_args.multimodal_provider = "openai"
-        mock_args.provider = "openai"
-
         result = validate_vision_mode(mock_args)
-
-        assert result is False
-
-    def test_vision_error_message_contains_info(self, mock_args, caplog):
-        """Test that error message contains useful information for --rename-images."""
-        mock_args.rename_images = True
-        mock_args.multimodal_model = "gpt-3.5-turbo"
-        mock_args.multimodal_provider = "openai"
-        mock_args.provider = "openai"
-
-        with patch("logging.error") as mock_error:
-            validate_vision_mode(mock_args)
-
-            # Check that error was logged with useful info
-            mock_error.assert_called_once()
-            error_msg = mock_error.call_args[0][0]
-            assert "VISION MODEL REQUIRED" in error_msg
-            assert "gpt-3.5-turbo" in error_msg
+        assert result is True
 
 
 class TestCollectImageFiles:
@@ -236,10 +199,10 @@ class TestCollectImageFiles:
             with patch("main.logging") as mock_logging:
                 process_files(mock_args, mock_processor, [test_file], tmp_path)
 
-                # Check that VISION mode is logged
+                # Check that vision mode is logged
                 assert mock_logging.info.called
                 calls = [str(c) for c in mock_logging.info.call_args_list]
-                assert any("VISION" in c for c in calls)
+                assert any("vision model" in c for c in calls)
 
     def test_process_files_logs_image_mode(
         self, tmp_path, mock_args, mock_processor, caplog
@@ -256,18 +219,11 @@ class TestCollectImageFiles:
 
                 assert mock_logging.info.called
                 calls = [str(c) for c in mock_logging.info.call_args_list]
-                assert any("IMAGE" in c for c in calls)
+                assert any("vision model" in c for c in calls)
 
 
 class TestVisionArgValidation:
     """Test vision-related argument validation in main."""
-
-    def test_vision_and_rename_images_mutually_exclusive(self):
-        """Test that both flags can be used together (user choice)."""
-        # Both can be True - user can choose what to process via file type
-        # The logic is: if rename_images, collect_image_files is used
-        # if vision, process_single_book_vision is used
-        pass  # This is more of a design decision test
 
     def test_vision_mode_skips_ocr_folders(self):
         """Test that vision mode ignores OCR folder flags."""

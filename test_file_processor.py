@@ -257,8 +257,6 @@ class TestBookProcessorInit:
         }
         assert processor.move_ocr_failures is False
         assert processor.skip_ocr_files is False
-        assert processor.multimodal_provider is None
-        assert processor.multimodal_model is None
 
     def test_init_with_custom_extractor(self):
         """Test initialization with custom extractor."""
@@ -710,3 +708,192 @@ class TestBookProcessor:
         assert "[model-1] -> ERROR: Model 1 failed mysteriously" in log_content
         assert "[model-2] ->" in log_content
         assert '"Non-Fiction"' in log_content
+
+
+"""
+Expanded tests for file_processor module.
+
+Tests cover:
+- BookProcessor initialization
+- Vision mode processing
+- Image processing
+- Edge cases
+"""
+import json
+import logging
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+
+from file_processor import BookProcessor
+
+
+class TestBookProcessorInit:
+    """Test BookProcessor initialization."""
+
+    def test_processor_initialization_defaults(self):
+        """Test BookProcessor with default parameters."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        assert processor.ocr_engine is mock_ocr
+        assert processor.extractor_name == "pymupdf"
+        assert processor.provider == "deepinfra"
+
+    def test_processor_initialization_custom_params(self):
+        """Test BookProcessor with custom parameters."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm, provider="openai", model="gpt-4")
+        assert processor.provider == "openai"
+        assert processor.model == "gpt-4"
+
+    def test_supported_extensions(self):
+        """Test supported_extensions property."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        assert ".pdf" in processor.supported_extensions
+
+
+class TestBookProcessorFolders:
+    """Test folder setup methods."""
+
+    def test_set_ocr_failures_folder(self, tmp_path):
+        """Test set_ocr_failures_folder creates directory."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        processor.set_ocr_failures_folder(tmp_path, enabled=True)
+        assert (tmp_path / "OCR_Failures").exists()
+
+    def test_set_needs_ocr_folder(self, tmp_path):
+        """Test set_needs_ocr_folder creates directory."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        processor.set_needs_ocr_folder(tmp_path, skip=True)
+        assert (tmp_path / "Needs_OCR").exists()
+
+
+class TestProcessSingleBookVision:
+    """Test process_single_book_vision method."""
+
+    def test_vision_non_pdf_file_skips(self, tmp_path):
+        """Test that non-PDF files are skipped in vision mode."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        mock_llm.is_multimodal_capable.return_value = True
+        processor = BookProcessor(mock_ocr, mock_llm, provider="deepinfra", model="test-model")
+        test_file = tmp_path / "test.epub"
+        test_file.write_text("test content")
+        result = processor.process_single_book_vision(test_file, "rename")
+        assert result == (False, None, None, None, None)
+
+    def test_vision_symlink_skips(self, tmp_path):
+        """Test that symlinks are skipped in vision mode."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        mock_llm.is_multimodal_capable.return_value = True
+        processor = BookProcessor(mock_ocr, mock_llm)
+        real_file = tmp_path / "real.pdf"
+        real_file.write_text("test")
+        symlink = tmp_path / "link.pdf"
+        symlink.symlink_to(real_file)
+        result = processor.process_single_book_vision(symlink, "rename")
+        assert result == (False, None, None, None, None)
+
+    def test_vision_model_not_capable(self, tmp_path):
+        """Test error when model doesn't support vision."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        mock_llm.is_multimodal_capable.return_value = False
+        processor = BookProcessor(mock_ocr, mock_llm)
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("test")
+        result = processor.process_single_book_vision(test_file, "rename")
+        assert result == (False, None, None, None, None)
+
+
+class TestProcessSingleImage:
+    """Test process_single_image method."""
+
+    def test_image_processing(self, tmp_path):
+        """Test basic image processing."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm, provider="deepinfra", model="vision-model")
+        processor.vision_llm = mock_llm
+        test_image = tmp_path / "test.jpg"
+        test_image.write_bytes(b"fake jpeg")
+        mock_llm.get_image_metadata.return_value = {"title": "Test Image", "category": "Photos", "language": "en"}
+        result = processor.process_single_image(test_image, "rename")
+        assert result[0] is True
+
+    def test_get_image_exif_date_without_exif(self, tmp_path):
+        """Test EXIF date returns None when not available."""
+        from PIL import Image
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        img = Image.new("RGB", (100, 100), color="blue")
+        test_file = tmp_path / "test.jpg"
+        img.save(test_file)
+        result = processor.get_image_exif_date(test_file)
+        assert result is None
+
+    def test_is_image_file(self):
+        """Test is_image_file method."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        assert processor.is_image_file(Path("photo.jpg")) is True
+        assert processor.is_image_file(Path("document.pdf")) is False
+
+
+class TestGetOcrFailedFiles:
+    """Test get_ocr_failed_files and get_needs_ocr_files methods."""
+
+    def test_get_ocr_failed_files(self, tmp_path):
+        """Test get_ocr_failed_files returns tracked files."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        failed_file1 = tmp_path / "failed1.pdf"
+        processor.ocr_failed_files = {failed_file1}
+        result = processor.get_ocr_failed_files()
+        assert len(result) == 1
+
+    def test_get_needs_ocr_files(self, tmp_path):
+        """Test get_needs_ocr_files returns files from folder."""
+        mock_ocr = Mock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        needs_dir = tmp_path / "Needs_OCR"
+        needs_dir.mkdir()
+        (needs_dir / "file1.pdf").write_text("test")
+        processor.needs_ocr_dir = needs_dir
+        result = processor.get_needs_ocr_files()
+        assert len(result) == 1
+
+
+class TestOrganizeFilesEdgeCases:
+    """Test organize_files edge cases."""
+
+    def test_organize_empty_list(self, tmp_path):
+        """Test organize_files with empty list."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        result = processor.organize_files([], tmp_path)
+        assert result is None
+
+    def test_organize_all_failures(self, tmp_path):
+        """Test organize_files when all files fail."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
+        processed_info = [(False, None, "", "", ""), (False, None, "", "", "")]
+        result = processor.organize_files(processed_info, tmp_path)
+        assert result is None

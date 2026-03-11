@@ -11,7 +11,7 @@ Managing large collections of digital files can be overwhelming when they arrive
 **Two Powerful Approaches:**
 
 - **Text Extraction Mode**: Reads document content (PDF, EPUB, DOCX, etc.) to identify titles, authors, and publication years using traditional text-based LLMs
-- **Multimodal Vision Mode**: Uses vision-capable LLMs to "see" and understand both documents and images directly - no text extraction or OCR needed!
+- **Multimodal Vision Mode**: Uses vision-capable LLMs to "see" and understand documents and images. If text extraction fails, falls back to vision model instead of OCR.
 
 Whether you're dealing with scanned PDFs, digital documents, or photos, renAI adapts to give you the best results.
 
@@ -42,7 +42,7 @@ Description -- Category -- (Language).ext
 | **Multi-Format Support** | Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD, and image files (JPG, PNG, HEIC, etc.) |
 | **Multiple PDF Extractors** | Choose from PyMuPDF, pdfplumber, pypdf, or pypdfium2 |
 | **AI-Driven Metadata** | Uses LLMs to extract titles, authors, years, and categories |
-| **Vision Mode** | Process PDFs directly with vision-capable LLMs (no OCR needed) |
+| **Vision Mode** | Process PDFs directly with vision-capable LLMs. If text extraction fails, falls back to vision model instead of OCR |
 | **Image Renaming** | Rename image files using AI vision analysis |
 | **Advanced OCR** | Tesseract integration with Enhanced Mode for low-quality scans |
 | **mutool Support** | Extracts high-quality images from fixed-layout PDFs |
@@ -55,8 +55,8 @@ Description -- Category -- (Language).ext
 - **`organize`**: Moves renamed files into category folders
 - **`benchmark`**: Compares PDF extraction library performance
 - **`eval-model`**: Tests different LLM models for accuracy
-- **`--vision`**: Uses vision-capable LLM to process PDFs (no OCR)
-- **`--rename-images`**: Renames image files using AI vision
+- **`--vision`**: Uses vision-capable LLM to process PDFs. If text extraction fails, falls back to vision model instead of OCR.
+- **`--rename-images`**: Renames image files using vision-capable LLM (requires vision model, does not auto-enable --vision)
 
 ---
 
@@ -127,46 +127,46 @@ python main.py "C:/Path/To/Books" --mode rename
 python main.py "C:/Path/To/Books" --mode organize
 ```
 
-### Multimodal Mode (PDF without OCR)
+### Vision Mode (PDF without OCR)
 
-Multimodal mode uses vision-capable LLMs to process PDFs directly - no OCR needed! This is faster and more accurate for text-based PDFs.
+Vision mode uses vision-capable LLMs to process PDFs directly - no OCR needed! This is faster and more accurate for text-based PDFs.
 
 ```bash
-# Process PDFs with multimodal model (no OCR) - uses default provider/model
-python main.py "C:/Path/To/Books" --multimodal
+# Process PDFs with vision model (no OCR) - uses default provider/model
+python main.py "C:/Path/To/Books" --vision
 
-# Use specific multimodal model
-python main.py "C:/Path/To/Books" --multimodal --multimodal-provider openrouter --multimodal-model openai/gpt-4o
+# Use specific vision model
+python main.py "C:/Path/To/Books" --vision --provider openrouter --model openai/gpt-4o
 
 # DeepInfra with Llama Vision
-python main.py "C:/Path/To/Books" --multimodal --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct
+python main.py "C:/Path/To/Books" --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
 
 # OpenAI GPT-4o
-python main.py "C:/Path/To/Books" --multimodal --multimodal-provider openai --multimodal-model gpt-4o
+python main.py "C:/Path/To/Books" --vision --provider openai --model gpt-4o
 ```
 
 ### Image Renaming
 
-Rename image files using AI vision analysis. Requires `--multimodal-model` to be specified:
+Rename image files using AI vision analysis. Requires a vision-capable model:
 
 ```bash
-# Rename images with multimodal model (required: --multimodal-model)
-python main.py "C:/Path/To/Photos" --rename-images --multimodal-model openai/gpt-4o
+# Rename images with vision model
+python main.py "C:/Path/To/Photos" --rename-images --provider openai --model gpt-4o
 
 # With EXIF date (if available)
-python main.py "C:/Path/To/Photos" --rename-images --multimodal-model gpt-4o --exif
+python main.py "C:/Path/To/Photos" --vision --rename-images --provider openai --model gpt-4o --exif
 
-# With explicit provider
-python main.py "C:/Path/To/Images" --rename-images --multimodal-provider deepinfra --multimodal-model Qwen/Qwen2-VL-72B-Instruct
+# With DeepInfra
+python main.py "C:/Path/To/Images" --vision --rename-images --provider deepinfra --model Qwen/Qwen2-VL-72B-Instruct
 ```
 
 ### Mixed Folders (PDF + Images)
 
-Process both PDFs and images in the same folder using multimodal AI:
+Process both PDFs and images in the same folder using vision AI:
 
 ```bash
-# PDFs processed with multimodal, images renamed with multimodal
-python main.py "C:/Path/To/Mixed" --multimodal --rename-images --multimodal-model openai/gpt-4o
+# PDFs processed with vision, images renamed with vision
+python main.py "C:/Path/To/Mixed" --vision --rename-images --provider openai --model gpt-4o
 ```
 
 ### High-Quality OCR for Scanned Documents
@@ -523,24 +523,24 @@ Diğer
 | Option | Description |
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
-| `--model` | Model name for text processing |
-| `--multimodal-provider` | Provider for multimodal mode (default: same as --provider) |
-| `--multimodal-model` | Multimodal model for --multimodal and --rename-images |
+| `--model` | Model name (for text processing or vision if --vision is used) |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Concurrent workers (default: 4) |
 | `--ocr-enhanced` | Enable enhanced OCR |
-| `--use-mutool` | Use mutool for extraction |
+| `--use-mutool` | Use mutool for high-quality PDF-to-image conversion during OCR fallback (recommended for scanned PDFs) |
 | `--debug-ocr` | Save debug images |
 | `--recursive` | Process subdirectories (default: True) |
 | `--no-recursive` | Process root only |
-| `--multimodal` | Use multimodal AI for PDFs (no OCR needed) |
-| `--rename-images` | Rename images using multimodal AI (requires --multimodal-model) |
+| `--vision` | Use vision-capable LLM for PDFs (no OCR needed) |
+| `--rename-images` | Rename images using vision AI (requires --vision) |
 | `--exif` | Add EXIF date to image filenames when available |
 | `--text-length` | Target text length for LLM (default: 10000) |
 | `--update-metadata` | Force refresh metadata cache |
 | `--skip-needs-ocr` | Move files needing OCR to folder |
 | `--move-ocr-failures` | Move failed files to folder |
 | `--clear-cache` | Clear cache and exit |
+
+> **Note:** When using `--vision` or `--rename-images`, ensure your model supports vision (e.g., gpt-4o, gpt-4-turbo, claude-3-opus, gemini-pro).
 
 ---
 
@@ -598,7 +598,7 @@ Vision mode allows renAI to process PDFs and images without text extraction, usi
 Rename image files (photos, screenshots) using AI:
 
 ```bash
-python main.py "C:/Photos" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+python main.py "C:/Photos" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 This will analyze each image and rename it based on its visual content.
@@ -608,7 +608,7 @@ This will analyze each image and rename it based on its visual content.
 Process folders containing both PDFs and images:
 
 ```bash
-python main.py "C:/Documents" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+python main.py "C:/Documents" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 This processes:
@@ -620,7 +620,7 @@ This processes:
 When processing images, you can include EXIF date information in filenames:
 
 ```bash
-python main.py "C:/Photos" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
+python main.py "C:/Photos" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
 ```
 
 This adds the photo date from EXIF metadata to the filename when available.

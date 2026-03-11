@@ -682,16 +682,86 @@ class BookProcessor:
             )
             return None
 
+    def _extract_text_no_ocr(self, file_path: Path) -> str:
+        """Extract text from file WITHOUT OCR fallback.
+
+        Used by --vision mode to try text extraction first.
+        """
+        if file_path.is_symlink():
+            return ""
+
+        ext = file_path.suffix.lower()
+        file_hash = get_file_hash(file_path)
+
+        # Use cache without OCR details
+        cache_path = get_text_cache_path(file_hash, False, False, CACHE_DIR)
+
+        if cache_path.exists():
+            return cache_path.read_text(encoding="utf-8")
+
+        extracted_text = ""
+
+        if ext in self.office_extensions:
+            try:
+                from markitdown import MarkItDown
+                md = MarkItDown()
+                result = md.convert(str(file_path))
+                extracted_text = proportional_chunk_trim(result.text_content, self.target_length, 10)
+            except Exception:
+                pass
+        elif ext in {".txt", ".md"}:
+            try:
+                content = read_text_limited(file_path, MAX_TEXT_READ_SIZE)
+                extracted_text = proportional_chunk_trim(content, self.target_length, 1)
+            except Exception:
+                pass
+        elif ext == ".pdf":
+            full_text = self.extractor.extract_text(file_path) or ""
+            if len(full_text.strip()) > 100:
+                extracted_text = proportional_chunk_trim(full_text, self.target_length, 10)
+
+        if extracted_text.strip():
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(extracted_text, encoding="utf-8")
+
+        return extracted_text
+
+    def _extract_metadata_with_vision(self, file_path: Path, vision_llm) -> Optional[dict]:
+        """Extract metadata from PDF using vision model."""
+        pdf_doc = pymupdf.open(str(file_path))
+        total_pages = len(pdf_doc)
+        pdf_doc.close()
+
+        pages_to_process = []
+        if total_pages <= 5:
+            pages_to_process = list(range(total_pages))
+        else:
+            pages_to_process = [0, 1, 2, total_pages // 2, total_pages - 1]
+
+        all_metadata = []
+        for page_num in pages_to_process:
+            img_bytes = self._convert_pdf_page_to_image(file_path, page_number=page_num, dpi=150)
+            if not img_bytes:
+                continue
+            metadata = vision_llm.get_book_metadata_from_image(file_path, img_bytes)
+            if metadata:
+                all_metadata.append(metadata)
+
+        return all_metadata[0] if all_metadata else None
+
     def process_single_book_vision(
         self, file_path: Path, mode: str, update_metadata: bool = False
     ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str], Optional[str]]:
-        """Process a single document using vision model (no OCR needed).
+        """Process a single document using vision model as fallback.
 
-        This method extracts metadata directly from PDF images using a vision-capable LLM.
-        Only works with PDF files in vision mode.
+        Flow:
+        1. Try text extraction WITHOUT OCR fallback
+        2. If text extraction succeeds → use text-based metadata
+        3. If text extraction fails + PDF → use vision model (fallback)
+        4. If text extraction fails + non-PDF → use normal processing with OCR fallback
 
         Args:
-            file_path: Path to the PDF file
+            file_path: Path to the file
             mode: Processing mode ('rename' or 'organize')
             update_metadata: Force refresh metadata cache
 
@@ -699,12 +769,15 @@ class BookProcessor:
             Tuple of (success, new_path, new_name, category, file_hash)
         """
         try:
-            logging.info(f"Processing with vision model: {file_path.name}")
+            logging.info(f"Processing with vision mode: {file_path.name}")
 
-            # Use vision-specific LLM engine (or fall back to default)
-            vision_llm = self._get_vision_llm_engine(self.ocr_engine)
+            # Skip symlinks
+            if file_path.is_symlink():
+                logging.warning(f"Skipping symlink: {file_path.name}")
+                return False, None, None, None, None
 
-            # Check if model supports vision
+            # Check if model supports vision BEFORE any processing
+            vision_llm = self.llm_engine
             if not vision_llm.is_multimodal_capable():
                 logging.error(
                     f"Model {vision_llm.model_name} does not support vision. "
@@ -712,27 +785,13 @@ class BookProcessor:
                 )
                 return False, None, None, None, None
 
-            # Check file is PDF (vision mode is PDF-only for now)
-            if file_path.suffix.lower() != ".pdf":
-                logging.warning(
-                    f"Vision mode currently supports PDF files only. "
-                    f"Skipping {file_path.name}"
-                )
-                return False, None, None, None, None
-
-            if file_path.is_symlink():
-                logging.warning(f"Skipping symlink: {file_path.name}")
-                return False, None, None, None, None
-
             # Get file hash for caching
             file_hash = get_file_hash(file_path)
 
-            # Use vision-specific provider/model for cache key
-            vp = self.multimodal_provider or self.provider
-            vm = self.multimodal_model or self.model
-
-            # Generate provider-model-aware cache path
-            metadata_cache_path = get_metadata_cache_path(file_hash, vp, vm, CACHE_DIR)
+            # Generate provider-model-aware cache path (use_vision=True for separate cache)
+            metadata_cache_path = get_metadata_cache_path(
+                file_hash, self.provider, self.model, CACHE_DIR, use_vision=True
+            )
 
             book_data = None
 

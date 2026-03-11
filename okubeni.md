@@ -56,8 +56,8 @@ Açıklama -- Kategori -- (Dil).uzantı
 - **`organize`**: Yeniden adlandırılmış dosyaları kategori klasörlerine taşır
 - **`benchmark`**: PDF çıkarma kütüphanesi performansını karşılaştırır
 - **`eval-model`**: Farklı LLM modellerini doğruluk açısından test eder
-- **`--vision`**: Görüntü yetenekli LLM ile PDF'leri işle (OCR gerekmez)
-- **`--rename-images`**: Yapay zeka görüntü kullanarak görüntü dosyalarını yeniden adlandır
+- **`--vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Metin çıkarma başarısız olursa, OCR yerine vision modele fallback yapar.
+- **`--rename-images`**: Görüntü dosyalarını yeniden adlandır (görüntü yetenekli model gerektirir, --vision'ı otomatik etkinleştirmez)
 
 ---
 
@@ -137,44 +137,44 @@ python main.py "C:/Kitaplar/Yolu" --ocr-enhanced --use-mutool
 
 ### Multimodal Modu (OCR'suz PDF)
 
-Multimodal modu, görüntü yetenekli LLM'leri kullanarak PDF'leri doğrudan işler - OCR'ye gerek yok! Bu, metin tabanlı PDF'ler için daha hızlı ve doğrudur.
+Vision modu, görüntü yetenekli LLM'leri kullanarak PDF'leri doğrudan işler. Metin çıkarma başarısız olursa, OCR yerine vision modele fallback yapar. Bu, metin tabanlı PDF'ler için daha hızlı ve doğrudur.
 
 ```bash
-# Multimodal model ile PDF'leri işle (OCR yok) - varsayılan provider/model kullanır
-python main.py "C:/Kitaplar/Yolu" --multimodal
+# Vision model ile PDF'leri işle (OCR yok) - varsayılan provider/model kullanır
+python main.py "C:/Kitaplar/Yolu" --vision
 
-# Belirli multimodal model kullan
-python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider openrouter --multimodal-model openai/gpt-4o
+# Belirli vision model kullan
+python main.py "C:/Kitaplar/Yolu" --vision --provider openrouter --model openai/gpt-4o
 
 # DeepInfra ile Llama Vision
-python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct
+python main.py "C:/Kitaplar/Yolu" --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
 
 # OpenAI GPT-4o
-python main.py "C:/Kitaplar/Yolu" --multimodal --multimodal-provider openai --multimodal-model gpt-4o
+python main.py "C:/Kitaplar/Yolu" --vision --provider openai --model gpt-4o
 ```
 
 ### Görüntü Dosyalarını Yeniden Adlandırma
 
-Yapay zeka görüntü analizi kullanarak görüntü dosyalarını yeniden adlandırın. `--multimodal-model` belirtilmesi zorunludur:
+Yapay zeka görüntü analizi kullanarak görüntü dosyalarını yeniden adlandırın. Görüntü yetenekli bir model belirtilmesi zorunludur:
 
 ```bash
-# Multimodal model ile görüntüleri yeniden adlandır (zorunlu: --multimodal-model)
-python main.py "C:/Fotoğraflar" --rename-images --multimodal-model openai/gpt-4o
+# Görüntü modeli ile görüntüleri yeniden adlandır
+python main.py "C:/Fotoğraflar" --rename-images --provider openai --model gpt-4o
 
 # EXIF tarih ekle (varsa)
-python main.py "C:/Fotoğraflar" --rename-images --multimodal-model gpt-4o --exif
+python main.py "C:/Fotoğraflar" --rename-images --provider openai --model gpt-4o --exif
 
-# Açık provider ile
-python main.py "C:/Görüntüler" --rename-images --multimodal-provider deepinfra --multimodal-model Qwen/Qwen2-VL-72B-Instruct
+# DeepInfra ile
+python main.py "C:/Görüntüler" --rename-images --provider deepinfra --model Qwen/Qwen2-VL-72B-Instruct
 ```
 
 ### Karışık Klasörler (PDF + Görüntü)
 
-Aynı klasördeki PDF ve görüntü dosyalarını görüntü AI ile işleyin:
+Aynı klasördeki PDF ve görüntü dosyalarını vision AI ile işleyin:
 
 ```bash
-# PDF'ler multimodal ile, görüntüler multimodal AI ile yeniden adlandırılır
-python main.py "C:/Karışık" --multimodal --rename-images --multimodal-model openai/gpt-4o
+# PDF'ler vision ile, görüntüler yeniden adlandırılır
+python main.py "C:/Karışık" --vision --rename-images --provider openai --model gpt-4o
 ```
 
 ### Farklı LLM Sağlayıcıları Kullanma
@@ -351,13 +351,14 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 | **DeepInfra** | `Qwen/Qwen2-VL-72B-Instruct` | Mükemmel değer |
 | **Özel** | `llava`, `qwen-vl` | Yerel çıkarım |
 
-### Multimodal Modu vs OCR
+### Vision Modu vs OCR
 
-| Özellik | Multimodal Modu (`--multimodal`) | OCR Modu (varsayılan) |
+| Özellik | Vision Modu (`--vision`) | OCR Modu (varsayılan) |
 |---------|--------------------------|-------------------|
-| **Hız** | Metin PDF'leri için daha hızlı | Daha yavaş |
+| **Metin Çıkarma** | Ö dener, başarısız olursa vision fallback | Öncence dener, başarısız olursa OCR fallback |
+| **Hız** | Metin PDF'leri için daha hızlı | OCR daha yavaş |
 | **Doğruluk** | Temiz metin için daha yüksek | Tarama kalitesine bağlı |
-| **Taranmış Belgeler** | Zorlanabilir | Taramalar için optimize |
+| **Taranmış Belgeler** | Vision ile işler | Taramalar için optimize |
 | **Diller** | Model ile sınırlı | Türkçe+İngilizce optimize |
 | **API Maliyeti** | Görüntü tokenleri | Metin tokenleri |
 
@@ -522,8 +523,7 @@ Diğer
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai` veya `custom` |
 | `--model` | Metin işleme için model adı |
-| `--multimodal-provider` | Multimodal modu için provider (varsayılan: --provider ile aynı) |
-| `--multimodal-model` | --multimodal ve --rename-images için görüntü yetenekli model |
+
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Eşzamanlı çalışanlar (varsayılan: 4) |
 | `--ocr-enhanced` | Geliştirilmiş OCR'yi etkinleştir |
@@ -531,8 +531,8 @@ Diğer
 | `--debug-ocr` | Hata ayıklama görüntülerini kaydet |
 | `--recursive` | Alt dizinleri işle (varsayılan: True) |
 | `--no-recursive` | Yalnızca kök dizini işle |
-| `--multimodal` | PDF'leri multimodal AI ile işle (OCR gerekmez) |
-| `--rename-images` | Görüntü dosyalarını multimodal AI ile yeniden adlandır (--multimodal-model gerekli) |
+| `--vision` | PDF'leri vision AI ile işler. Metin çıkarma başarısız olursa, OCR yerine vision modele fallback yapar. |
+| `--rename-images` | Görüntü dosyalarını vision AI ile yeniden adlandır (--model gerekli, vision yetenekli olmalı) |
 | `--exif` | Varsa görüntülere EXIF tarihi ekle |
 | `--text-length` | LLM'e gönderilecek hedef metin uzunluğu (varsayılan: 10000) |
 | `--update-metaveri` | Önbelleği atla ve meta verileri zorla yenile |
@@ -588,7 +588,7 @@ Görüntü modu, renAI'nin metin çıkarmadan multimodal yapay zeka modelleri ku
 Yapay zeka kullanarak resim dosyalarını (fotoğraflar, ekran görüntüleri) yeniden adlandırın:
 
 ```bash
-python main.py "C:/Fotograflar" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+python main.py "C:/Fotograflar" --mode rename --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 Bu komut her resmi analiz edecek ve görsel içeriğine göre yeniden adlandıracaktır.
@@ -598,7 +598,7 @@ Bu komut her resmi analiz edecek ve görsel içeriğine göre yeniden adlandıra
 Hem PDF hem de resim içeren klasörleri işleyin:
 
 ```bash
-python main.py "C:/Belgeler" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+python main.py "C:/Belgeler" --mode rename --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 Bu komut şunları işler:
@@ -610,7 +610,7 @@ Bu komut şunları işler:
 Resimleri işlerken, dosya adlarına EXIF tarih bilgisi ekleyebilirsiniz:
 
 ```bash
-python main.py "C:/Fotograflar" --mode rename --multimodal-provider deepinfra --multimodal-model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
+python main.py "C:/Fotograflar" --mode rename --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
 ```
 
 Bu komut, mevcutsa fotoğrafın EXIF meta verilerinden tarihi dosya adına ekler.

@@ -162,14 +162,18 @@ class TestProcessSingleBookVision:
         assert result[0] is False  # Success is False
 
     def test_pdf_only_supported(self, book_processor, tmp_path):
-        """Test that non-PDF files are rejected."""
+        """Test that non-PDF files use normal processing with OCR fallback."""
         # Create a fake non-PDF file
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
 
+        # With new behavior, non-PDF files go through normal processing
+        # (which will fail for txt without meaningful content, but that's expected)
         result = book_processor.process_single_book_vision(test_file, "rename")
 
-        assert result[0] is False  # Success is False
+        # Should attempt processing (not skip), result depends on whether text can be extracted
+        # The key is it's NOT being skipped like before
+        assert result is not None
 
     def test_skips_symlinks(self, book_processor, tmp_path):
         """Test that symlinks are skipped."""

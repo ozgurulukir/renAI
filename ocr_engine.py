@@ -13,16 +13,8 @@ from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 from config import CACHE_DIR, DEBUG_DIR, OCR_LANG, SUBPROCESS_TIMEOUT, TESSERACT_PATH
 from utils import ensure_secure_dir, sanitize_filename
 
-# Try to import OpenCV for skew correction
-try:
-    import cv2
-
-    OPENCV_AVAILABLE = True
-except ImportError:
-    OPENCV_AVAILABLE = False
-    logging.warning(
-        "OpenCV not installed. Skew correction will be disabled. Install with: pip install opencv-python"
-    )
+# OpenCV is imported locally in _deskew() to handle optional skew correction
+OPENCV_AVAILABLE = None  # Will be determined on first use
 
 # Configure Tesseract
 if TESSERACT_PATH.exists():
@@ -36,11 +28,13 @@ class OCREngine:
         debug: bool = False,
         use_mutool: bool = False,
         mutool_path: str = "mutool",
+        silent: bool = False,
     ):
         self.enhanced = enhanced
         self.debug = debug
         self.use_mutool = use_mutool
         self.mutool_path = mutool_path
+        self.silent = silent
 
         # Validate mutool if requested
         if self.use_mutool:
@@ -64,9 +58,10 @@ class OCREngine:
                 "deskew": True,
                 "threshold": True,
             }
-            logging.info(
-                "OCR Engine initialized in ENHANCED mode (300 DPI, deskew, threshold, sharpen)"
-            )
+            if not self.silent:
+                logging.info(
+                    "OCR Engine initialized in ENHANCED mode (300 DPI, deskew, threshold, sharpen)"
+                )
         else:
             self.cfg = {
                 "dpi": 150,
@@ -76,7 +71,8 @@ class OCREngine:
                 "deskew": False,
                 "threshold": False,
             }
-            logging.info("OCR Engine initialized in MINIMAL mode (150 DPI)")
+            if not self.silent:
+                logging.info("OCR Engine initialized in MINIMAL mode (150 DPI)")
 
         self.MAX_DIMENSION = 2000
 
@@ -101,11 +97,26 @@ class OCREngine:
 
     def _deskew(self, image: Image.Image) -> Image.Image:
         """Estimate skew angle and rotate image to straighten it."""
+        global OPENCV_AVAILABLE
+
+        # Lazy import OpenCV on first use
+        if OPENCV_AVAILABLE is None:
+            try:
+                import cv2
+                OPENCV_AVAILABLE = True
+            except ImportError:
+                OPENCV_AVAILABLE = False
+                logging.warning(
+                    "OpenCV not installed. Skew correction will be disabled. Install with: pip install opencv-python"
+                )
+
         if not OPENCV_AVAILABLE:
             return image
 
         try:
             # Convert PIL image to numpy array
+            import cv2
+
             image_array = np.asarray(image)
 
             # Handle grayscale vs color (ensure we have a 1-channel image for thresholding)
