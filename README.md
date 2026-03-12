@@ -665,13 +665,13 @@ Run the test suite:
 
 ```bash
 # Run all tests
-pytest test_*.py -v
+pytest tests/ -v
 
 # Run vision-specific tests
-pytest test_vision_*.py -v
+pytest tests/test_vision_*.py -v
 
 # Run with coverage
-pytest test_file_processor.py --cov=file_processor
+pytest tests/test_file_processor.py --cov=file_processor
 ```
 
 ---
