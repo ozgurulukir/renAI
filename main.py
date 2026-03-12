@@ -520,12 +520,8 @@ def main() -> None:
         if not validate_vision_mode(args):
             sys.exit(1)
 
-        # Vision modes skip OCR-related flags
-        if args.skip_needs_ocr or args.move_ocr_failures:
-            logging.warning(
-                "Note: --skip-needs-ocr and --move-ocr-failures are not applicable "
-                "in vision mode. These flags will be ignored."
-            )
+        # Vision modes can use OCR-related flags for vision fallback handling
+        # (Same flags work for vision fallback failures)
 
         if args.ocr_enhanced:
             logging.warning(
@@ -554,8 +550,9 @@ def main() -> None:
         # Info: --text-length is still useful with --rename-images (controls extracted text for non-image files if any)
         # No warning needed, this is valid
 
-    # Set up OCR folders if enabled (not for vision/image modes)
-    if not args.vision and not args.rename_images:
+    # Set up OCR/Needs_OCR folders if enabled
+    # Works for all modes: regular, --vision, --rename-images
+    if True:
         if args.skip_needs_ocr and args.move_ocr_failures:
             logging.warning(
                 "Both --skip-needs-ocr and --move-ocr-failures are enabled. "

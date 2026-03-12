@@ -719,8 +719,8 @@ def test_main_clear_cache_no_directory():
                     mock_clear.assert_called_once()
 
 
-def test_main_vision_mode_with_skip_needs_ocr_warning(caplog):
-    """Test warning when --vision is used with --skip-needs-ocr."""
+def test_main_vision_mode_with_skip_needs_ocr_no_warning(caplog):
+    """Test no warning when --vision is used with --skip-needs-ocr (now supported)."""
     test_args = [
         "main.py",
         ".",
@@ -755,8 +755,8 @@ def test_main_vision_mode_with_skip_needs_ocr_warning(caplog):
                                 with patch("main.process_files"):
                                     main.main()
 
-                        # Verify warning was logged
-                        assert "--skip-needs-ocr" in caplog.text
+                        # Verify set_needs_ocr_folder was called (not a warning)
+                        mock_processor.set_needs_ocr_folder.assert_called_once()
 
 
 def test_main_vision_mode_with_ocr_enhanced_warning(caplog):

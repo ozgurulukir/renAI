@@ -322,7 +322,8 @@ rm -rf .renamer_cache/
 | 2025-01-26 | Added provider-model awareness to cache keys |
 | 2025-01-26 | Implemented cache validation on read |
 | 2025-01-27 | Added vision mode and image renaming cache scenarios |
+| 2026-03-11 | Removed unused `_cached_at` field from metadata cache |
 
 ---
 
-*Last updated: 2025-01-27*
+*Last updated: 2026-03-11*

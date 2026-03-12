@@ -56,8 +56,8 @@ Açıklama -- Kategori -- (Dil).uzantı
 - **`organize`**: Yeniden adlandırılmış dosyaları kategori klasörlerine taşır
 - **`benchmark`**: PDF çıkarma kütüphanesi performansını karşılaştırır
 - **`eval-model`**: Farklı LLM modellerini doğruluk açısından test eder
-- **`--vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Metin çıkarma başarısız olursa, OCR yerine vision modele fallback yapar.
-- **`--rename-images`**: Görüntü dosyalarını yeniden adlandır (görüntü yetenekli model gerektirir, --vision'ı otomatik etkinleştirmez)
+- **`--vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Metin çıkarma başarısız olursa, vision modele fallback yapar. PDF olmayan dosyalar `Needs_OCR/` klasörüne taşınabilir.
+- **`--rename-images`**: Görüntü dosyalarını yeniden adlandırır. Ayrıca görüntü olmayan dosyaları metin çıkarma + OCR fallback ile işler.
 
 ---
 
@@ -170,12 +170,25 @@ python main.py "C:/Görüntüler" --rename-images --provider deepinfra --model Q
 
 ### Karışık Klasörler (PDF + Görüntü)
 
-Aynı klasördeki PDF ve görüntü dosyalarını vision AI ile işleyin:
+Aynı klasördeki PDF ve görüntü dosyalarını işleyin:
+
+| Parametre | PDF/Desteklenen | Resim |
+|-----------|-----------------|-------|
+| `--vision` | Normal → Vision fallback | ⏭️ Atlanır |
+| `--vision --rename-images` | Normal → Vision fallback | 🔄 Vision ile yeniden adlandır |
+| `--rename-images` | Normal → OCR fallback | 🔄 Vision ile yeniden adlandır |
 
 ```bash
-# PDF'ler vision ile, görüntüler yeniden adlandırılır
+# PDF'ler vision ile, görüntüler vision ile yeniden adlandırılır
 python main.py "C:/Karışık" --vision --rename-images --provider openai --model gpt-4o
+
+# Sadece görüntüleri yeniden adlandır (PDF'ler OCR ile)
+python main.py "C:/Karışık" --rename-images --provider openai --model gpt-4o
+
+# Sadece PDF'leri vision ile işle (görüntüler atlanır)
+python main.py "C:/PDFler" --vision --provider openai --model gpt-4o
 ```
+
 
 ### Farklı LLM Sağlayıcıları Kullanma
 
@@ -659,5 +672,7 @@ pytest test_file_processor.py --cov=file_processor
 ```
 
 ---
+
+*Son güncelleme: 2026-03-11*
 
 *renAI - Dijital kütüphanenizi yapay zeka ile düzenleyin*

@@ -729,7 +729,7 @@ import pytest
 from file_processor import BookProcessor
 
 
-class TestBookProcessorInit:
+class TestBookProcessorInit2:
     """Test BookProcessor initialization."""
 
     def test_processor_initialization_defaults(self):
@@ -823,8 +823,8 @@ class TestProcessSingleImage:
         """Test basic image processing."""
         mock_ocr = MagicMock()
         mock_llm = MagicMock()
+        mock_llm.is_multimodal_capable.return_value = True
         processor = BookProcessor(mock_ocr, mock_llm, provider="deepinfra", model="vision-model")
-        processor.vision_llm = mock_llm
         test_image = tmp_path / "test.jpg"
         test_image.write_bytes(b"fake jpeg")
         mock_llm.get_image_metadata.return_value = {"title": "Test Image", "category": "Photos", "language": "en"}

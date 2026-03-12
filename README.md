@@ -2,6 +2,8 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
+*Last updated: 2026-03-11*
+
 ---
 
 ## 📖 Introduction
@@ -11,7 +13,7 @@ Managing large collections of digital files can be overwhelming when they arrive
 **Two Powerful Approaches:**
 
 - **Text Extraction Mode**: Reads document content (PDF, EPUB, DOCX, etc.) to identify titles, authors, and publication years using traditional text-based LLMs
-- **Multimodal Vision Mode**: Uses vision-capable LLMs to "see" and understand documents and images. If text extraction fails, falls back to vision model instead of OCR.
+- **Vision Mode**: Uses vision-capable LLMs to "see" and understand documents and images. If text extraction fails, falls back to vision model instead of OCR.
 
 Whether you're dealing with scanned PDFs, digital documents, or photos, renAI adapts to give you the best results.
 
@@ -25,7 +27,7 @@ Title -- Subtitle -- Edition -- Author -- (Year).ext
 ```
 *Example: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
 
-**Documents & Images (Multimodal Vision Mode):**
+**Documents & Images (Vision Mode):**
 ```
 Description -- Category -- (Language).ext
 ```
@@ -55,8 +57,8 @@ Description -- Category -- (Language).ext
 - **`organize`**: Moves renamed files into category folders
 - **`benchmark`**: Compares PDF extraction library performance
 - **`eval-model`**: Tests different LLM models for accuracy
-- **`--vision`**: Uses vision-capable LLM to process PDFs. If text extraction fails, falls back to vision model instead of OCR.
-- **`--rename-images`**: Renames image files using vision-capable LLM (requires vision model, does not auto-enable --vision)
+- **`--vision`**: Uses vision-capable LLM to process PDFs. If text extraction fails, falls back to vision model. Non-PDF files can be moved to `Needs_OCR/` folder.
+- **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + OCR fallback.
 
 ---
 
@@ -162,11 +164,23 @@ python main.py "C:/Path/To/Images" --vision --rename-images --provider deepinfra
 
 ### Mixed Folders (PDF + Images)
 
-Process both PDFs and images in the same folder using vision AI:
+Process both PDFs and images in the same folder:
+
+| Parameter | PDF/Supported | Image |
+|-----------|---------------|-------|
+| `--vision` | Normal → Vision fallback | ⏭️ Skipped |
+| `--vision --rename-images` | Normal → Vision fallback | 🔄 Vision rename |
+| `--rename-images` | Normal → OCR fallback | 🔄 Vision rename |
 
 ```bash
-# PDFs processed with vision, images renamed with vision
+# PDFs with vision, images with vision
 python main.py "C:/Path/To/Mixed" --vision --rename-images --provider openai --model gpt-4o
+
+# Only rename images (PDFs with OCR)
+python main.py "C:/Path/To/Mixed" --rename-images --provider openai --model gpt-4o
+
+# Only process PDFs with vision (skip images)
+python main.py "C:/Path/To/PDFs" --vision --provider openai --model gpt-4o
 ```
 
 ### High-Quality OCR for Scanned Documents

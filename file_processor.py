@@ -107,8 +107,6 @@ class BookProcessor:
         provider: str = "deepinfra",
         model: str = "",
         target_length: int = 10000,
-        multimodal_provider: Optional[str] = None,
-        multimodal_model: Optional[str] = None,
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
@@ -137,37 +135,6 @@ class BookProcessor:
         self.provider_model_key = get_provider_model_key(self.provider, self.model)
         # Target text length for LLM processing
         self.target_length = target_length
-        # Vision-specific provider and model for mixed processing
-        self.multimodal_provider = multimodal_provider
-        self.multimodal_model = multimodal_model
-        self.vision_llm_engine: Optional[LLMEngine] = None
-        # Lazy initialization flag
-        self._vision_llm_initialized = False
-
-    def _get_vision_llm_engine(self, ocr_engine: OCREngine) -> LLMEngine:
-        """Get or create vision LLM engine for image processing.
-
-        This allows using a different provider/model for images vs documents.
-        """
-        if self._vision_llm_initialized and self.vision_llm_engine is not None:
-            return self.vision_llm_engine
-
-        # Use vision-specific provider/model or fall back to default
-        vp = self.multimodal_provider or self.provider
-        vm = self.multimodal_model or self.model
-
-        provider_config = PROVIDERS.get(vp, {})
-        api_key = provider_config.get("api_key", "")
-        base_url = provider_config.get("base_url", "")
-
-        self.vision_llm_engine = LLMEngine(
-            provider=vp,
-            api_key=api_key,
-            base_url=base_url,
-            model_name=vm,
-        )
-        self._vision_llm_initialized = True
-        return self.vision_llm_engine
 
     def set_ocr_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
         """Set up the OCR failures folder for moving files that require OCR."""
@@ -372,7 +339,6 @@ class BookProcessor:
                             **book_data,
                             "_provider": self.provider,
                             "_model": self.model,
-                            "_cached_at": str(Path(__file__).stat().st_mtime),
                         }
                         metadata_cache_path.write_text(
                             json.dumps(cache_data, ensure_ascii=False, indent=4),
@@ -752,13 +718,13 @@ class BookProcessor:
     def process_single_book_vision(
         self, file_path: Path, mode: str, update_metadata: bool = False
     ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str], Optional[str]]:
-        """Process a single document using vision model as fallback.
+        """Process a single document with vision fallback.
 
         Flow:
-        1. Try text extraction WITHOUT OCR fallback
-        2. If text extraction succeeds → use text-based metadata
-        3. If text extraction fails + PDF → use vision model (fallback)
-        4. If text extraction fails + non-PDF → use normal processing with OCR fallback
+        1. Try text extraction WITHOUT OCR fallback (_extract_text_no_ocr)
+        2. If text extraction succeeds → use LLM metadata
+        3. If text extraction fails + PDF → use vision model (_extract_metadata_with_vision)
+        4. If text extraction fails + non-PDF → log and skip
 
         Args:
             file_path: Path to the file
@@ -777,10 +743,9 @@ class BookProcessor:
                 return False, None, None, None, None
 
             # Check if model supports vision BEFORE any processing
-            vision_llm = self.llm_engine
-            if not vision_llm.is_multimodal_capable():
+            if not self.llm_engine.is_multimodal_capable():
                 logging.error(
-                    f"Model {vision_llm.model_name} does not support vision. "
+                    f"Model {self.llm_engine.model_name} does not support vision. "
                     f"Please use a vision-capable model. See --vision for details."
                 )
                 return False, None, None, None, None
@@ -803,89 +768,124 @@ class BookProcessor:
                     cached_provider = cache_data.get("_provider", "")
                     cached_model = cache_data.get("_model", "")
 
-                    if cached_provider == vp and cached_model == vm:
+                    if cached_provider == self.provider and cached_model == self.model:
                         cache_data.pop("_provider", None)
                         cache_data.pop("_model", None)
                         book_data = cache_data
                         logging.info(
                             f"Using cached metadata for {file_path.name} "
-                            f"(provider: {vp}, model: {vm})"
+                            f"(provider: {self.provider}, model: {self.model})"
                         )
                     else:
                         logging.info(
                             f"Cache invalidated for {file_path.name} "
-                            f"(was {cached_provider}/{cached_model}, now {vp}/{vm})"
+                            f"(was {cached_provider}/{cached_model}, now {self.provider}/{self.model})"
                         )
                 except Exception as e:
                     logging.warning(
                         f"Failed to read metadata cache for {file_path.name}: {e}"
                     )
 
-            # Extract metadata from PDF images if not cached
+            # Step 1: Try text extraction WITHOUT OCR fallback
             if not book_data:
-                # Try first few pages
-                pdf_doc = pymupdf.open(str(file_path))
-                total_pages = len(pdf_doc)
-                pdf_doc.close()
+                text = self._extract_text_no_ocr(file_path)
 
-                # Sample pages: first few + middle + last
-                pages_to_process = []
-                if total_pages <= 5:
-                    pages_to_process = list(range(total_pages))
+                if text:
+                    # Step 2: Text extraction succeeded → use LLM metadata
+                    book_data = self.llm_engine.get_book_metadata(text)
+                    if book_data:
+                        # Save to cache
+                        try:
+                            metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                            cache_data = {
+                                **book_data,
+                                "_provider": self.provider,
+                                "_model": self.model,
+                            }
+                            metadata_cache_path.write_text(
+                                json.dumps(cache_data, ensure_ascii=False, indent=4),
+                                encoding="utf-8",
+                            )
+                            logging.info(
+                                f"Cached metadata for {file_path.name} "
+                                f"(provider: {self.provider}, model: {self.model})"
+                            )
+                        except Exception as e:
+                            logging.warning(f"Failed to save metadata cache: {e}")
                 else:
-                    pages_to_process = [0, 1, 2, total_pages // 2, total_pages - 1]
+                    # Text extraction failed
+                    if file_path.suffix.lower() == ".pdf":
+                        # Step 3: PDF → use vision model (fallback)
+                        logging.info(
+                            f"Text extraction failed for {file_path.name}, using vision model"
+                        )
+                        book_data = self._extract_metadata_with_vision(
+                            file_path, self.llm_engine
+                        )
+                        if book_data:
+                            # Save to cache
+                            try:
+                                metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                                cache_data = {
+                                    **book_data,
+                                    "_provider": self.provider,
+                                    "_model": self.model,
+                                }
+                                metadata_cache_path.write_text(
+                                    json.dumps(cache_data, ensure_ascii=False, indent=4),
+                                    encoding="utf-8",
+                                )
+                                logging.info(
+                                    f"Cached vision metadata for {file_path.name} "
+                                    f"(provider: {self.provider}, model: {self.model})"
+                                )
+                            except Exception as e:
+                                logging.warning(f"Failed to save metadata cache: {e}")
+                        else:
+                            # Vision model also failed - handle like OCR failure
+                            logging.error(
+                                f"Vision model failed to extract metadata from {file_path.name}. "
+                                f"Please check your API key, model selection, and try again."
+                            )
+                            self.ocr_failed_files.add(file_path)
+                            if self.move_ocr_failures and self.ocr_failures_dir:
+                                try:
+                                    dest_path = self.ocr_failures_dir / file_path.name
+                                    safe_move_file(
+                                        file_path,
+                                        dest_path,
+                                        "move to OCR_Failures",
+                                        source_hash=file_hash,
+                                    )
+                                except Exception as e:
+                                    logging.error(
+                                        f"Failed to move {file_path.name} to OCR_Failures: {e}"
+                                    )
+                            return False, None, None, None, None
+                    else:
+                        # Step 4: Non-PDF → handle like OCR needs_ocr
+                        logging.warning(
+                            f"Text extraction failed for {file_path.name} and vision "
+                            f"fallback is only for PDFs."
+                        )
+                        if self.skip_ocr_files and self.needs_ocr_dir:
+                            try:
+                                dest_path = self.needs_ocr_dir / file_path.name
+                                safe_move_file(
+                                    file_path,
+                                    dest_path,
+                                    "move to Needs_OCR",
+                                    source_hash=file_hash,
+                                )
+                            except Exception as e:
+                                logging.error(
+                                    f"Failed to move {file_path.name} to Needs_OCR: {e}"
+                                )
+                        return False, None, None, None, None
 
-                all_metadata = []
-                vision_success = False
-
-                for page_num in pages_to_process:
-                    img_bytes = self._convert_pdf_page_to_image(
-                        file_path, page_number=page_num, dpi=150
-                    )
-                    if not img_bytes:
-                        continue
-
-                    metadata = vision_llm.get_book_metadata_from_image(
-                        file_path, img_bytes
-                    )
-                    if metadata:
-                        all_metadata.append(metadata)
-                        vision_success = True
-
-                if not vision_success:
-                    logging.error(
-                        f"Vision model failed to extract metadata from {file_path.name}. "
-                        f"Please check your API key, model selection, and try again."
-                    )
-                    return False, None, None, None, None
-
-                # Combine metadata from multiple pages (prefer first valid title)
-                book_data = all_metadata[0] if all_metadata else None
-                if not book_data:
-                    logging.error(
-                        f"No metadata extracted from vision model for {file_path.name}"
-                    )
-                    return False, None, None, None, None
-
-                # Save to cache
-                try:
-                    metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
-                    # Use vision-specific provider/model for cache (same as cache path key)
-                    cache_data = {
-                        **book_data,
-                        "_provider": vp,
-                        "_model": vm,
-                    }
-                    metadata_cache_path.write_text(
-                        json.dumps(cache_data, ensure_ascii=False, indent=4),
-                        encoding="utf-8",
-                    )
-                    logging.info(
-                        f"Cached vision metadata for {file_path.name} "
-                        f"(provider: {self.provider}, model: {self.model})"
-                    )
-                except Exception as e:
-                    logging.warning(f"Failed to save metadata cache: {e}")
+            if not book_data:
+                logging.error(f"Failed to extract metadata for {file_path.name}")
+                return False, None, None, None, None
 
             # Construct new filename (same logic as regular processing)
             title = (book_data.get("title") or "").strip()
@@ -994,13 +994,10 @@ class BookProcessor:
         try:
             logging.info(f"Processing image: {file_path.name}")
 
-            # Use vision-specific LLM engine (or fall back to default)
-            vision_llm = self._get_vision_llm_engine(self.ocr_engine)
-
             # Check if model supports vision
-            if not vision_llm.is_multimodal_capable():
+            if not self.llm_engine.is_multimodal_capable():
                 logging.error(
-                    f"Model {vision_llm.model_name} does not support vision. "
+                    f"Model {self.llm_engine.model_name} does not support vision. "
                     f"Please use a vision-capable model for --rename-images."
                 )
                 return False, None, None, None, None
@@ -1012,12 +1009,10 @@ class BookProcessor:
             # Get file hash
             file_hash = get_file_hash(file_path)
 
-            # Use vision-specific provider/model for cache key
-            vp = self.multimodal_provider or self.provider
-            vm = self.multimodal_model or self.model
-
             # Check image metadata cache
-            metadata_cache_path = get_metadata_cache_path(file_hash, vp, vm, CACHE_DIR)
+            metadata_cache_path = get_metadata_cache_path(
+                file_hash, self.provider, self.model, CACHE_DIR
+            )
 
             image_data = None
 
@@ -1029,7 +1024,7 @@ class BookProcessor:
                     cached_provider = cache_data.get("_provider", "")
                     cached_model = cache_data.get("_model", "")
 
-                    if cached_provider == vp and cached_model == vm:
+                    if cached_provider == self.provider and cached_model == self.model:
                         cache_data.pop("_provider", None)
                         cache_data.pop("_model", None)
                         image_data = cache_data
@@ -1049,7 +1044,7 @@ class BookProcessor:
                     logging.error(f"Failed to read image {file_path.name}: {e}")
                     return False, None, None, None, None
 
-                image_data = vision_llm.get_image_metadata(file_path, image_bytes)
+                image_data = self.llm_engine.get_image_metadata(file_path, image_bytes)
 
                 if not image_data:
                     logging.error(
@@ -1061,11 +1056,10 @@ class BookProcessor:
                 # Save to cache
                 try:
                     metadata_cache_path.parent.mkdir(parents=True, exist_ok=True)
-                    # Use vision-specific provider/model for cache (same as cache path key)
                     cache_data = {
                         **image_data,
-                        "_provider": vp,
-                        "_model": vm,
+                        "_provider": self.provider,
+                        "_model": self.model,
                     }
                     metadata_cache_path.write_text(
                         json.dumps(cache_data, ensure_ascii=False, indent=4),

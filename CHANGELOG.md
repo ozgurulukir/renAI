@@ -9,51 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.1] - 2026-03-11
 
-### Fixed
+### Added
 
-- Fixed `cv2` possibly unbound error in `ocr_engine.py` by using lazy import pattern for OpenCV.
+- Added vision failure handling that moves failed files to the `OCR_Failures/` folder when using `--move-ocr-failures`.
+- Added non-PDF file handling in vision mode that moves files to the `Needs_OCR/` folder when using `--skip-needs-ocr`.
+- Added 15 new unit tests for `file_processor.py` to improve test coverage.
+- Test coverage improved from 86% to 87%.
+- `file_processor.py` coverage improved from 60% to 63%.
+- All 296 tests passing (9 skipped).
 
 ### Changed
 
 - Replaced deprecated `--multimodal` flag with `--vision` throughout the codebase and documentation.
 - Removed legacy `--multimodal-provider` and `--multimodal-model` arguments in favor of unified `--provider` and `--model`.
-- Fixed undefined variables `vp` and `vm` in `file_processor.py` vision processing code (now uses `self.provider` and `self.model`).
+- Removed `_get_vision_llm_engine()` method from `BookProcessor` - now uses `self.llm_engine` directly.
 - Updated Turkish documentation (`okubeni.md`) to reflect current CLI arguments.
+- Updated `--vision` mode description to clarify "fallback to vision" behavior.
+- Enabled `--skip-needs-ocr` and `--move-ocr-failures` flags to work with `--vision` mode.
+
+### Fixed
+
+- Fixed mixed mode detection logic to use `args.rename_images` instead of `args.vision and args.rename_images`.
+- Fixed vision fallback to handle failures like OCR failures by moving files to `OCR_Failures/` folder.
+- Fixed non-PDF handling in vision mode to move files to `Needs_OCR/` folder when appropriate.
+- Fixed `process_single_book_vision()` to use helper functions `_extract_text_no_ocr()` and `_extract_metadata_with_vision()`.
+- Fixed undefined variables `vp` and `vm` in `file_processor.py` vision processing code.
+- Fixed unused `_cached_at` field in metadata cache that was written but never read.
+- Fixed `cv2` possibly unbound error in `ocr_engine.py` by using lazy import pattern for OpenCV.
 
 ### Removed
 
 - Removed unused imports (`builtins`, `call`, `PROVIDERS`) from `test_main.py`.
 - Removed unused `typing.Any` import from `file_processor.py`.
 - Removed unused `description` variable from image processing in `file_processor.py`.
-
-### Added
-
-- Added 15 new unit tests for `file_processor.py` to improve test coverage:
-  - `TestBookProcessorInit` (3 tests)
-  - `TestBookProcessorFolders` (2 tests)
-  - `TestProcessSingleBookVision` (3 tests)
-  - `TestProcessSingleImage` (3 tests)
-  - `TestGetOcrFailedFiles` (2 tests)
-  - `TestOrganizeFilesEdgeCases` (2 tests)
-
-### Tests
-
-- Test coverage improved from 86% to 87%.
-- `file_processor.py` coverage improved from 60% to 63%.
-- All 295 tests passing (9 skipped).
+- Removed unused `multimodal_provider` and `multimodal_model` parameters from `BookProcessor.__init__()`.
 
 ## [1.0.0] - 2026-03-11
 
 ### Added
 
-- Initial release.
+- Initial release of renAI.
 - AI-powered document and image organization using LLMs and OCR.
 - Vision mode for processing PDFs with multimodal AI models.
 - Image renaming support using vision-capable models.
-- Multiple LLM provider support (DeepInfra, OpenRouter, OpenAI).
+- Multiple LLM provider support including DeepInfra, OpenRouter, and OpenAI.
 - Metadata caching with provider-model awareness.
 - EXIF date support for image filenames.
-
-[Unreleased]: https://github.com/ozturkomer/renAI/compare/v1.0.1...HEAD
-[1.0.1]: https://github.com/ozturkomer/renAI/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/ozturkomer/renAI/releases/tag/v1.0.0
