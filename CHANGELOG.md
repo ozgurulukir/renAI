@@ -27,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-03-13
 
 ### Added
-
 - **Modern Python CLI** - Complete migration from argparse to Typer framework.
 - **Pydantic Configuration** - Type-safe settings with `settings.py` using pydantic-settings.
 - **Structured Logging** - Implemented using structlog with JSON output for production and colored console for development.
@@ -38,7 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation Refinement**: Clarified Vision Mode flow (Text extraction first, then Vision fallback) in `README.md` and `okubeni.md`.
 
 ### Changed
-
 - **CLI Entry Point**: Migrated from `main.py` to `cli.py` using Typer.
 - **Configuration**: Migrated from `config.py` to `settings.py` using Pydantic.
 - **Package Structure**: Now uses modern `src/renai` layout.
@@ -47,31 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Extraction Libraries**: Moved heavy PDF extractors (`pdfplumber`, etc.) to optional extras.
 
 ### Fixed
-
 - **Broken Benchmark Scripts**: Fixed legacy imports and pathing in `scripts/benchmark_script.py` and `scripts/benchmark_organize.py`.
 - **Dead Code Cleanup**: Removed unreferenced legacy files and obsolete imports.
 - **Missing Dependencies**: Resolved runtime errors by adding `pydantic`, `structlog`, and `platformdirs`.
 
-### Changed
-
-- **CLI Entry Point**: Migrated from `main.py` to `cli.py` using Typer.
-- **Configuration**: Migrated from `config.py` to `settings.py` using Pydantic.
-- **Package Structure**: Now uses modern `src/renai` layout.
-- **Project Metadata**: Version updated to 1.1.0.
-
 ### Removed
-
 - **Legacy Files**: `main.py`, `config.py` removed (replaced by `cli.py` and `settings.py`).
-
-### Test Results
-
-- 254 tests passing, 19 skipped.
-- Coverage maintained at ~79%.
 
 ## [1.0.1] - 2026-03-11
 
 ### Added
-
 - Added vision failure handling that moves failed files to the `OCR_Failures/` folder when using `--move-ocr-failures`.
 - Added non-PDF file handling in vision mode that moves files to the `Needs_OCR/` folder when using `--skip-needs-ocr`.
 - Added 15 new unit tests for `file_processor.py` to improve test coverage.
@@ -80,7 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All 296 tests passing (9 skipped).
 
 ### Changed
-
 - Replaced deprecated `--multimodal` flag with `--vision` throughout the codebase and documentation.
 - Removed legacy `--multimodal-provider` and `--multimodal-model` arguments in favor of unified `--provider` and `--model`.
 - Removed `_get_vision_llm_engine()` method from `BookProcessor` - now uses `self.llm_engine` directly.
@@ -89,7 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enabled `--skip-needs-ocr` and `--move-ocr-failures` flags to work with `--vision` mode.
 
 ### Fixed
-
 - Fixed mixed mode detection logic to use `args.rename_images` instead of `args.vision and args.rename_images`.
 - Fixed vision fallback to handle failures like OCR failures by moving files to `OCR_Failures/` folder.
 - Fixed non-PDF handling in vision mode to move files to `Needs_OCR/` folder when appropriate.
@@ -99,7 +80,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `cv2` possibly unbound error in `ocr_engine.py` by using lazy import pattern for OpenCV.
 
 ### Removed
-
 - Removed unused imports (`builtins`, `call`, `PROVIDERS`) from `test_main.py`.
 - Removed unused `typing.Any` import from `file_processor.py`.
 - Removed unused `description` variable from image processing in `file_processor.py`.
@@ -108,7 +88,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-03-11
 
 ### Added
-
 - Initial release of renAI.
 - AI-powered document and image organization using LLMs and OCR.
 - Vision mode for processing PDFs with multimodal AI models.

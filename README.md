@@ -447,11 +447,11 @@ renai process "C:/Books" --provider deepinfra --update-metadata
 
 **Clear Cache:**
 ```bash
-# Clear all cache
-renai process --clear-cache
+# Clear all cache (metadata and text)
+renai cache
 
-# Clear cache for specific directory
-renai process "C:/Books" --clear-cache
+# Or clear with the process command
+renai process --clear-cache
 ```
 
 ### Privacy Considerations
@@ -512,7 +512,7 @@ categories = [
 | Option | Description |
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
-| `--model` | Model name (for text processing or vision if --vision is used) |
+| `--model` | Model name (for text processing or vision if --fallback-mode vision is used) |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
 | `--workers` | Concurrent workers (default: 4) |
 | `--ocr-enhanced` | Enable enhanced OCR |
@@ -599,7 +599,7 @@ This will analyze each image and rename it based on its visual content.
 Process folders containing both PDFs and images:
 
 ```bash
-renai process "C:/Documents" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+renai process "C:/Documents" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 This processes:
@@ -611,7 +611,7 @@ This processes:
 When processing images, you can include EXIF date information in filenames:
 
 ```bash
-renai process "C:/Photos" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
+renai process "C:/Photos" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
 ```
 
 This adds the photo date from EXIF metadata to the filename when available.
@@ -648,7 +648,7 @@ pytest tests/ -v
 pytest tests/test_vision_*.py -v
 
 # Run with coverage
-pytest tests/test_file_processor.py --cov=file_processor
+pytest tests/test_file_processor.py --cov=src/renai/processors/book
 ```
 
 ---

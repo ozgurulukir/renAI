@@ -83,23 +83,20 @@ When using cloud LLM providers (DeepInfra, OpenRouter, OpenAI), the following da
 
 ## 📁 Local Cache Storage
 
-renAI stores cached data in `.renamer_cache/` directory:
-
-### Cache Files
-
-| File Type | Format | Contents | Sensitive? |
-|-----------|--------|----------|------------|
-| Extracted Text | `{hash}_enhanced.txt` | Document text | ⚠️ Yes |
-| Metadata | `{hash}_metadata.json` | Title, author, category | ⚠️ Yes |
-
 ### Cache Location
 
+renAI utilizes modern OS-agnostic path management via the `platformdirs` library. Cache files are stored in your operating system's standard cache location:
+
+- **Windows**: `%LOCALAPPDATA%\renAI\Cache`
+- **macOS**: `~/Library/Caches/renAI`
+- **Linux**: `~/.cache/renAI`
+
+The directory structure is organized as follows:
+
 ```
-renAI/
-├── .renamer_cache/
-│   ├── abc123_enhanced.txt      # Extracted text
-│   ├── abc123_metadata.json     # Metadata
-│   └── ...
+Cache/
+├── text/        # Extracted text files
+└── metadata/    # metadata files
 ```
 
 ### Cache Management
@@ -114,10 +111,10 @@ renai process "C:/Path/To/Books" --clear-cache
 
 ### Cache Security Recommendations
 
-1. **Add to .gitignore**: Ensure cache directory is not versioned
-2. **Exclude from backups**: Consider excluding `.renamer_cache/` from automated backups
-3. **Regular cleanup**: Clear cache periodically, especially after processing sensitive documents
-4. **Encrypted storage**: Store cache on encrypted drives if possible
+1. **Use built-in tools**: Use `renai cache` to safely clear cached data.
+2. **Exclude from backups**: Consider excluding the OS-specific cache directory from automated backups.
+3. **Regular cleanup**: Clear cache periodically, especially after processing sensitive documents.
+4. **Encrypted storage**: Store cache on encrypted drives if possible.
 
 ---
 
@@ -267,7 +264,7 @@ cat evaluation.log
 
 After processing sensitive documents:
 
-- [ ] Clear renAI cache: `renai process --clear-cache`
+- [ ] Clear renAI cache: `renai cache`
 - [ ] Delete any debug images in OS-specific data directory
 - [ ] Review and clear shell history
 - [ ] Check provider API dashboards for usage logs
@@ -321,7 +318,7 @@ After processing sensitive documents:
 
 ### Q: Is the cache encrypted?
 
-**A**: No, the cache is stored as plain text files. Store the `.renamer_cache/` directory on encrypted storage if processing sensitive documents.
+**A**: No, the cache is stored as plain text files. Use `renai cache` to manage your data or store the OS-specific cache directory on encrypted storage if processing sensitive documents.
 
 ### Q: What happens to data during retries?
 
@@ -346,4 +343,4 @@ After processing sensitive documents:
 
 ---
 
-*Last updated: 2025-01-26*
+| 2026-03-14 | Updated to include platformdirs and new CLI commands |

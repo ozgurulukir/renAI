@@ -132,14 +132,14 @@ renai "C:/Kitaplar/Yolu" --mode rename
 
 ```bash
 # Yeniden adlandır ve kategori klasörlerine düzenle
-python main.py "C:/Kitaplar/Yolu" --mode organize
+renai process "C:/Kitaplar/Yolu" --mode organize
 ```
 
 ### Taranmış Belgeler için Yüksek Kaliteli OCR
 
 ```bash
 # Görüntü ön işleme ile geliştirilmiş OCR
-python main.py "C:/Kitaplar/Yolu" --ocr-enhanced --use-mutool
+renai process "C:/Kitaplar/Yolu" --ocr-enhanced --use-mutool
 ```
 
 ### Multimodal Modu (OCR'suz PDF)
@@ -201,13 +201,13 @@ renai process "C:/PDFler" --fallback-mode vision --provider openai --model gpt-4
 
 ```bash
 # DeepInfra (varsayılan)
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider deepinfra
+renai process "C:/Kitaplar/Yolu" --mode rename --provider deepinfra
 
 # OpenRouter
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider openrouter
+renai process "C:/Kitaplar/Yolu" --mode rename --provider openrouter
 
 # OpenAI
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider openai
+renai process "C:/Kitaplar/Yolu" --mode rename --provider openai
 ```
 
 ### Yerel Çıkarım (Ollama / LM Studio)
@@ -224,10 +224,10 @@ $env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"  # Ollama varsayılanı
 $env:CUSTOM_MODEL = "llama3"  # Model adınız
 
 # Özel sağlayıcı ile çalıştır
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom
+renai process "C:/Kitaplar/Yolu" --mode rename --provider custom
 
 # Veya modeli doğrudan geçersiz kıl
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
+renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
 ```
 
 #### Yerel Modeller için Metin Uzunluğunu Kontrol Etme
@@ -236,10 +236,10 @@ Tüketici donanımlarında yerel modeller çalıştırırken, bellek kullanımı
 
 ```bash
 # Metin uzunluğunu 5000 karaktere azalt (varsayılan: 10000)
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 5000
+renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 5000
 
 # Modeliniz kaldırabiliyorsa daha iyi bağlam için artırın
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
+renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
 ```
 
 | Seçenek | Açıklama | Varsayılan |
@@ -267,24 +267,24 @@ python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 
 
 ```bash
 # DeepInfra ile özel model
-python main.py "C:/Kitaplar/Yolu" --mode rename --model Qwen/Qwen2.5-72B-Instruct
+renai process "C:/Kitaplar/Yolu" --mode rename --model Qwen/Qwen2.5-72B-Instruct
 
 # OpenRouter ile Gemini
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
+renai process "C:/Kitaplar/Yolu" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
 ```
 
 ### Daha Hızlı İşleme
 
 ```bash
 # Eşzamanlı çalışanları artır
-python main.py "C:/Kitaplar/Yolu" --mode rename --workers 8
+renai process "C:/Kitaplar/Yolu" --mode rename --workers 8
 ```
 
 ### Meta Verileri Zorla Yenileme
 
 ```bash
 # Önbelleği atla ve yeniden çıkar
-python main.py "C:/Kitaplar/Yolu" --mode rename --update-metadata
+renai process "C:/Kitaplar/Yolu" --mode rename --update-metadata
 ```
 
 ### Kıyaslama ve Model Değerlendirme
@@ -292,13 +292,13 @@ python main.py "C:/Kitaplar/Yolu" --mode rename --update-metadata
 #### PDF Çıkarıcı Kıyaslaması
 Farklı PDF çıkarma kütüphanelerinin belgeleriniz üzerindeki performansını ve doğruluğunu karşılaştırın.
 ```bash
-python main.py "C:/Kitaplar/Yolu" --benchmark
+renai process "C:/Kitaplar/Yolu" --benchmark
 ```
 
 #### LLM Model Değerlendirmesi
 Özel belge koleksiyonunuz için maliyet ve doğruluk arasındaki en iyi dengeyi bulmak amacıyla bir sağlayıcıdan birden fazla modeli test edin.
 ```bash
-python main.py "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
+renai process "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
 ```
 
 **Nasıl çalışır:**
@@ -311,10 +311,10 @@ python main.py "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
 
 ```bash
 # Tüm önbelleği temizle
-python main.py --clear-cache
+renai process --clear-cache
 
 # Belirli dizin için önbelleği temizle
-python main.py "C:/Kitaplar/Yolu" --clear-cache
+renai process "C:/Kitaplar/Yolu" --clear-cache
 ```
 
 ---
@@ -351,7 +351,7 @@ python main.py "C:/Kitaplar/Yolu" --clear-cache
 ### OCR İşleme Seçenekleri
 
 - **`--fallback-mode move`**: Yetersiz metinli dosyaları `Needs_Scan` klasörüne taşır (işlemeyi atlar)
-- **`--move-scan-failures`**: Hem standart hem de fallback yöntemleriyle işlenemeyen dosyaları `Scan_Failures` klasörüne taşır
+- **`--move-scan-failures`**: Hem standart hem de fallback yöntemleriyle işlenemeyen dosyaları `Scan_Failures` klasörine taşır
 
 ---
 
@@ -425,16 +425,16 @@ renAI, sağlayıcı-model farkındalığına sahip akıllı bir önbellek sistem
 **Örnek:**
 ```bash
 # DeepInfra ile ilk çalıştırma - meta verileri önbelleğe alır
-python main.py "C:/Kitaplar" --provider deepinfra
+renai process "C:/Kitaplar" --provider deepinfra
 
 # OpenRouter ile aynı dosyalar - YENİ önbellek girişi (eski korunur)
-python main.py "C:/Kitaplar" --provider openrouter
+renai process "C:/Kitaplar" --provider openrouter
 
 # Aynı sağlayıcı/model - önbelleğe alınmış meta verileri kullanır
-python main.py "C:/Kitaplar" --provider deepinfra
+renai process "C:/Kitaplar" --provider deepinfra
 
 # Zorla yenileme - önbelleği atlar
-python main.py "C:/Kitaplar" --provider deepinfra --update-metadata
+renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 ```
 
 **Önbellek Konumu:** `platformdirs` kullanılarak işletim sistemi tarafından otomatik yönetilir (ör. Linux'ta `~/.cache/renAI`, macOS'te `~/Library/Caches/renAI`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`).
@@ -442,10 +442,10 @@ python main.py "C:/Kitaplar" --provider deepinfra --update-metadata
 **Önbelleği Temizle:**
 ```bash
 # Tüm önbelleği temizle
-python main.py --clear-cache
+renai process --clear-cache
 
 # Belirli dizin için önbelleği temizle
-python main.py "C:/Kitaplar" --clear-cache
+renai process "C:/Kitaplar" --clear-cache
 ```
 
 ### Gizlilik Değerlendirmeleri
@@ -542,9 +542,7 @@ Diğer
 | Seçenek | Açıklama |
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai` veya `custom` |
-| `--model` | Metin işleme için model adı |
-
-| `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
+| `--model` | Metin işleme veya vision modunda kullanılacak model adı |
 | `--workers` | Eşzamanlı çalışanlar (varsayılan: 4) |
 | `--ocr-enhanced` | Geliştirilmiş OCR'yi etkinleştir |
 | `--use-mutool` | Çıkarma için mutool kullan |
@@ -668,17 +666,17 @@ Test paketini çalıştırın:
 
 ```bash
 # Tüm testleri çalıştır
-pytest test_*.py -v
+pytest tests/ -v
 
 # Görüntü modu testlerini çalıştır
-pytest test_vision_*.py -v
+pytest tests/test_vision_*.py -v
 
 # Kapsam ile çalıştır
-pytest test_file_processor.py --cov=file_processor
+pytest tests/test_file_processor.py --cov=src/renai/processors/book
 ```
 
 ---
 
-*Son güncelleme: 2026-03-11*
+*Son güncelleme: 2026-03-14*
 
 *renAI - Dijital kütüphanenizi yapay zeka ile düzenleyin*

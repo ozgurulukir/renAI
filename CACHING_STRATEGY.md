@@ -132,14 +132,18 @@ renai "C:/Path/To/Books" --update-metadata
 
 ### Location
 
-All cache files are stored in the `.renamer_cache/` directory:
+renAI utilizes modern OS-agnostic path management via the `platformdirs` library. Cache files are stored in your operating system's standard cache location:
+
+- **Windows**: `%LOCALAPPDATA%\renAI\Cache`
+- **macOS**: `~/Library/Caches/renAI`
+- **Linux**: `~/.cache/renAI`
+
+The internal structure within the cache directory is organized as follows:
 
 ```
-renAI/
-├── .renamer_cache/
-│   ├── abc123def456_enhanced.txt          # Text cache
-│   ├── abc123def456_deepinfra_metadata.json  # Metadata cache
-│   └── ...
+Cache/
+├── text/        # Extracted text files (*.txt)
+└── metadata/    # LLM-generated metadata (*.json)
 ```
 
 ### Cache Contents
@@ -215,7 +219,7 @@ Vision mode uses a separate cache entry for PDF files to allow switching between
 
 ```bash
 # Process with vision model (image-based fallback)
-$ renai "C:/Books" --vision --provider openrouter --model openai/gpt-4o
+$ renai process "C:/Books" --fallback-mode vision --provider openrouter --model openai/gpt-4o
 [INFO] Using VISION mode - falls back to image sampling for PDFs
 [INFO] Cached VISION metadata for book.pdf (abc123_pmhash_vision.json)
 
@@ -303,15 +307,18 @@ If cache is not being used:
 
 ### Old Cache Entries
 
-To clean up old cache entries:
+To clean up old cache entries, use the built-in CLI command:
 
 ```bash
-# Clear all cache
-renai --clear-cache
+# Clear all cache (metadata and text)
+renai cache
 
-# Or manually delete .renamer_cache/ directory
-rm -rf .renamer_cache/
+# Or use the flag with any process command
+renai process --clear-cache
 ```
+
+> [!TIP]
+> Use `renai cache --yes` to skip the confirmation prompt.
 
 ---
 
