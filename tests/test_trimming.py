@@ -1,7 +1,10 @@
+import sys
+sys.path.insert(0, "src")
+
 #!/usr/bin/env python3
 """Test the improved text trimming functionality"""
 
-from utils import proportional_chunk_trim
+from renai.utils import proportional_chunk_trim
 
 
 def test_proportional_trimming():

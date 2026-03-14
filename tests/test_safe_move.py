@@ -1,10 +1,13 @@
+import sys
+sys.path.insert(0, "src")
+
 #!/usr/bin/env python3
 """Test script for safe_move_file function"""
 
 import tempfile
 import shutil
 from pathlib import Path
-from file_processor import safe_move_file
+from renai.file_ops import safe_move_file
 
 
 def test_safe_move_basic():

@@ -74,8 +74,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from config import CACHE_DIR
-from utils import (
+from ..settings import CACHE_DIR
+from ..utils import (
     generate_cache_key,
     get_file_hash,
     get_provider_model_key,

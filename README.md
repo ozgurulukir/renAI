@@ -71,7 +71,7 @@ Description -- Category -- (Language).ext
    ```bash
    # Ubuntu/Debian
    sudo apt-get install tesseract-ocr
-   
+
    # macOS
    brew install tesseract
    ```
@@ -84,32 +84,35 @@ Description -- Category -- (Language).ext
 git clone https://github.com/ozgurulukir/renAI.git
 cd renAI
 
-# Create virtual environment (recommended)
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# or: .venv\Scripts\activate  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
+# Install (creates 'renai' command)
+pip install -e .
 ```
 
 ### API Keys
 
-Set your API keys as environment variables:
+Set your API keys in `.env` file:
 
 ```bash
-# Windows (PowerShell)
-$env:DEEPINFRA_API_KEY = "your_key_here"
-$env:OPENROUTER_API_KEY = "your_key_here"
-$env:OPENAI_API_KEY = "your_key_here"
-
-# Linux/Mac
-export DEEPINFRA_API_KEY="your_key_here"
-export OPENROUTER_API_KEY="your_key_here"
-export OPENAI_API_KEY="your_key_here"
+# Windows: %APPDATA%\renAI\renAI\.env
+# Linux/Mac: ~/.config/renAI/.env
+# Or copy from project root:
+cp .env.example .env
 ```
 
+Then edit `.env` with your API keys:
+- `DEEPINFRA_API_KEY`
+- `OPENROUTER_API_KEY`  
+- `OPENAI_API_KEY`
+
 Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrouter.ai) | [OpenAI](https://platform.openai.com/api-keys)
+
+### Configuration
+
+Configuration options in `.env`:
+- `RENAI_PROVIDER` - LLM provider (deepinfra, openrouter, openai, custom)
+- `RENAI_WORKERS` - Number of concurrent workers (default: 4)
+- `RENAI_TEXT_LENGTH` - Max text length for LLM (default: 10000)
+- `RENAI_EXTRACTOR` - PDF extractor (pymupdf, pdfplumber, pypdf, pypdfium2)
 
 ---
 
@@ -119,14 +122,14 @@ Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrou
 
 ```bash
 # Rename all files in directory
-python main.py "C:/Path/To/Books" --mode rename
+renai process "C:/Path/To/Books" --mode rename
 ```
 
 ### Organizing into Folders
 
 ```bash
 # Rename and organize into category folders
-python main.py "C:/Path/To/Books" --mode organize
+renai process "C:/Path/To/Books" --mode organize
 ```
 
 ### Vision Mode (PDF without OCR)
@@ -135,16 +138,16 @@ Vision mode uses vision-capable LLMs to process PDFs directly - no OCR needed! T
 
 ```bash
 # Process PDFs with vision model (no OCR) - uses default provider/model
-python main.py "C:/Path/To/Books" --vision
+renai process "C:/Path/To/Books" --vision
 
 # Use specific vision model
-python main.py "C:/Path/To/Books" --vision --provider openrouter --model openai/gpt-4o
+renai process "C:/Path/To/Books" --vision --provider openrouter --model openai/gpt-4o
 
 # DeepInfra with Llama Vision
-python main.py "C:/Path/To/Books" --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
+renai process "C:/Path/To/Books" --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
 
 # OpenAI GPT-4o
-python main.py "C:/Path/To/Books" --vision --provider openai --model gpt-4o
+renai process "C:/Path/To/Books" --vision --provider openai --model gpt-4o
 ```
 
 ### Image Renaming
@@ -153,13 +156,13 @@ Rename image files using AI vision analysis. Requires a vision-capable model:
 
 ```bash
 # Rename images with vision model
-python main.py "C:/Path/To/Photos" --rename-images --provider openai --model gpt-4o
+renai process "C:/Path/To/Photos" --rename-images --provider openai --model gpt-4o
 
 # With EXIF date (if available)
-python main.py "C:/Path/To/Photos" --vision --rename-images --provider openai --model gpt-4o --exif
+renai process "C:/Path/To/Photos" --vision --rename-images --provider openai --model gpt-4o --exif
 
 # With DeepInfra
-python main.py "C:/Path/To/Images" --vision --rename-images --provider deepinfra --model Qwen/Qwen2-VL-72B-Instruct
+renai process "C:/Path/To/Images" --vision --rename-images --provider deepinfra --model Qwen/Qwen2-VL-72B-Instruct
 ```
 
 ### Mixed Folders (PDF + Images)
@@ -174,33 +177,33 @@ Process both PDFs and images in the same folder:
 
 ```bash
 # PDFs with vision, images with vision
-python main.py "C:/Path/To/Mixed" --vision --rename-images --provider openai --model gpt-4o
+renai process "C:/Path/To/Mixed" --vision --rename-images --provider openai --model gpt-4o
 
 # Only rename images (PDFs with OCR)
-python main.py "C:/Path/To/Mixed" --rename-images --provider openai --model gpt-4o
+renai process "C:/Path/To/Mixed" --rename-images --provider openai --model gpt-4o
 
 # Only process PDFs with vision (skip images)
-python main.py "C:/Path/To/PDFs" --vision --provider openai --model gpt-4o
+renai process "C:/Path/To/PDFs" --vision --provider openai --model gpt-4o
 ```
 
 ### High-Quality OCR for Scanned Documents
 
 ```bash
 # Enhanced OCR with image preprocessing
-python main.py "C:/Path/To/Books" --ocr-enhanced --use-mutool
+renai process "C:/Path/To/Books" --ocr-enhanced --use-mutool
 ```
 
 ### Using Different```bash
 # LLM Providers
 
  DeepInfra (default)
-python main.py "C:/Path/To/Books" --mode rename --provider deepinfra
+renai process "C:/Path/To/Books" --mode rename --provider deepinfra
 
 # OpenRouter
-python main.py "C:/Path/To/Books" --mode rename --provider openrouter
+renai process "C:/Path/To/Books" --mode rename --provider openrouter
 
 # OpenAI
-python main.py "C:/Path/To/Books" --mode rename --provider openai
+renai process "C:/Path/To/Books" --mode rename --provider openai
 ```
 
 ### Local Inference (Ollama / LM Studio)
@@ -217,10 +220,10 @@ $env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"  # Ollama default
 $env:CUSTOM_MODEL = "llama3"  # Your model name
 
 # Run with custom provider
-python main.py "C:/Path/To/Books" --mode rename --provider custom
+renai process "C:/Path/To/Books" --mode rename --provider custom
 
 # Or override model directly
-python main.py "C:/Path/To/Books" --mode rename --provider custom --model mistral
+renai process "C:/Path/To/Books" --mode rename --provider custom --model mistral
 ```
 
 #### Controlling Text Length for Local Models
@@ -229,10 +232,10 @@ When running local models on consumer hardware, you can reduce the text length s
 
 ```bash
 # Reduce text length to 5000 characters (default: 10000)
-python main.py "C:/Path/To/Books" --mode rename --provider custom --text-length 5000
+renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 5000
 
 # Increase for better context if your model can handle it
-python main.py "C:/Path/To/Books" --mode rename --provider custom --text-length 20000
+renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 20000
 ```
 
 | Option | Description | Default |
@@ -260,24 +263,24 @@ python main.py "C:/Path/To/Books" --mode rename --provider custom --text-length 
 
 ```bash
 # DeepInfra with Qwen model
-python main.py "C:/Path/To/Books" --mode rename --model Qwen/Qwen2.5-72B-Instruct
+renai process "C:/Path/To/Books" --mode rename --model Qwen/Qwen2.5-72B-Instruct
 
 # OpenRouter with Gemini
-python main.py "C:/Path/To/Books" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
+renai process "C:/Path/To/Books" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
 ```
 
 ### Faster Processing
 
 ```bash
 # Increase concurrent workers
-python main.py "C:/Path/To/Books" --mode rename --workers 8
+renai process "C:/Path/To/Books" --mode rename --workers 8
 ```
 
 ### Force Refresh Metadata
 
 ```bash
 # Bypass cache and re-extract
-python main.py "C:/Path/To/Books" --mode rename --update-metadata
+renai process "C:/Path/To/Books" --mode rename --update-metadata
 ```
 
 ### Benchmarking & Model Evaluation
@@ -285,13 +288,13 @@ python main.py "C:/Path/To/Books" --mode rename --update-metadata
 #### PDF Extractor Benchmark
 Compare the performance and accuracy of different PDF extraction libraries on your documents.
 ```bash
-python main.py "C:/Path/To/Books" --benchmark
+renai process "C:/Path/To/Books" --benchmark
 ```
 
 #### LLM Model Evaluation
 Test multiple models from a provider to find the best balance between cost and accuracy for your specific document collection.
 ```bash
-python main.py "C:/Path/To/Books" --eval-model --provider deepinfra
+renai process "C:/Path/To/Books" --eval-model --provider deepinfra
 ```
 
 **How it works:**
@@ -304,10 +307,10 @@ python main.py "C:/Path/To/Books" --eval-model --provider deepinfra
 
 ```bash
 # Clear all cache
-python main.py --clear-cache
+renai process --clear-cache
 
 # Clear cache for specific directory
-python main.py "C:/Path/To/Books" --clear-cache
+renai process "C:/Path/To/Books" --clear-cache
 ```
 
 ---
@@ -419,16 +422,16 @@ renAI uses an intelligent caching system that includes provider-model awareness:
 **Example:**
 ```bash
 # First run with DeepInfra - caches metadata
-python main.py "C:/Books" --provider deepinfra
+renai process "C:/Books" --provider deepinfra
 
 # Same files with OpenRouter - NEW cache entry (old one preserved)
-python main.py "C:/Books" --provider openrouter
+renai process "C:/Books" --provider openrouter
 
 # Same provider/model - uses cached metadata
-python main.py "C:/Books" --provider deepinfra
+renai process "C:/Books" --provider deepinfra
 
 # Force refresh - bypasses cache
-python main.py "C:/Books" --provider deepinfra --update-metadata
+renai process "C:/Books" --provider deepinfra --update-metadata
 ```
 
 **Cache Location:** Managed automatically by the OS via `platformdirs` (e.g., `~/.cache/renAI` on Linux, `~/Library/Caches/renAI` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows).
@@ -436,10 +439,10 @@ python main.py "C:/Books" --provider deepinfra --update-metadata
 **Clear Cache:**
 ```bash
 # Clear all cache
-python main.py --clear-cache
+renai process --clear-cache
 
 # Clear cache for specific directory
-python main.py "C:/Books" --clear-cache
+renai process "C:/Books" --clear-cache
 ```
 
 ### Privacy Considerations
@@ -554,7 +557,7 @@ Diğer
 | `--move-ocr-failures` | Move failed files to folder |
 | `--clear-cache` | Clear cache and exit |
 
-> **Note:** When using `--vision` or `--rename-images`, ensure your model supports vision (e.g., gpt-4o, gpt-4-turbo, claude-3-opus, gemini-pro).
+> **Important:** When using `--vision` or `--rename-images`, you must use a vision-capable model. renAI does not validate vision capability - please ensure your model supports multimodal/vision input.
 
 ---
 
@@ -562,7 +565,7 @@ Diğer
 
 ```
 renAI/
-├── main.py              # Entry point & CLI
+├── cli.py               # CLI entry point (Typer)
 ├── config.py            # Configuration & API settings
 ├── utils.py             # Helper functions
 ├── llm_engine.py        # LLM provider integration (including vision)
@@ -612,7 +615,7 @@ Vision mode allows renAI to process PDFs and images without text extraction, usi
 Rename image files (photos, screenshots) using AI:
 
 ```bash
-python main.py "C:/Photos" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+renai process "C:/Photos" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 This will analyze each image and rename it based on its visual content.
@@ -622,7 +625,7 @@ This will analyze each image and rename it based on its visual content.
 Process folders containing both PDFs and images:
 
 ```bash
-python main.py "C:/Documents" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+renai process "C:/Documents" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 This processes:
@@ -634,7 +637,7 @@ This processes:
 When processing images, you can include EXIF date information in filenames:
 
 ```bash
-python main.py "C:/Photos" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
+renai process "C:/Photos" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
 ```
 
 This adds the photo date from EXIF metadata to the filename when available.

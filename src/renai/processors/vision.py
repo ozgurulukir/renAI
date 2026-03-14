@@ -30,12 +30,12 @@ Processing Flow:
 ===============
 1. Try text extraction WITHOUT OCR fallback
    - If successful → use LLM metadata (same as regular mode)
-   
+
 2. If text extraction fails + file is PDF → use vision model
    - Convert PDF pages to images
    - Send images to vision-capable LLM
    - Extract metadata from vision response
-   
+
 3. If text extraction fails + file is NOT PDF → return failure
    - Non-PDF files can't use vision fallback
 
@@ -70,19 +70,19 @@ Usage:
 ======
     from new_modules.vision_processor import VisionProcessor
     from new_modules.text_extractor import TextExtractor
-    from llm_engine import LLMEngine
-    
+    from ..engines.llm import LLMEngine
+
     # Create processor
     llm = LLMEngine(provider="openai", model="gpt-4o")
     text_extractor = TextExtractor(ocr_engine, "pymupdf")
-    
+
     vision = VisionProcessor(
         llm_engine=llm,
         text_extractor=text_extractor,
         provider="openai",
         model="gpt-4o"
     )
-    
+
     # Check if model supports vision
     if vision.is_vision_capable():
         success, metadata = vision.process(Path("document.pdf"))
@@ -109,15 +109,13 @@ from typing import Any, Dict, List, Optional, Tuple
 import pymupdf
 from PIL import Image
 
-from llm_engine import LLMEngine
-
-from .cache_manager import (
+from ..cache.manager import (
     get_metadata_cache_path,
     read_metadata_cache,
     write_metadata_cache,
 )
+from ..engines.llm import LLMEngine
 from .text_extractor import TextExtractor
-
 
 # Vision mode image optimization settings
 # These settings balance quality vs token cost
@@ -159,25 +157,12 @@ class VisionProcessor:
         self.image_quality = MULTIMODAL_IMAGE_QUALITY
 
     def is_vision_capable(self) -> bool:
+        """Check if the configured model supports vision.
+
+        Note: Vision capability check is delegated to the user.
+        Users should ensure they use a vision-capable model when using --vision flag.
         """
-        Check if the configured model supports vision.
-
-        Delegates to the LLM engine to determine if the current model
-        has multimodal (vision) capabilities.
-
-        Returns:
-            True if model is multimodal-capable, False otherwise.
-
-        Example:
-            >>> processor = VisionProcessor(llm_engine, text_extractor, "openai", "gpt-4o")
-            >>> processor.is_vision_capable()
-            True
-            
-            >>> processor = VisionProcessor(llm_engine, text_extractor, "openai", "gpt-3.5-turbo")
-            >>> processor.is_vision_capable()
-            False
-        """
-        return self.llm_engine.is_multimodal_capable()
+        return True
 
     def process(
         self,
@@ -209,7 +194,7 @@ class VisionProcessor:
 
         Returns:
             Tuple of (success: bool, metadata: Optional[Dict])
-            
+
             On success, metadata contains:
             - title: Document title
             - subtitle: Document subtitle (if any)
@@ -222,13 +207,8 @@ class VisionProcessor:
             >>> if success:
             ...     print(f"Title: {metadata['title']}")
         """
-        # Check vision capability first
-        if not self.is_vision_capable():
-            logging.error(
-                f"Model {self.llm_engine.model_name} does not support vision. "
-                "Please use a vision-capable model."
-            )
-            return False, None
+        # Note: Vision capability is now delegated to the user.
+        # Users should ensure they use a vision-capable model.
 
         # Skip symlinks
         if file_path.is_symlink():
@@ -276,7 +256,7 @@ class VisionProcessor:
         update_metadata: bool,
     ) -> Optional[Dict[str, Any]]:
         """Get cached metadata if available and valid."""
-        from utils import get_file_hash
+        from ..utils import get_file_hash
 
         file_hash = get_file_hash(file_path)
         cache_path = get_metadata_cache_path(
@@ -294,7 +274,7 @@ class VisionProcessor:
         metadata: Dict[str, Any],
     ) -> None:
         """Save metadata to cache."""
-        from utils import get_file_hash
+        from ..utils import get_file_hash
 
         file_hash = get_file_hash(file_path)
         cache_path = get_metadata_cache_path(

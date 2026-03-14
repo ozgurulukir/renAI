@@ -58,7 +58,7 @@ Disable OCR fallback when:
 Usage:
 ======
     from new_modules.text_extractor import TextExtractor
-    from ocr_engine import OCREngine
+    from ..engines.ocr import OCREngine
     
     # Create extractor
     ocr_engine = OCREngine()  # Configure as needed
@@ -94,19 +94,19 @@ import logging
 from pathlib import Path
 from typing import Optional, Set
 
-from config import (
+from ..settings import (
     CACHE_DIR,
     MAX_TEXT_READ_SIZE,
 )
-from extractors import get_extractor
-from ocr_engine import OCREngine
-from utils import (
+from ..extractors import get_extractor
+from ..engines.ocr import OCREngine
+from ..utils import (
     get_file_hash,
     proportional_chunk_trim,
     read_text_limited,
 )
 
-from .cache_manager import (
+from ..cache.manager import (
     get_text_cache_path,
     read_text_cache,
     write_text_cache,

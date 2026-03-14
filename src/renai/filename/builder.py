@@ -66,7 +66,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from utils import sanitize_filename
+from ..utils import sanitize_filename
 
 
 def build_book_filename(

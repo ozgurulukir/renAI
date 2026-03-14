@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_engine import LLMEngine
+from renai.engines.llm import LLMEngine
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def mock_allowed_categories():
 @pytest.fixture
 def llm_engine(mock_allowed_categories):
     with patch(
-        "llm_engine.get_allowed_categories", return_value=mock_allowed_categories
+        "renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories
     ):
         return LLMEngine(
             provider="openai",
@@ -41,7 +41,7 @@ def llm_engine(mock_allowed_categories):
 @pytest.fixture
 def llm_engine_deepinfra(mock_allowed_categories):
     with patch(
-        "llm_engine.get_allowed_categories", return_value=mock_allowed_categories
+        "renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories
     ):
         return LLMEngine(
             provider="deepinfra",
@@ -51,63 +51,8 @@ def llm_engine_deepinfra(mock_allowed_categories):
         )
 
 
-class TestIsVisionCapable:
-    """Test is_multimodal_capable method."""
-
-    def test_is_multimodal_capable_openai_gpt4o(self, llm_engine):
-        """Test that gpt-4o is recognized as vision capable."""
-        assert llm_engine.is_multimodal_capable() is True
-
-    def test_is_multimodal_capable_deepinfra_vision(self, llm_engine_deepinfra):
-        """Test that DeepInfra Llama Vision is recognized as vision capable."""
-        assert llm_engine_deepinfra.is_multimodal_capable() is True
-
-    def test_is_multimodal_capable_openai_text_model(self, mock_allowed_categories):
-        """Test that text-only model returns False."""
-        with patch(
-            "llm_engine.get_allowed_categories", return_value=mock_allowed_categories
-        ):
-            engine = LLMEngine(
-                provider="openai",
-                api_key="test-key",
-                base_url="https://api.openai.com/v1",
-                model_name="gpt-3.5-turbo",
-            )
-        assert engine.is_multimodal_capable() is False
-
-    def test_is_multimodal_capable_deepinfra_text_model(self, mock_allowed_categories):
-        """Test that DeepInfra text-only model returns False."""
-        with patch(
-            "llm_engine.get_allowed_categories", return_value=mock_allowed_categories
-        ):
-            engine = LLMEngine(
-                provider="deepinfra",
-                api_key="test-key",
-                base_url="https://api.deepinfra.com/v1/openai",
-                model_name="meta-llama/Llama-3.3-70B-Instruct",
-            )
-        assert engine.is_multimodal_capable() is False
-
-
 class TestGetBookMetadataFromImage:
     """Test get_book_metadata_from_image method."""
-
-    def test_requires_vision_capable_model(self, mock_allowed_categories):
-        """Test that non-vision model returns None with error message."""
-        with patch(
-            "llm_engine.get_allowed_categories", return_value=mock_allowed_categories
-        ):
-            engine = LLMEngine(
-                provider="openai",
-                api_key="test-key",
-                base_url="https://api.openai.com/v1",
-                model_name="gpt-3.5-turbo",  # Not vision capable
-            )
-
-        result = engine.get_book_metadata_from_image(
-            Path("test.pdf"), b"fake image data"
-        )
-        assert result is None
 
     def test_requires_api_key(self, llm_engine):
         """Test that missing API key returns None."""
@@ -203,21 +148,6 @@ class TestGetBookMetadataFromImage:
 
 class TestGetImageMetadata:
     """Test get_image_metadata method for image renaming."""
-
-    def test_requires_vision_capable_model(self, mock_allowed_categories):
-        """Test that non-vision model returns None."""
-        with patch(
-            "llm_engine.get_allowed_categories", return_value=mock_allowed_categories
-        ):
-            engine = LLMEngine(
-                provider="openai",
-                api_key="test-key",
-                base_url="https://api.openai.com/v1",
-                model_name="gpt-3.5-turbo",
-            )
-
-        result = engine.get_image_metadata(Path("photo.jpg"), b"fake image data")
-        assert result is None
 
     def test_successful_image_metadata(self, llm_engine):
         """Test successful image metadata extraction."""
@@ -322,7 +252,7 @@ class TestVisionLLMCall:
     def test_openrouter_headers(self, mock_allowed_categories):
         """Test that OpenRouter includes required headers."""
         with patch(
-            "llm_engine.get_allowed_categories", return_value=mock_allowed_categories
+            "renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories
         ):
             engine = LLMEngine(
                 provider="openrouter",

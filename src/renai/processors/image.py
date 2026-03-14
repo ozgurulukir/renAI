@@ -69,17 +69,17 @@ Requirements:
 Usage:
 ======
     from new_modules.image_processor import ImageProcessor
-    from llm_engine import LLMEngine
-    
+    from ..engines.llm import LLMEngine
+
     # Create processor
     llm = LLMEngine(provider="openai", model="gpt-4o")
-    
+
     image_processor = ImageProcessor(
         llm_engine=llm,
         provider="openai",
         model="gpt-4o"
     )
-    
+
     # Check if model supports vision
     if image_processor.is_vision_capable():
         success, new_path, new_name, category, file_hash = (
@@ -109,16 +109,15 @@ from typing import Any, Dict, Optional, Tuple
 from PIL import Image
 from PIL.ExifTags import TAGS
 
-from config import IMAGE_EXTENSIONS
-from llm_engine import LLMEngine
-
-from .cache_manager import (
+from ..cache.manager import (
     get_metadata_cache_path,
     read_metadata_cache,
     write_metadata_cache,
 )
-from .filename_builder import build_image_filename
-from .file_operations import safe_move_file
+from ..engines.llm import LLMEngine
+from ..file_ops.operations import safe_move_file
+from ..filename.builder import build_image_filename
+from ..settings import IMAGE_EXTENSIONS
 
 
 class ImageProcessor:
@@ -160,23 +159,19 @@ class ImageProcessor:
         Example:
             >>> processor.is_image_file(Path("photo.jpg"))
             True
-            
+
             >>> processor.is_image_file(Path("document.pdf"))
             False
         """
         return file_path.suffix.lower() in self.supported_extensions
 
     def is_vision_capable(self) -> bool:
-        """
-        Check if the configured model supports vision.
+        """Check if the configured model supports vision.
 
-        Returns:
-            True if model is multimodal-capable.
-
-        Note:
-            Image processing always requires a vision-capable model.
+        Note: Vision capability check is delegated to the user.
+        Users should ensure they use a vision-capable model when using --rename-images flag.
         """
-        return self.llm_engine.is_multimodal_capable()
+        return True
 
     def get_exif_date(self, file_path: Path) -> Optional[str]:
         """
@@ -236,13 +231,8 @@ class ImageProcessor:
         Returns:
             Tuple of (success, new_path, new_name, category, file_hash)
         """
-        # Check vision capability
-        if not self.is_vision_capable():
-            logging.error(
-                f"Model {self.llm_engine.model_name} does not support vision. "
-                "Please use a vision-capable model for --rename-images."
-            )
-            return False, None, None, None, None
+        # Note: Vision capability is delegated to the user.
+        # Users should ensure they use a vision-capable model.
 
         # Skip symlinks
         if file_path.is_symlink():
@@ -250,7 +240,7 @@ class ImageProcessor:
             return False, None, None, None, None
 
         # Get file hash
-        from utils import get_file_hash
+        from ..utils import get_file_hash
         file_hash = get_file_hash(file_path)
 
         # Get cached metadata if available
@@ -315,7 +305,7 @@ class ImageProcessor:
         update_metadata: bool,
     ) -> Optional[Dict[str, Any]]:
         """Get cached metadata if available and valid."""
-        from utils import get_file_hash
+        from ..utils import get_file_hash
 
         file_hash = get_file_hash(file_path)
         cache_path = get_metadata_cache_path(
@@ -348,7 +338,7 @@ class ImageProcessor:
         file_hash: str,
     ) -> None:
         """Save metadata to cache."""
-        from config import CACHE_DIR
+        from ..settings import CACHE_DIR
 
         cache_path = get_metadata_cache_path(
             file_hash, self.provider, self.model, CACHE_DIR

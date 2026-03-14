@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test the weighted preservation strategy for document trimming"""
 
-from utils import proportional_chunk_trim
+from renai.utils import proportional_chunk_trim
 
 
 def test_weighted_preservation_strategy():

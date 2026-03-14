@@ -32,7 +32,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from utils import get_file_hash
+from ..utils import get_file_hash
 
 
 def ensure_unique_path(dest_path: Path, source_hash: Optional[str] = None) -> Path:

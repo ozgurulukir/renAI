@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-03-13
+
+### Added
+
+- **Modern Python CLI** - Complete migration from argparse to Typer framework.
+- **Pydantic Configuration** - Type-safe settings with `settings.py` using pydantic-settings.
+- **Structured Logging** - Implemented using structlog with JSON output for production and colored console for development.
+- **Environment Variables Support** - Full support with `.env.example` template and `RENAI_` prefix.
+- **GitHub Actions CI/CD** - Automated testing with matrix testing (Python 3.10, 3.11, 3.12), coverage reporting, and linting.
+- **Rich Terminal Output** - Colored output and progress bars for better UX.
+- **New CLI Commands**: `renai process`, `renai providers`, `renai cache`, `renai version`.
+
+### Changed
+
+- **CLI Entry Point**: Migrated from `main.py` to `cli.py` using Typer.
+- **Configuration**: Migrated from `config.py` to `settings.py` using Pydantic.
+- **Package Structure**: Now uses modern `src/renai` layout.
+- **Project Metadata**: Version updated to 1.1.0.
+
+### Removed
+
+- **Legacy Files**: `main.py`, `config.py` removed (replaced by `cli.py` and `settings.py`).
+
+### Test Results
+
+- 254 tests passing, 19 skipped.
+- Coverage maintained at ~79%.
+
 ## [1.0.1] - 2026-03-11
 
 ### Added

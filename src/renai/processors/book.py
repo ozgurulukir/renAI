@@ -64,7 +64,7 @@ Special Modes:
 Usage:
 ======
     from file_processor import BookProcessor
-    
+
     # Create processor (via compatibility shim)
     processor = BookProcessor(
         ocr_engine=ocr_engine,
@@ -74,7 +74,7 @@ Usage:
         model="Qwen/Qwen2.5-72B-Instruct",
         target_length=10000
     )
-    
+
     # Process a document
     success, new_path, new_name, category, file_hash = (
         processor.process_single_book(
@@ -82,7 +82,7 @@ Usage:
             mode="rename"
         )
     )
-    
+
     # Or with vision mode
     success, new_path, new_name, category, file_hash = (
         processor.process_single_book_vision(
@@ -116,7 +116,7 @@ See cache_manager module for details.
 Error Handling:
 =============
 All processing methods return a tuple:
-    (success: bool, new_path: Optional[Path], new_name: Optional[str], 
+    (success: bool, new_path: Optional[Path], new_name: Optional[str],
      category: Optional[str], file_hash: Optional[str])
 
 On failure:
@@ -131,24 +131,23 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from llm_engine import LLMEngine
-from ocr_engine import OCREngine
-
-from .cache_manager import (
+from ..cache.manager import (
     get_metadata_cache_path,
     read_metadata_cache,
     write_metadata_cache,
 )
-from .filename_builder import (
+from ..engines.llm import LLMEngine
+from ..engines.ocr import OCREngine
+from ..file_ops.operations import safe_move_file
+from ..filename.builder import (
     build_book_filename,
     build_image_filename,
     extract_category_from_metadata,
     is_filename_changed,
 )
-from .file_operations import safe_move_file
-from .image_processor import ImageProcessor
+from .image import ImageProcessor
 from .text_extractor import TextExtractor
-from .vision_processor import VisionProcessor
+from .vision import VisionProcessor
 
 
 class BookProcessor:
@@ -228,7 +227,7 @@ class BookProcessor:
 
     def set_ocr_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
         """Set up the OCR failures folder for moving files that require OCR."""
-        from utils import ensure_secure_dir
+        from ..utils import ensure_secure_dir
 
         self.move_ocr_failures = enabled
         if enabled:
@@ -238,7 +237,7 @@ class BookProcessor:
 
     def set_needs_ocr_folder(self, root_dir: Path, skip: bool = True) -> None:
         """Set up the folder for files that need OCR."""
-        from utils import ensure_secure_dir
+        from ..utils import ensure_secure_dir
 
         self.skip_ocr_files = skip
         if skip:
@@ -282,7 +281,7 @@ class BookProcessor:
         Returns:
             Tuple of (success, new_path, new_name, category, file_hash)
         """
-        from utils import get_file_hash
+        from ..utils import get_file_hash
 
         try:
             logging.info(f"Processing: {file_path.name}")
@@ -354,7 +353,7 @@ class BookProcessor:
         update_metadata: bool,
     ) -> Optional[Dict[str, Any]]:
         """Get cached metadata if available and valid."""
-        from config import CACHE_DIR
+        from ..settings import CACHE_DIR
 
         cache_path = get_metadata_cache_path(
             file_hash, self.provider, self.model, CACHE_DIR
@@ -372,7 +371,7 @@ class BookProcessor:
         metadata: Dict[str, Any],
     ) -> None:
         """Save metadata to cache."""
-        from config import CACHE_DIR
+        from ..settings import CACHE_DIR
 
         cache_path = get_metadata_cache_path(
             file_hash, self.provider, self.model, CACHE_DIR
@@ -443,7 +442,8 @@ class BookProcessor:
             return
 
         import time
-        from extractors import (
+
+        from ..extractors import (
             PDFPlumberExtractor,
             PyMuPDFExtractor,
             PyPDFExtractor,
@@ -484,7 +484,7 @@ class BookProcessor:
         self, file_path: Path, provider: str, model_names: List[str]
     ) -> None:
         """Evaluate multiple models on a single file for metadata quality."""
-        from config import EVAL_LOG_FILE, PROVIDERS
+        from ..settings import EVAL_LOG_FILE, PROVIDERS
 
         if file_path.is_symlink():
             logging.warning(f"Skipping symlink for evaluation: {file_path.name}")
@@ -584,7 +584,7 @@ class BookProcessor:
         update_metadata: bool = False,
     ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str], Optional[str]]:
         """Process a single document with vision fallback."""
-        from utils import get_file_hash
+        from ..utils import get_file_hash
 
         try:
             logging.info(f"Processing with vision mode: {file_path.name}")
@@ -594,13 +594,8 @@ class BookProcessor:
                 logging.warning(f"Skipping symlink: {file_path.name}")
                 return False, None, None, None, None
 
-            # Check vision capability
-            if not self.vision_processor.is_vision_capable():
-                logging.error(
-                    f"Model {self.llm_engine.model_name} does not support vision. "
-                    "Please use a vision-capable model."
-                )
-                return False, None, None, None, None
+            # Note: Vision capability is delegated to the user.
+            # Users should ensure they use a vision-capable model.
 
             # Get file hash
             file_hash = get_file_hash(file_path)

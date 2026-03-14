@@ -1,6 +1,9 @@
+import sys
+sys.path.insert(0, "src")
+
 import pytest
 from pathlib import Path
-from extractors.base import BaseExtractor
+from renai.extractors.base import BaseExtractor
 
 def test_cannot_instantiate_base_extractor():
     """Verify that BaseExtractor cannot be instantiated directly."""
