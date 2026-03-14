@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "renai"
+version = "1.2.0"
+description = "AI-Powered Book Renamer and Organizer"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Ozgur Ulukir", email = "ozgur.ulukir@gmail.com"},
+]
+keywords = ["ai", "llm", "ocr", "pdf", "book", "renamer", "organizer"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+]
+
+[project.urls]
+Homepage = "https://github.com/ozgurulukir/renAI"
+Repository = "https://github.com/ozgurulukir/renAI"
+Issues = "https://github.com/ozgurulukir/renAI/issues"
+
+dependencies = [
+    "pymupdf",
+    "pytesseract",
+    "Pillow",
+    "requests",
+    "markitdown",
+    "openai",
+    "numpy",
+    "opencv-python",
+    "rich",
+    "typer",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "structlog",
+    "platformdirs",
+    "colorama",
+]
+
+[project.optional-dependencies]
+pdf-extra = [
+    "pdfplumber",
+    "pypdf",
+    "pypdfium2",
+]
+
+[project.scripts]
+renai = "renai.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]

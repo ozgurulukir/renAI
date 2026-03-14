@@ -10,8 +10,8 @@ import pymupdf
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-from config import CACHE_DIR, DEBUG_DIR, OCR_LANG, SUBPROCESS_TIMEOUT, TESSERACT_PATH
-from utils import ensure_secure_dir, sanitize_filename
+from ..settings import CACHE_DIR, DEBUG_DIR, OCR_LANG, SUBPROCESS_TIMEOUT, TESSERACT_PATH
+from ..utils import ensure_secure_dir, sanitize_filename
 
 # OpenCV is imported locally in _deskew() to handle optional skew correction
 OPENCV_AVAILABLE = None  # Will be determined on first use

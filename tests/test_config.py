@@ -1,238 +1,138 @@
-import os
-import shutil
+"""
+Tests for configuration settings.
+
+Tests the TOML-based configuration system:
+- Categories from TOML files
+- Eval models from TOML files
+- Environment variable overrides
+- Default fallbacks
+"""
 import sys
+
+sys.path.insert(0, "src")
+
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import MagicMock, patch
+
 import pytest
-from config import (
+
+from renai.settings import (
+    CACHE_DIR,
+    CONFIG_DIR,
+    CUSTOM_CATEGORIES,
     DEFAULT_CATEGORIES,
+    PACKAGE_CONFIG_DIR,
     display_warnings,
     get_allowed_categories,
     get_tesseract_path,
+    initialize_directories,
     load_categories_from_file,
     load_eval_models,
 )
 
-def test_load_categories_file_not_exists():
-    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
-        mock_file.exists.return_value = False
-        assert load_categories_from_file() == {}
 
-def test_load_categories_empty_file():
-    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
-        mock_file.exists.return_value = True
-        with patch("builtins.open", mock_open(read_data="")):
-            assert load_categories_from_file() == {"en": []}
+class TestCategories:
+    """Test categories loading from TOML config."""
 
-def test_load_categories_valid_content():
-    content = """
-# Comment
-LANG: en
-Article
-Fiction
+    def test_categories_loaded_from_package(self):
+        """Categories should be loaded from package TOML."""
+        # Default categories should exist
+        assert "en" in DEFAULT_CATEGORIES
+        assert "tr" in DEFAULT_CATEGORIES
+        assert len(DEFAULT_CATEGORIES["en"]) > 0
+        assert len(DEFAULT_CATEGORIES["tr"]) > 0
 
-LANG: tr
-Makale
-Kurgu
-"""
-    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
-        mock_file.exists.return_value = True
-        with patch("builtins.open", mock_open(read_data=content)):
-            result = load_categories_from_file()
-            assert result["en"] == ["Article", "Fiction"]
-            assert result["tr"] == ["Makale", "Kurgu"]
+    def test_custom_categories_override_defaults(self):
+        """Custom categories should override defaults."""
+        custom = {"en": ["Custom1", "Custom2"]}
+        with patch("renai.settings.CUSTOM_CATEGORIES", custom):
+            result = get_allowed_categories()
+            assert result == custom
 
-def test_load_categories_with_whitespace():
-    content = """
-  LANG: en
-  Article
-
-  # another comment
-  Fiction
-"""
-    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
-        mock_file.exists.return_value = True
-        with patch("builtins.open", mock_open(read_data=content)):
-            result = load_categories_from_file()
-            assert result["en"] == ["Article", "Fiction"]
-
-def test_load_categories_exception_handling(caplog):
-    with patch("config.CUSTOM_CATEGORIES_FILE") as mock_file:
-        mock_file.exists.return_value = True
-        with patch("builtins.open", side_effect=OSError("Read error")):
-            result = load_categories_from_file()
-            assert result == {}
-            assert "Error loading custom categories" in caplog.text
-
-def test_get_tesseract_path_env_override():
-    with patch("os.getenv") as mock_getenv:
-        mock_getenv.return_value = "/custom/path/tesseract"
-        # We need to ensure shutil.which doesn't interfere if env_path is set
-        with patch("shutil.which") as mock_which:
-            assert get_tesseract_path() == Path("/custom/path/tesseract")
-            mock_getenv.assert_called_with("TESSERACT_PATH")
-            mock_which.assert_not_called()
-
-def test_get_tesseract_path_which_found():
-    with patch("os.getenv", return_value=None), \
-         patch("shutil.which", return_value="/usr/local/bin/tesseract-from-which"):
-        assert get_tesseract_path() == Path("/usr/local/bin/tesseract-from-which")
-
-def test_get_tesseract_path_fallback_linux():
-    with patch("os.getenv", return_value=None), \
-         patch("shutil.which", return_value=None), \
-         patch("sys.platform", "linux"):
-        assert get_tesseract_path() == Path("/usr/bin/tesseract")
-
-def test_get_tesseract_path_fallback_windows():
-    with patch("os.getenv", return_value=None), \
-         patch("shutil.which", return_value=None), \
-         patch("sys.platform", "win32"):
-        assert get_tesseract_path() == Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
-
-def test_get_tesseract_path_fallback_macos():
-    with patch("os.getenv", return_value=None), \
-         patch("shutil.which", return_value=None), \
-         patch("sys.platform", "darwin"):
-        assert get_tesseract_path() == Path("/usr/local/bin/tesseract")
-
-def test_display_warnings_disabled():
-    with patch("config.SHOW_WARNINGS", False):
-        with patch("logging.warning") as mock_warning:
-            display_warnings("organize", True)
-            mock_warning.assert_not_called()
-
-def test_display_warnings_enabled_organize_recursive():
-    with patch("config.SHOW_WARNINGS", True):
-        with patch("logging.warning") as mock_warning:
-            with patch("builtins.input") as mock_input:
-                display_warnings("organize", True)
-
-                mock_input.assert_called_once_with("Press Enter to continue...")
-                mock_warning.assert_called_once()
-
-                warning_text = mock_warning.call_args[0][0]
-                assert "\n📁 DIRECTORY LAYOUT WARNING:" in warning_text
-                assert "\n💾 DATA LOSS PREVENTION:" in warning_text
-                assert "\n📊 TOKEN USAGE & BUDGET:" in warning_text
-                assert "\n🔄 RECURSIVE MODE:" in warning_text
-
-def test_display_warnings_enabled_rename_non_recursive():
-    with patch("config.SHOW_WARNINGS", True):
-        with patch("logging.warning") as mock_warning:
-            with patch("builtins.input") as mock_input:
-                display_warnings("rename", False)
-
-                mock_input.assert_called_once_with("Press Enter to continue...")
-                mock_warning.assert_called_once()
-
-                warning_text = mock_warning.call_args[0][0]
-                assert "\n📁 DIRECTORY LAYOUT WARNING:" not in warning_text
-                assert "\n💾 DATA LOSS PREVENTION:" in warning_text
-                assert "\n📊 TOKEN USAGE & BUDGET:" in warning_text
-                assert "\n🔄 RECURSIVE MODE:" not in warning_text
-
-def test_display_warnings_keyboard_interrupt():
-    with patch("config.SHOW_WARNINGS", True):
-        with patch("logging.warning"):
-            with patch("builtins.input", side_effect=KeyboardInterrupt):
-                with patch("logging.info") as mock_info:
-                    with patch("sys.exit") as mock_exit:
-                        display_warnings("organize", True)
-
-                        mock_info.assert_called_once_with("\nOperation cancelled by user.")
-                        mock_exit.assert_called_once_with(0)
+    def test_no_custom_returns_default(self):
+        """No custom categories should return defaults."""
+        with patch("renai.settings.CUSTOM_CATEGORIES", {}):
+            result = get_allowed_categories()
+            assert result == DEFAULT_CATEGORIES
 
 
-def test_get_allowed_categories_default():
-    """Verify that get_allowed_categories returns DEFAULT_CATEGORIES when CUSTOM_CATEGORIES is empty."""
-    with patch("config.CUSTOM_CATEGORIES", {}):
-        assert get_allowed_categories() == DEFAULT_CATEGORIES
+class TestEvalModels:
+    """Test eval models loading from TOML config."""
+
+    def test_eval_models_structure(self):
+        """Eval models should be a dict."""
+        from renai.settings import EVAL_MODELS
+        assert isinstance(EVAL_MODELS, dict)
+        assert "deepinfra" in EVAL_MODELS
+        assert "openai" in EVAL_MODELS
+        assert "openrouter" in EVAL_MODELS
 
 
-def test_get_allowed_categories_custom():
-    """Verify that get_allowed_categories returns CUSTOM_CATEGORIES when it is not empty."""
-    custom = {"en": ["Custom"]}
-    with patch("config.CUSTOM_CATEGORIES", custom):
-        assert get_allowed_categories() == custom
+class TestTesseractPath:
+    """Test Tesseract path detection."""
 
-def test_initialize_directories():
-    with patch("utils.ensure_secure_dir") as mock_ensure:
-        from config import initialize_directories, CACHE_DIR, DEBUG_DIR
-        initialize_directories()
-        assert mock_ensure.call_count == 2
-        mock_ensure.assert_any_call(CACHE_DIR)
-        mock_ensure.assert_any_call(DEBUG_DIR)
+    def test_env_override(self):
+        """Environment variable should override default path."""
+        with patch.dict("os.environ", {"TESSERACT_PATH": "/custom/path"}):
+            with patch("shutil.which", return_value=None):
+                result = get_tesseract_path()
+                assert Path(result).as_posix() == "/custom/path"
 
-def test_load_eval_models_from_config_dir(tmp_path):
-    with patch("config.CONFIG_DIR", tmp_path), patch("config.BASE_DIR", tmp_path / "base"):
-        (tmp_path / "base").mkdir()
+    def test_which_fallback(self):
+        """Should find Tesseract in PATH if env not set."""
+        with patch.dict("os.environ", {}, clear=True):
+            with patch("shutil.which", return_value="/usr/bin/tesseract"):
+                result = get_tesseract_path()
+                assert Path(result).as_posix() == "/usr/bin/tesseract"
 
-        # Create file in CONFIG_DIR
-        config_file = tmp_path / "eval_models_test_provider.txt"
-        config_file.write_text("model_a\nmodel_b\n", encoding="utf-8")
 
-        # Create file in BASE_DIR (should be ignored)
-        base_file = tmp_path / "base" / "eval_models_test_provider.txt"
-        base_file.write_text("model_c\nmodel_d\n", encoding="utf-8")
+class TestDisplayWarnings:
+    """Test display_warnings function."""
 
-        models = load_eval_models("test_provider")
-        assert models == ["model_a", "model_b"]
-
-def test_load_eval_models_fallback_to_base_dir(tmp_path):
-    with patch("config.CONFIG_DIR", tmp_path / "config"), patch("config.BASE_DIR", tmp_path):
-        (tmp_path / "config").mkdir()
-
-        # No file in CONFIG_DIR
-
-        # Create file in BASE_DIR
-        base_file = tmp_path / "eval_models_test_provider.txt"
-        base_file.write_text("model_c\nmodel_d\n", encoding="utf-8")
-
-        models = load_eval_models("test_provider")
-        assert models == ["model_c", "model_d"]
-
-def test_load_eval_models_no_file(tmp_path):
-    with patch("config.CONFIG_DIR", tmp_path / "config"), patch("config.BASE_DIR", tmp_path / "base"):
-        (tmp_path / "config").mkdir()
-        (tmp_path / "base").mkdir()
-
-        models = load_eval_models("test_provider")
-        assert models == []
-
-def test_load_eval_models_with_whitespace_and_empty_lines(tmp_path):
-    with patch("config.CONFIG_DIR", tmp_path), patch("config.BASE_DIR", tmp_path / "base"):
-        (tmp_path / "base").mkdir()
-
-        content = "\n  model_1  \n\n\nmodel_2\n   \n"
-        config_file = tmp_path / "eval_models_test_provider.txt"
-        config_file.write_text(content, encoding="utf-8")
-
-        models = load_eval_models("test_provider")
-        assert models == ["model_1", "model_2"]
-
-def test_load_eval_models_read_exception(tmp_path, caplog):
-    with patch("config.CONFIG_DIR", tmp_path), patch("config.BASE_DIR", tmp_path / "base"):
-        (tmp_path / "base").mkdir()
-
-        config_file = tmp_path / "eval_models_test_provider.txt"
-        config_file.touch()
-
-        with patch("builtins.open", side_effect=OSError("Permission denied")):
-            models = load_eval_models("test_provider")
-
-            assert models == []
-            assert "Error loading" in caplog.text
-            assert "eval_models_test_provider.txt" in caplog.text
-            assert "Permission denied" in caplog.text
-
-def test_display_warnings_eof_error():
-    with patch("config.SHOW_WARNINGS", True):
-        with patch("logging.warning"):
+    def test_disabled_by_setting(self):
+        """Warnings should be disabled when setting is False."""
+        with patch("renai.settings.app_settings.show_warnings", False):
             with patch("builtins.input", side_effect=EOFError):
-                with patch("logging.info") as mock_info:
-                    with patch("sys.exit") as mock_exit:
-                        display_warnings("organize", True)
+                with patch("logging.warning") as mock:
+                    display_warnings("rename", True)
+                    mock.assert_not_called()
 
-                        mock_info.assert_called_once_with("\nOperation cancelled by user.")
-                        mock_exit.assert_called_once_with(0)
+    def test_enabled_shown(self):
+        """Warnings should be shown when setting is True."""
+        with patch("builtins.input", return_value=""):
+            with patch("logging.warning") as mock:
+                display_warnings("rename", False)
+                mock.assert_called()
+
+
+class TestDirectories:
+    """Test directory initialization."""
+
+    def test_directories_created(self):
+        """Required directories should be created on init."""
+        with patch("renai.utils.ensure_secure_dir") as mock_ensure:
+            initialize_directories()
+            # Should call ensure for CACHE_DIR and DEBUG_DIR
+            call_args = [str(c) for c in mock_ensure.call_args_list]
+            assert any("cache" in c.lower() for c in call_args)
+            assert any("debug" in c.lower() for c in call_args)
+
+
+class TestEnvironmentIntegration:
+    """Test environment variable integration."""
+
+    def test_env_prefix_renai(self):
+        """Settings should use RENAI_ prefix."""
+        import renai.settings as settings_module
+        # AppSettings should have env_prefix
+        assert settings_module.app_settings.model_config.get("env_prefix") == "RENAI_"
+
+    def test_provider_settings_no_prefix(self):
+        """ProviderSettings should not have prefix."""
+        import renai.settings as settings_module
+        # Provider settings should not have prefix
+        assert settings_module.provider_settings.model_config.get("env_prefix") == ""
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

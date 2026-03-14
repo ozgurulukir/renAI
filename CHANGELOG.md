@@ -7,10 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-14
+
+### Added
+- **Unified Scan Failure Handling**: Introduced `--move-scan-failures` which unifies failure handling for both OCR and Vision fallbacks.
+- **Improved Fallback Flexibility**: Replaced `--skip-needs-ocr` with a more flexible `--fallback-mode move` option (strategies: `none`, `ocr`, `vision`, `move`).
+- **Standardized Terminology**: Consistently renamed "OCR Failure" to "Scan Failure" throughout the codebase and documentation to reflect the independent nature of fallback strategies.
+- **Needs_Scan vs Scan_Failures**: Clarified directory structure with `Needs_Scan/` (for manual scanning) and `Scan_Failures/` (for failed processing).
+
+### Changed
+- **Centralized Logic**: Moved file-moving logic from `TextExtractor` to `BookProcessor` to prevent premature movement and ensure all fallback paths are exhausted.
+- **Directory Naming**: Renamed `Needs_OCR` to `Needs_Scan` and `OCR_Failures` to `Scan_Failures`.
+- **CLI Refinement**: Deprecated `--move-ocr-failures` in favor of `--move-scan-failures`.
+
+### Fixed
+- **Vision Fallback Block**: Fixed a bug where files were moved to failure folders prematurely, preventing Vision fallback from being attempted.
+- **Terminology Inconsistencies**: Resolved mixed terminology (`ocr_failed` vs `vision_failed`) across multiple modules.
+
+## [1.1.0] - 2026-03-13
+
+### Added
+- **Modern Python CLI** - Complete migration from argparse to Typer framework.
+- **Pydantic Configuration** - Type-safe settings with `settings.py` using pydantic-settings.
+- **Structured Logging** - Implemented using structlog with JSON output for production and colored console for development.
+- **Environment Variables Support** - Full support with `.env.example` template and `RENAI_` prefix.
+- **GitHub Actions CI/CD** - Automated testing with matrix testing (Python 3.10, 3.11, 3.12), coverage reporting, and linting.
+- **Rich Terminal Output** - Colored output and progress bars for better UX.
+- **New CLI Commands**: `renai process`, `renai providers`, `renai cache`, `renai version`.
+- **Documentation Refinement**: Clarified Vision Mode flow (Text extraction first, then Vision fallback) in `README.md` and `okubeni.md`.
+
+### Changed
+- **CLI Entry Point**: Migrated from `main.py` to `cli.py` using Typer.
+- **Configuration**: Migrated from `config.py` to `settings.py` using Pydantic.
+- **Package Structure**: Now uses modern `src/renai` layout.
+- **Project Metadata**: Version updated to 1.1.0.
+- **Dependency Sync**: Unified `pyproject.toml` and `requirements.txt`.
+- **Extraction Libraries**: Moved heavy PDF extractors (`pdfplumber`, etc.) to optional extras.
+
+### Fixed
+- **Broken Benchmark Scripts**: Fixed legacy imports and pathing in `scripts/benchmark_script.py` and `scripts/benchmark_organize.py`.
+- **Dead Code Cleanup**: Removed unreferenced legacy files and obsolete imports.
+- **Missing Dependencies**: Resolved runtime errors by adding `pydantic`, `structlog`, and `platformdirs`.
+
+### Removed
+- **Legacy Files**: `main.py`, `config.py` removed (replaced by `cli.py` and `settings.py`).
+
 ## [1.0.1] - 2026-03-11
 
 ### Added
-
 - Added vision failure handling that moves failed files to the `OCR_Failures/` folder when using `--move-ocr-failures`.
 - Added non-PDF file handling in vision mode that moves files to the `Needs_OCR/` folder when using `--skip-needs-ocr`.
 - Added 15 new unit tests for `file_processor.py` to improve test coverage.
@@ -19,7 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All 296 tests passing (9 skipped).
 
 ### Changed
-
 - Replaced deprecated `--multimodal` flag with `--vision` throughout the codebase and documentation.
 - Removed legacy `--multimodal-provider` and `--multimodal-model` arguments in favor of unified `--provider` and `--model`.
 - Removed `_get_vision_llm_engine()` method from `BookProcessor` - now uses `self.llm_engine` directly.
@@ -28,7 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enabled `--skip-needs-ocr` and `--move-ocr-failures` flags to work with `--vision` mode.
 
 ### Fixed
-
 - Fixed mixed mode detection logic to use `args.rename_images` instead of `args.vision and args.rename_images`.
 - Fixed vision fallback to handle failures like OCR failures by moving files to `OCR_Failures/` folder.
 - Fixed non-PDF handling in vision mode to move files to `Needs_OCR/` folder when appropriate.
@@ -38,7 +80,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `cv2` possibly unbound error in `ocr_engine.py` by using lazy import pattern for OpenCV.
 
 ### Removed
-
 - Removed unused imports (`builtins`, `call`, `PROVIDERS`) from `test_main.py`.
 - Removed unused `typing.Any` import from `file_processor.py`.
 - Removed unused `description` variable from image processing in `file_processor.py`.
@@ -47,7 +88,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-03-11
 
 ### Added
-
 - Initial release of renAI.
 - AI-powered document and image organization using LLMs and OCR.
 - Vision mode for processing PDFs with multimodal AI models.

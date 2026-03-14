@@ -1,3 +1,6 @@
+import sys
+sys.path.insert(0, "src")
+
 import pytest
 import logging
 import numpy as np
@@ -5,7 +8,7 @@ import cv2
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from PIL import Image, ImageDraw
-from ocr_engine import OCREngine, OPENCV_AVAILABLE
+from renai.engines.ocr import OCREngine, OPENCV_AVAILABLE
 
 def test_get_page_source_dpi_no_images():
     """Test when no images are present on the page."""
@@ -126,7 +129,7 @@ def test_deskew_different_modes():
     assert engine._deskew(img_rgba) is not None
 
 def test_deskew_returns_original_if_no_opencv(monkeypatch):
-    monkeypatch.setattr("ocr_engine.OPENCV_AVAILABLE", False)
+    monkeypatch.setattr("renai.engines.ocr.OPENCV_AVAILABLE", False)
     engine = OCREngine(enhanced=True)
     img = Image.new("L", (100, 100))
     assert engine._deskew(img) == img
@@ -355,7 +358,7 @@ class TestExtractText:
 
     def test_extract_text_debug_mode(self, tmp_path):
         """Test text extraction with debug mode enabled."""
-        with patch('ocr_engine.DEBUG_DIR', tmp_path):
+        with patch('renai.engines.ocr.DEBUG_DIR', tmp_path):
             engine = OCREngine(debug=True)
             
             # Create a test PDF

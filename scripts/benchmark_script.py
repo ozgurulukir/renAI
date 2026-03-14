@@ -1,7 +1,15 @@
+import sys
 import time
 import shutil
 from pathlib import Path
-from main import collect_files
+
+# Add src to path if running from root or scripts/
+if (Path.cwd() / "src").exists():
+    sys.path.insert(0, str(Path.cwd() / "src"))
+elif (Path.cwd().parent / "src").exists():
+    sys.path.insert(0, str(Path.cwd().parent / "src"))
+
+from renai.cli import collect_files
 
 class MockProcessor:
     @property

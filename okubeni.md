@@ -1,6 +1,8 @@
 # renAI: Yapay Zeka Destekli Belge ve Görsel Düzenleyici
 
-`renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı metadata çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
+`renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı meta veriler (metadata) çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
+
+*Son güncelleme: 2026-03-14*
 
 ---
 
@@ -10,8 +12,8 @@ Dijital dosya koleksiyonlarınız anlamsız veya tutarsız isimlerle geldiğinde
 
 **İki Güçlü Yaklaşım:**
 
-- **Metin Çıkarma Modu**: Geleneksel metin tabanlı LLM'ler kullanarak belge içeriğinden (PDF, EPUB, DOCX, vb.) başlık, yazar ve yayın yılı gibi bilgileri çıkarır
-- **Multimodal Görüş Modu**: Görüş yeteneğine sahip LLM'ler kullanarak hem belgeleri hem de görselleri "görür" ve anlar - metin çıkarma veya OCR gerektirmez!
+- **Metin Çıkarma Modu**: Geleneksel metin tabanlı LLM'ler kullanarak belge içeriğinden (PDF, EPUB, DOCX, vb.) başlık, yazar ve yayın yılı gibi bilgileri çıkarır.
+- **Multimodal Görüş Modu**: Görüş yeteneğine sahip LLM'ler kullanarak belgeleri ve görselleri "görür". Metin çıkarma başarısız olursa, taranmış PDF'leri OCR yerine vision model ile işler.
 
 İster taranmış PDF'lerle, ister dijital belgelerle veya fotoğraflarla uğraşıyor olun, renAI size en iyi sonuçları verecek şekilde uyum sağlar.
 
@@ -43,12 +45,12 @@ Açıklama -- Kategori -- (Dil).uzantı
 | **Çoklu Format Desteği** | PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD ve görüntü dosyalarını (JPG, PNG, HEIC vb.) işler |
 | **Çoklu PDF Çıkarıcıları** | PyMuPDF, pdfplumber, pypdf veya pypdfium2 arasından seçim yapın |
 | **Yapay Zeka Destekli Meta Veri** | Başlıkları, yazarları, yılları ve kategorileri çıkarmak için LLM'leri kullanır |
-| **Multimodal Modu** | Multimodal (görüntü yetenekli) LLM ile PDF'leri OCR olmadan işle (daha hızlı ve doğru) |
+| **Multimodal Modu** | Önce metin çıkarmayı dener; başarısız olursa PDF'leri OCR yerine vision model ile işle (daha doğru) |
 | **Görüntü Yeniden Adlandırma** | Yapay zeka görüntü analizi ile görüntü dosyalarını yeniden adlandır |
 | **Gelişmiş OCR** | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu |
 | **mutool Desteği** | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır |
 | **Akıllı Önbellekleme** | API maliyetlerini ve işleme süresini azaltan MD5 tabanlı önbellekleme |
-| **Özel Kategoriler** | `categories.txt` dosyasında dil başına kendi kategorilerinizi tanımlayın |
+| **Özel Kategoriler** | `categories.toml` dosyasında dil başına kendi kategorilerinizi tanımlayın |
 
 ### Çalışma Modları
 
@@ -56,8 +58,10 @@ Açıklama -- Kategori -- (Dil).uzantı
 - **`organize`**: Yeniden adlandırılmış dosyaları kategori klasörlerine taşır
 - **`benchmark`**: PDF çıkarma kütüphanesi performansını karşılaştırır
 - **`eval-model`**: Farklı LLM modellerini doğruluk açısından test eder
-- **`--vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Metin çıkarma başarısız olursa, vision modele fallback yapar. PDF olmayan dosyalar `Needs_OCR/` klasörüne taşınabilir.
-- **`--rename-images`**: Görüntü dosyalarını yeniden adlandırır. Ayrıca görüntü olmayan dosyaları metin çıkarma + OCR fallback ile işler.
+- **`--fallback-mode ocr`**: Önce metin çıkarmayı dener. Başarısız olursa Tesseract OCR kullanarak metin çıkarmaya çalışır (varsayılan davranış).
+- **`--fallback-mode vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Önce metin çıkarmayı dener (OCR kullanmaz). Başarısız olursa, vision modele fallback yapar.
+- **`--fallback-mode move`**: Metin çıkarma başarısız olan dosyaları `Needs_Scan/` klasörüne taşır.
+- **`--rename-images`**: Görüntü dosyalarını yeniden adlandırır. Ayrıca görüntü olmayan dosyaları metin çıkarma + fallback ile işler.
 
 ---
 
@@ -88,8 +92,11 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # veya: .venv\Scripts\activate  # Windows
 
-# Bağımlılıkları yükle
-pip install -r requirements.txt
+# Bağımlılıkları yükle ('renai' komutunu oluşturur)
+pip install -e .
+
+# İsteğe bağlı: Ekstra PDF çıkarıcılarla yükle
+pip install -e ".[pdf-extra]"
 ```
 
 ### API Anahtarları
@@ -118,39 +125,39 @@ Anahtarları şuradan alın: [DeepInfra](https://deepinfra.com) | [OpenRouter](h
 
 ```bash
 # Dizindeki tüm dosyaları yeniden adlandır
-python main.py "C:/Kitaplar/Yolu" --mode rename
+renai "C:/Kitaplar/Yolu" --mode rename
 ```
 
 ### Klasörlere Düzenleme
 
 ```bash
 # Yeniden adlandır ve kategori klasörlerine düzenle
-python main.py "C:/Kitaplar/Yolu" --mode organize
+renai process "C:/Kitaplar/Yolu" --mode organize
 ```
 
 ### Taranmış Belgeler için Yüksek Kaliteli OCR
 
 ```bash
 # Görüntü ön işleme ile geliştirilmiş OCR
-python main.py "C:/Kitaplar/Yolu" --ocr-enhanced --use-mutool
+renai process "C:/Kitaplar/Yolu" --ocr-enhanced --use-mutool
 ```
 
 ### Multimodal Modu (OCR'suz PDF)
 
-Vision modu, görüntü yetenekli LLM'leri kullanarak PDF'leri doğrudan işler. Metin çıkarma başarısız olursa, OCR yerine vision modele fallback yapar. Bu, metin tabanlı PDF'ler için daha hızlı ve doğrudur.
+Vision modu akıllı bir fallback stratejisi uygular: Önce (daha hızlı ve ucuz olan) metin çıkarmayı dener. Başarısız olursa, PDF'i bir görsel olarak işlemek için görüş yeteneğine sahip bir LLM'e başvurur.
 
 ```bash
 # Vision model ile PDF'leri işle (OCR yok) - varsayılan provider/model kullanır
-python main.py "C:/Kitaplar/Yolu" --vision
+renai process "C:/Kitaplar/Yolu" --fallback-mode vision
 
 # Belirli vision model kullan
-python main.py "C:/Kitaplar/Yolu" --vision --provider openrouter --model openai/gpt-4o
+renai process "C:/Kitaplar/Yolu" --fallback-mode vision --provider openrouter --model openai/gpt-4o
 
 # DeepInfra ile Llama Vision
-python main.py "C:/Kitaplar/Yolu" --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
+renai process "C:/Kitaplar/Yolu" --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
 
 # OpenAI GPT-4o
-python main.py "C:/Kitaplar/Yolu" --vision --provider openai --model gpt-4o
+renai process "C:/Kitaplar/Yolu" --fallback-mode vision --provider openai --model gpt-4o
 ```
 
 ### Görüntü Dosyalarını Yeniden Adlandırma
@@ -159,13 +166,13 @@ Yapay zeka görüntü analizi kullanarak görüntü dosyalarını yeniden adland
 
 ```bash
 # Görüntü modeli ile görüntüleri yeniden adlandır
-python main.py "C:/Fotoğraflar" --rename-images --provider openai --model gpt-4o
+renai process "C:/Fotoğraflar" --rename-images --provider openai --model gpt-4o
 
 # EXIF tarih ekle (varsa)
-python main.py "C:/Fotoğraflar" --rename-images --provider openai --model gpt-4o --exif
+renai process "C:/Fotoğraflar" --fallback-mode vision --rename-images --provider openai --model gpt-4o --exif
 
 # DeepInfra ile
-python main.py "C:/Görüntüler" --rename-images --provider deepinfra --model Qwen/Qwen2-VL-72B-Instruct
+renai process "C:/Görüntüler" --fallback-mode vision --rename-images --provider deepinfra --model Qwen/Qwen2-VL-72B-Instruct
 ```
 
 ### Karışık Klasörler (PDF + Görüntü)
@@ -174,19 +181,19 @@ Aynı klasördeki PDF ve görüntü dosyalarını işleyin:
 
 | Parametre | PDF/Desteklenen | Resim |
 |-----------|-----------------|-------|
-| `--vision` | Normal → Vision fallback | ⏭️ Atlanır |
-| `--vision --rename-images` | Normal → Vision fallback | 🔄 Vision ile yeniden adlandır |
+| `--fallback-mode vision` | Normal → Vision fallback | ⏭️ Atlanır |
+| `--fallback-mode vision --rename-images` | Normal → Vision fallback | 🔄 Vision ile yeniden adlandır |
 | `--rename-images` | Normal → OCR fallback | 🔄 Vision ile yeniden adlandır |
 
 ```bash
 # PDF'ler vision ile, görüntüler vision ile yeniden adlandırılır
-python main.py "C:/Karışık" --vision --rename-images --provider openai --model gpt-4o
+renai process "C:/Karışık" --fallback-mode vision --rename-images --provider openai --model gpt-4o
 
 # Sadece görüntüleri yeniden adlandır (PDF'ler OCR ile)
-python main.py "C:/Karışık" --rename-images --provider openai --model gpt-4o
+renai process "C:/Karışık" --rename-images --provider openai --model gpt-4o
 
 # Sadece PDF'leri vision ile işle (görüntüler atlanır)
-python main.py "C:/PDFler" --vision --provider openai --model gpt-4o
+renai process "C:/PDFler" --fallback-mode vision --provider openai --model gpt-4o
 ```
 
 
@@ -194,13 +201,13 @@ python main.py "C:/PDFler" --vision --provider openai --model gpt-4o
 
 ```bash
 # DeepInfra (varsayılan)
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider deepinfra
+renai process "C:/Kitaplar/Yolu" --mode rename --provider deepinfra
 
 # OpenRouter
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider openrouter
+renai process "C:/Kitaplar/Yolu" --mode rename --provider openrouter
 
 # OpenAI
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider openai
+renai process "C:/Kitaplar/Yolu" --mode rename --provider openai
 ```
 
 ### Yerel Çıkarım (Ollama / LM Studio)
@@ -217,10 +224,10 @@ $env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"  # Ollama varsayılanı
 $env:CUSTOM_MODEL = "llama3"  # Model adınız
 
 # Özel sağlayıcı ile çalıştır
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom
+renai process "C:/Kitaplar/Yolu" --mode rename --provider custom
 
 # Veya modeli doğrudan geçersiz kıl
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
+renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
 ```
 
 #### Yerel Modeller için Metin Uzunluğunu Kontrol Etme
@@ -229,10 +236,10 @@ Tüketici donanımlarında yerel modeller çalıştırırken, bellek kullanımı
 
 ```bash
 # Metin uzunluğunu 5000 karaktere azalt (varsayılan: 10000)
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 5000
+renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 5000
 
 # Modeliniz kaldırabiliyorsa daha iyi bağlam için artırın
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
+renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
 ```
 
 | Seçenek | Açıklama | Varsayılan |
@@ -260,24 +267,24 @@ python main.py "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 
 
 ```bash
 # DeepInfra ile özel model
-python main.py "C:/Kitaplar/Yolu" --mode rename --model Qwen/Qwen2.5-72B-Instruct
+renai process "C:/Kitaplar/Yolu" --mode rename --model Qwen/Qwen2.5-72B-Instruct
 
 # OpenRouter ile Gemini
-python main.py "C:/Kitaplar/Yolu" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
+renai process "C:/Kitaplar/Yolu" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
 ```
 
 ### Daha Hızlı İşleme
 
 ```bash
 # Eşzamanlı çalışanları artır
-python main.py "C:/Kitaplar/Yolu" --mode rename --workers 8
+renai process "C:/Kitaplar/Yolu" --mode rename --workers 8
 ```
 
 ### Meta Verileri Zorla Yenileme
 
 ```bash
 # Önbelleği atla ve yeniden çıkar
-python main.py "C:/Kitaplar/Yolu" --mode rename --update-metadata
+renai process "C:/Kitaplar/Yolu" --mode rename --update-metadata
 ```
 
 ### Kıyaslama ve Model Değerlendirme
@@ -285,13 +292,13 @@ python main.py "C:/Kitaplar/Yolu" --mode rename --update-metadata
 #### PDF Çıkarıcı Kıyaslaması
 Farklı PDF çıkarma kütüphanelerinin belgeleriniz üzerindeki performansını ve doğruluğunu karşılaştırın.
 ```bash
-python main.py "C:/Kitaplar/Yolu" --benchmark
+renai process "C:/Kitaplar/Yolu" --benchmark
 ```
 
 #### LLM Model Değerlendirmesi
 Özel belge koleksiyonunuz için maliyet ve doğruluk arasındaki en iyi dengeyi bulmak amacıyla bir sağlayıcıdan birden fazla modeli test edin.
 ```bash
-python main.py "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
+renai process "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
 ```
 
 **Nasıl çalışır:**
@@ -304,10 +311,10 @@ python main.py "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
 
 ```bash
 # Tüm önbelleği temizle
-python main.py --clear-cache
+renai process --clear-cache
 
 # Belirli dizin için önbelleği temizle
-python main.py "C:/Kitaplar/Yolu" --clear-cache
+renai process "C:/Kitaplar/Yolu" --clear-cache
 ```
 
 ---
@@ -343,8 +350,8 @@ python main.py "C:/Kitaplar/Yolu" --clear-cache
 
 ### OCR İşleme Seçenekleri
 
-- **`--skip-needs-ocr`**: Yetersiz metinli dosyaları `Needs_OCR` klasörüne taşır (OCR'yi atlar)
-- **`--move-ocr-failures`**: Tamamen işlenemeyen dosyaları `OCR_Failures` klasörüne taşır
+- **`--fallback-mode move`**: Yetersiz metinli dosyaları `Needs_Scan` klasörüne taşır (işlemeyi atlar)
+- **`--move-scan-failures`**: Hem standart hem de fallback yöntemleriyle işlenemeyen dosyaları `Scan_Failures` klasörine taşır
 
 ---
 
@@ -366,9 +373,9 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 
 ### Vision Modu vs OCR
 
-| Özellik | Vision Modu (`--vision`) | OCR Modu (varsayılan) |
+| Özellik | Vision Modu (`--fallback-mode vision`) | OCR Modu (varsayılan) |
 |---------|--------------------------|-------------------|
-| **Metin Çıkarma** | Ö dener, başarısız olursa vision fallback | Öncence dener, başarısız olursa OCR fallback |
+| **Metin Çıkarma** | Önce dener, başarısız olursa vision fallback | Önce dener, başarısız olursa OCR fallback |
 | **Hız** | Metin PDF'leri için daha hızlı | OCR daha yavaş |
 | **Doğruluk** | Temiz metin için daha yüksek | Tarama kalitesine bağlı |
 | **Taranmış Belgeler** | Vision ile işler | Taramalar için optimize |
@@ -418,16 +425,16 @@ renAI, sağlayıcı-model farkındalığına sahip akıllı bir önbellek sistem
 **Örnek:**
 ```bash
 # DeepInfra ile ilk çalıştırma - meta verileri önbelleğe alır
-python main.py "C:/Kitaplar" --provider deepinfra
+renai process "C:/Kitaplar" --provider deepinfra
 
 # OpenRouter ile aynı dosyalar - YENİ önbellek girişi (eski korunur)
-python main.py "C:/Kitaplar" --provider openrouter
+renai process "C:/Kitaplar" --provider openrouter
 
 # Aynı sağlayıcı/model - önbelleğe alınmış meta verileri kullanır
-python main.py "C:/Kitaplar" --provider deepinfra
+renai process "C:/Kitaplar" --provider deepinfra
 
 # Zorla yenileme - önbelleği atlar
-python main.py "C:/Kitaplar" --provider deepinfra --update-metadata
+renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 ```
 
 **Önbellek Konumu:** `platformdirs` kullanılarak işletim sistemi tarafından otomatik yönetilir (ör. Linux'ta `~/.cache/renAI`, macOS'te `~/Library/Caches/renAI`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`).
@@ -435,10 +442,10 @@ python main.py "C:/Kitaplar" --provider deepinfra --update-metadata
 **Önbelleği Temizle:**
 ```bash
 # Tüm önbelleği temizle
-python main.py --clear-cache
+renai process --clear-cache
 
 # Belirli dizin için önbelleği temizle
-python main.py "C:/Kitaplar" --clear-cache
+renai process "C:/Kitaplar" --clear-cache
 ```
 
 ### Gizlilik Değerlendirmeleri
@@ -535,22 +542,15 @@ Diğer
 | Seçenek | Açıklama |
 |--------|-------------|
 | `--provider` | `deepinfra`, `openrouter`, `openai` veya `custom` |
-| `--model` | Metin işleme için model adı |
-
-| `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
+| `--model` | Metin işleme veya vision modunda kullanılacak model adı |
 | `--workers` | Eşzamanlı çalışanlar (varsayılan: 4) |
 | `--ocr-enhanced` | Geliştirilmiş OCR'yi etkinleştir |
 | `--use-mutool` | Çıkarma için mutool kullan |
 | `--debug-ocr` | Hata ayıklama görüntülerini kaydet |
 | `--recursive` | Alt dizinleri işle (varsayılan: True) |
 | `--no-recursive` | Yalnızca kök dizini işle |
-| `--vision` | PDF'leri vision AI ile işler. Metin çıkarma başarısız olursa, OCR yerine vision modele fallback yapar. |
-| `--rename-images` | Görüntü dosyalarını vision AI ile yeniden adlandır (--model gerekli, vision yetenekli olmalı) |
-| `--exif` | Varsa görüntülere EXIF tarihi ekle |
-| `--text-length` | LLM'e gönderilecek hedef metin uzunluğu (varsayılan: 10000) |
-| `--update-metaveri` | Önbelleği atla ve meta verileri zorla yenile |
-| `--skip-needs-ocr` | OCR gerektiren dosyaları klasöre taşı |
-| `--move-ocr-failures` | Başarısız dosyaları klasöre taşı |
+| `--fallback-mode` | Çıkarma başarısız olduğundaki strateji (`none`, `ocr`, `vision`, `move`) |
+| `--move-scan-failures` | Başarısız dosyaları `Scan_Failures` klasörüne taşı |
 | `--clear-cache` | Önbelleği temizle ve çık |
 
 ---
@@ -559,17 +559,21 @@ Diğer
 
 ```
 renAI/
-├── main.py              # Giriş noktası ve CLI
-├── config.py            # Yapılandırma ve API ayarları
-├── utils.py             # Yardımcı fonksiyonlar
-├── llm_engine.py        # LLM sağlayıcı entegrasyonu
-├── ocr_engine.py        # OCR işleme
-├── file_processor.py    # Çekirdek işleme mantığı
-├── extractors/          # Belge ayrıştırıcıları
-│   ├── base.py          # Soyut temel sınıf
-│   └── pdf_extractors.py # PDF çıkarma uygulamaları
-├── test_file_processor.py # Birim testleri
-└── requirements.txt     # Bağımlılıklar
+├── src/
+│   └── renai/
+│       ├── cli.py               # Giriş noktası (Typer)
+│       ├── settings.py          # Yapılandırma (Pydantic)
+│       ├── utils.py             # Yardımcı fonksiyonlar
+│       ├── logging_config.py    # Yapılandırılmış günlükleme
+│       ├── engines/             # Görüş ve OCR motorları
+│       ├── extractors/          # Belge ayrıştırıcıları
+│       ├── processors/          # Çekirdek işleme mantığı
+│       ├── file_ops/            # Dosya işlem mantığı
+│       └── filename/            # İsimlendirme kuralları
+├── tests/                       # Birim testleri
+├── scripts/                     # Benchmark ve yardımcı scriptler
+├── pyproject.toml               # Paket meta verileri
+└── requirements.txt             # Bağımlılıklar
 ```
 
 ---
@@ -601,7 +605,7 @@ Görüntü modu, renAI'nin metin çıkarmadan multimodal yapay zeka modelleri ku
 Yapay zeka kullanarak resim dosyalarını (fotoğraflar, ekran görüntüleri) yeniden adlandırın:
 
 ```bash
-python main.py "C:/Fotograflar" --mode rename --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+renai process "C:/Fotograflar" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 Bu komut her resmi analiz edecek ve görsel içeriğine göre yeniden adlandıracaktır.
@@ -611,7 +615,7 @@ Bu komut her resmi analiz edecek ve görsel içeriğine göre yeniden adlandıra
 Hem PDF hem de resim içeren klasörleri işleyin:
 
 ```bash
-python main.py "C:/Belgeler" --mode rename --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+renai process "C:/Belgeler" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 Bu komut şunları işler:
@@ -623,7 +627,7 @@ Bu komut şunları işler:
 Resimleri işlerken, dosya adlarına EXIF tarih bilgisi ekleyebilirsiniz:
 
 ```bash
-python main.py "C:/Fotograflar" --mode rename --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
+renai process "C:/Fotograflar" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
 ```
 
 Bu komut, mevcutsa fotoğrafın EXIF meta verilerinden tarihi dosya adına ekler.
@@ -662,17 +666,17 @@ Test paketini çalıştırın:
 
 ```bash
 # Tüm testleri çalıştır
-pytest test_*.py -v
+pytest tests/ -v
 
 # Görüntü modu testlerini çalıştır
-pytest test_vision_*.py -v
+pytest tests/test_vision_*.py -v
 
 # Kapsam ile çalıştır
-pytest test_file_processor.py --cov=file_processor
+pytest tests/test_file_processor.py --cov=src/renai/processors/book
 ```
 
 ---
 
-*Son güncelleme: 2026-03-11*
+*Son güncelleme: 2026-03-14*
 
 *renAI - Dijital kütüphanenizi yapay zeka ile düzenleyin*

@@ -83,44 +83,38 @@ When using cloud LLM providers (DeepInfra, OpenRouter, OpenAI), the following da
 
 ## 📁 Local Cache Storage
 
-renAI stores cached data in `.renamer_cache/` directory:
-
-### Cache Files
-
-| File Type | Format | Contents | Sensitive? |
-|-----------|--------|----------|------------|
-| Extracted Text | `{hash}_enhanced.txt` | Document text | ⚠️ Yes |
-| Metadata | `{hash}_metadata.json` | Title, author, category | ⚠️ Yes |
-
 ### Cache Location
 
+renAI utilizes modern OS-agnostic path management via the `platformdirs` library. Cache files are stored in your operating system's standard cache location:
+
+- **Windows**: `%LOCALAPPDATA%\renAI\Cache`
+- **macOS**: `~/Library/Caches/renAI`
+- **Linux**: `~/.cache/renAI`
+
+The directory structure is organized as follows:
+
 ```
-renAI/
-├── .renamer_cache/
-│   ├── abc123_enhanced.txt      # Extracted text
-│   ├── abc123_metadata.json     # Metadata
-│   └── ...
+Cache/
+├── text/        # Extracted text files
+└── metadata/    # metadata files
 ```
 
 ### Cache Management
 
 ```bash
 # Clear all cache
-python main.py --clear-cache
+renai process --clear-cache
 
 # Clear cache for specific directory
-python main.py "C:/Path/To/Books" --clear-cache
-
-# Clear cache for single file
-python main.py "C:/Path/To/Books/book.pdf" --clear-cache
+renai process "C:/Path/To/Books" --clear-cache
 ```
 
 ### Cache Security Recommendations
 
-1. **Add to .gitignore**: Ensure cache directory is not versioned
-2. **Exclude from backups**: Consider excluding `.renamer_cache/` from automated backups
-3. **Regular cleanup**: Clear cache periodically, especially after processing sensitive documents
-4. **Encrypted storage**: Store cache on encrypted drives if possible
+1. **Use built-in tools**: Use `renai cache` to safely clear cached data.
+2. **Exclude from backups**: Consider excluding the OS-specific cache directory from automated backups.
+3. **Regular cleanup**: Clear cache periodically, especially after processing sensitive documents.
+4. **Encrypted storage**: Store cache on encrypted drives if possible.
 
 ---
 
@@ -139,7 +133,7 @@ python main.py "C:/Path/To/Books/book.pdf" --clear-cache
 
 ```bash
 # Example: Using OpenRouter for public books
-python main.py "C:/Public/Books" --mode rename --provider openrouter
+renai process "C:/Public/Books" --mode rename --provider openrouter
 ```
 
 ### Scenario 2: Personal Documents
@@ -157,7 +151,7 @@ python main.py "C:/Public/Books" --mode rename --provider openrouter
 # Example: Using local Ollama for personal documents
 $env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"
 $env:CUSTOM_MODEL = "llama3"
-python main.py "C:/Personal/Documents" --mode rename --provider custom
+renai process "C:/Personal/Documents" --mode rename --provider custom
 ```
 
 ### Scenario 3: Business/Professional Documents
@@ -176,7 +170,7 @@ python main.py "C:/Personal/Documents" --mode rename --provider custom
 # Example: Using LM Studio for business documents
 $env:CUSTOM_API_BASE_URL = "http://localhost:1234/v1"
 $env:CUSTOM_MODEL = "your-model"
-python main.py "C:/Work/Documents" --mode rename --provider custom
+renai process "C:/Work/Documents" --mode rename --provider custom
 ```
 
 ### Scenario 4: Healthcare/Medical Records
@@ -198,18 +192,17 @@ python main.py "C:/Work/Documents" --mode rename --provider custom
 ### 1. Use Local Processing for Sensitive Content
 
 ```bash
-# Set up local LLM first, then use custom provider
 export CUSTOM_API_BASE_URL="http://localhost:11434/v1"
 export CUSTOM_MODEL="llama3"
-python main.py "C:/Sensitive/Files" --mode rename --provider custom
+renai process "C:/Sensitive/Files" --mode rename --provider custom
 ```
 
 ### 2. Clear Cache After Processing Sensitive Files
 
 ```bash
 # Immediately clear cache after processing
-python main.py "C:/Sensitive/Files" --mode rename --provider custom
-python main.py "C:/Sensitive/Files" --clear-cache
+renai process "C:/Sensitive/Files" --mode rename --provider custom
+renai process "C:/Sensitive/Files" --clear-cache
 ```
 
 ### 3. Review Provider Terms of Service
@@ -240,7 +233,7 @@ For local inference servers:
 export OPENAI_API_KEY="sk-..."
 export DEEPINFRA_API_KEY="..."
 
-python main.py "C:/Books" --mode rename
+renai process "C:/Books" --mode rename
 ```
 
 ### 6. Audit Log Review
@@ -271,8 +264,8 @@ cat evaluation.log
 
 After processing sensitive documents:
 
-- [ ] Clear renAI cache: `python main.py --clear-cache`
-- [ ] Delete any debug images in `.ocr_debug/`
+- [ ] Clear renAI cache: `renai cache`
+- [ ] Delete any debug images in OS-specific data directory
 - [ ] Review and clear shell history
 - [ ] Check provider API dashboards for usage logs
 - [ ] Verify cache directory is empty
@@ -325,7 +318,7 @@ After processing sensitive documents:
 
 ### Q: Is the cache encrypted?
 
-**A**: No, the cache is stored as plain text files. Store the `.renamer_cache/` directory on encrypted storage if processing sensitive documents.
+**A**: No, the cache is stored as plain text files. Use `renai cache` to manage your data or store the OS-specific cache directory on encrypted storage if processing sensitive documents.
 
 ### Q: What happens to data during retries?
 
@@ -350,4 +343,4 @@ After processing sensitive documents:
 
 ---
 
-*Last updated: 2025-01-26*
+| 2026-03-14 | Updated to include platformdirs and new CLI commands |

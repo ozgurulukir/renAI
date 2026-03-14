@@ -1,0 +1,64 @@
+# =============================================================================
+# Default Categories Configuration for renAI
+# =============================================================================
+# This file is shipped with the package
+# User can override by creating categories.txt in config directory
+
+[en]
+categories = [
+    "Article",
+    "Fiction",
+    "Non-Fiction",
+    "Textbook",
+    "Report",
+    "Gov",
+    "Presentation",
+    "Manual",
+    "Thesis",
+    "Research",
+    "Other",
+    "Dictionary",
+    "Biography",
+    "Memoir",
+    "Science",
+    "History",
+    "Philosophy",
+    "Psychology",
+    "Economics",
+    "Technology",
+    "Programming",
+    "Cooking",
+    "Travel",
+    "Health",
+    "Self-Help",
+]
+
+[tr]
+categories = [
+    "Makale",
+    "Kurgu",
+    "Kurgu Dışı",
+    "Ders Kitabı",
+    "Rapor",
+    "Devlet",
+    "Sunum",
+    "Kılavuz",
+    "Tez",
+    "Araştırma",
+    "Diğer",
+    "Sözlük",
+    "Biyografi",
+    "Öykü",
+    "Ansiklopedi",
+    "Bilim",
+    "Tarih",
+    "Felsefe",
+    "Psikoloji",
+    "Ekonomi",
+    "Teknoloji",
+    "Programlama",
+    "Aşçılık",
+    "Seyahat",
+    "Sağlık",
+    "Kişisel Gelişim",
+]

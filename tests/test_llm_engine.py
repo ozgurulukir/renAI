@@ -1,8 +1,11 @@
+import sys
+sys.path.insert(0, "src")
+
 import json
 import pytest
 from unittest.mock import MagicMock, patch
 from openai import OpenAIError
-from llm_engine import LLMEngine
+from renai.engines.llm import LLMEngine
 
 @pytest.fixture
 def mock_allowed_categories():
@@ -13,7 +16,7 @@ def mock_allowed_categories():
 
 @pytest.fixture
 def llm_engine(mock_allowed_categories):
-    with patch("llm_engine.get_allowed_categories", return_value=mock_allowed_categories):
+    with patch("renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories):
         return LLMEngine(
             provider="openai",
             api_key="test-key",
@@ -126,7 +129,7 @@ def test_call_llm_content_none(llm_engine):
 
 def test_call_llm_openrouter_headers(mock_allowed_categories):
     """Test that extra headers are included for openrouter provider."""
-    with patch("llm_engine.get_allowed_categories", return_value=mock_allowed_categories):
+    with patch("renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories):
         engine = LLMEngine(
             provider="openrouter",
             api_key="test-key",

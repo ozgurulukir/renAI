@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 from openai import OpenAI, OpenAIError
 from openai.types.chat import ChatCompletionMessageParam
 
-from config import get_allowed_categories, is_multimodal_model
+from ..settings import get_allowed_categories
 
 
 class LLMEngine:
@@ -150,9 +150,7 @@ Choose the nearest category from the list below matching the detected content/la
 }
 """
 
-    def is_multimodal_capable(self) -> bool:
-        """Check if the current model supports vision."""
-        return is_multimodal_model(self.provider, self.model_name)
+
 
     def get_book_metadata(self, text: str) -> Optional[Dict[str, Any]]:
         """Generate book metadata using the LLM with category validation and retries."""
@@ -210,12 +208,8 @@ Choose the nearest category from the list below matching the detected content/la
             logging.error(f"API Key for {self.provider} not found.")
             return None
 
-        if not self.is_multimodal_capable():
-            logging.error(
-                f"Model {self.model_name} does not support vision. "
-                f"Use a vision-capable model with --vision mode."
-            )
-            return None
+        # Note: Vision capability is now delegated to the user.
+        # Users should ensure they use a vision-capable model.
 
         # Convert image to base64
         try:
@@ -247,12 +241,8 @@ Choose the nearest category from the list below matching the detected content/la
             logging.error(f"API Key for {self.provider} not found.")
             return None
 
-        if not self.is_multimodal_capable():
-            logging.error(
-                f"Model {self.model_name} does not support vision. "
-                f"Use a vision-capable model with --rename-images mode."
-            )
-            return None
+        # Note: Vision capability is now delegated to the user.
+        # Users should ensure they use a vision-capable model.
 
         # Convert image to base64
         try:

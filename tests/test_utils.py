@@ -1,8 +1,11 @@
+import sys
+sys.path.insert(0, "src")
+
 import hashlib
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
-from utils import (
+from renai.utils import (
     get_file_hash,
     generate_cache_key,
     get_provider_model_key,
@@ -258,7 +261,7 @@ def test_read_text_limited_empty(tmp_path):
     assert result == ""
 
 
-@patch("utils.logging.error")
+@patch("renai.utils.logging.error")
 @patch("builtins.open")
 def test_read_text_limited_error_logging(mock_open, mock_logging_error, tmp_path):
     """Test that an exception triggers logging.error and returns an empty string."""
