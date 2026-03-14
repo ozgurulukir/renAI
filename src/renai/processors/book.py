@@ -188,10 +188,11 @@ class BookProcessor:
 
     def _move_to_failures(self, file_path: Path, file_hash: str):
         """Helper to move failed files to OCR_Failures."""
-        if not self.ocr_failures_dir:
+        failures_dir = self.ocr_failures_dir
+        if failures_dir is None:
             return
         try:
-            dest = self.ocr_failures_dir / file_path.name
+            dest = failures_dir / file_path.name
             safe_move_file(file_path, dest, "move to OCR_Failures", source_hash=file_hash)
         except Exception as e:
             logging.error(f"Failed to move {file_path.name} to failures: {e}")

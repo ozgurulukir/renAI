@@ -29,16 +29,16 @@ By including the provider-model pair in the cache key, we ensure:
 Example Cache Behavior:
 =======================
 # First run with DeepInfra - caches metadata
-python main.py "C:/Books" --provider deepinfra
+renai "C:/Books" --provider deepinfra
 
 # Same files with OpenRouter - NEW cache entry (old one preserved)
-python main.py "C:/Books" --provider openrouter
+renai "C:/Books" --provider openrouter
 
 # Same provider/model - uses cached metadata
-python main.py "C:/Books" --provider deepinfra
+renai "C:/Books" --provider deepinfra
 
 # Force refresh - bypasses cache
-python main.py "C:/Books" --provider deepinfra --update-metadata
+renai "C:/Books" --provider deepinfra --update-metadata
 
 Module Functions:
 =================
@@ -53,7 +53,7 @@ Module Functions:
 
 Usage:
 ======
-    from new_modules.cache_manager import (
+    from renai.cache.manager import (
         get_text_cache_path,
         read_text_cache,
         write_text_cache,

@@ -50,7 +50,7 @@ Açıklama -- Kategori -- (Dil).uzantı
 | **Gelişmiş OCR** | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu |
 | **mutool Desteği** | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır |
 | **Akıllı Önbellekleme** | API maliyetlerini ve işleme süresini azaltan MD5 tabanlı önbellekleme |
-| **Özel Kategoriler** | `categories.txt` dosyasında dil başına kendi kategorilerinizi tanımlayın |
+| **Özel Kategoriler** | `categories.toml` dosyasında dil başına kendi kategorilerinizi tanımlayın |
 
 ### Çalışma Modları
 
@@ -90,8 +90,11 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # veya: .venv\Scripts\activate  # Windows
 
-# Bağımlılıkları yükle
-pip install -r requirements.txt
+# Bağımlılıkları yükle ('renai' komutunu oluşturur)
+pip install -e .
+
+# İsteğe bağlı: Ekstra PDF çıkarıcılarla yükle
+pip install -e ".[pdf-extra]"
 ```
 
 ### API Anahtarları
@@ -120,7 +123,7 @@ Anahtarları şuradan alın: [DeepInfra](https://deepinfra.com) | [OpenRouter](h
 
 ```bash
 # Dizindeki tüm dosyaları yeniden adlandır
-renai process "C:/Kitaplar/Yolu" --mode rename
+renai "C:/Kitaplar/Yolu" --mode rename
 ```
 
 ### Klasörlere Düzenleme
@@ -143,10 +146,10 @@ Vision modu akıllı bir fallback stratejisi uygular: Önce (daha hızlı ve ucu
 
 ```bash
 # Vision model ile PDF'leri işle (OCR yok) - varsayılan provider/model kullanır
-renai process "C:/Kitaplar/Yolu" --vision
+renai "C:/Kitaplar/Yolu" --vision
 
 # Belirli vision model kullan
-renai process "C:/Kitaplar/Yolu" --vision --provider openrouter --model openai/gpt-4o
+renai "C:/Kitaplar/Yolu" --vision --provider openrouter --model openai/gpt-4o
 
 # DeepInfra ile Llama Vision
 python main.py "C:/Kitaplar/Yolu" --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct

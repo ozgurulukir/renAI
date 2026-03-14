@@ -41,17 +41,18 @@ The text cache key is generated using:
 The metadata cache key is generated using:
 
 ```
-{file_hash}_{provider_model_hash}_metadata.json
+{file_hash}_{provider_model_hash}[_vision].json
 ```
 
 | Component | Description | Example |
 |-----------|-------------|---------|
 | `file_hash` | MD5 hash of file content | `abc123def456` |
 | `provider_model_hash` | Hash of provider:model pair | `a1b2c3d4` |
+| `_vision` | Optional suffix for Vision mode results | `_vision` |
 
 **Examples:**
-- `abc123def456_deepinfra_metadata.json` - DeepInfra cache
-- `abc123def456_openai_metadata.json` - OpenAI cache
+- `abc123def456_deepinfra_metadata.json` - Standard metadata cache
+- `abc123def456_openai_vision_metadata.json` - Vision-based metadata cache
 - `abc123def456_custom_metadata.json` - Custom provider cache
 
 ---
@@ -100,7 +101,7 @@ Cache entries are automatically invalidated when:
 | Cache Type | Invalidated When |
 |------------|------------------|
 | Text Cache | File content changes, OCR mode changes (enhanced/basic), mutool usage changes |
-| Metadata Cache | File content changes, provider changes, model changes |
+| Metadata Cache | File content changes, provider changes, model changes, processing mode changes (Text vs Vision) |
 
 ### Manual Invalidation
 
@@ -108,13 +109,13 @@ Use these commands to manually clear cache:
 
 ```bash
 # Clear all cache
-python main.py --clear-cache
+renai --clear-cache
 
 # Clear cache for specific directory
-python main.py "C:/Path/To/Books" --clear-cache
+renai "C:/Path/To/Books" --clear-cache
 
 # Clear cache for single file
-python main.py "C:/Path/To/Books/book.pdf" --clear-cache
+renai "C:/Path/To/Books/book.pdf" --clear-cache
 ```
 
 ### Force Refresh
@@ -122,7 +123,7 @@ python main.py "C:/Path/To/Books/book.pdf" --clear-cache
 Use `--update-metadata` to bypass cache and force fresh extraction:
 
 ```bash
-python main.py "C:/Path/To/Books" --update-metadata
+renai "C:/Path/To/Books" --update-metadata
 ```
 
 ---
@@ -164,16 +165,16 @@ renAI/
 
 ```bash
 # First run with DeepInfra - caches metadata
-$ python main.py "C:/Books" --provider deepinfra
+$ renai "C:/Books" --provider deepinfra
 [INFO] Cached metadata for book.pdf (provider: deepinfra, model: llama-3.3-70b)
 
 # Same files with OpenRouter - NEW cache entry created
-$ python main.py "C:/Books" --provider openrouter
+$ renai "C:/Books" --provider openrouter
 [INFO] Cache invalidated for book.pdf (was deepinfra, now openrouter)
 [INFO] Cached metadata for book.pdf (provider: openrouter, model: gemini-2.0-flash)
 
 # Same provider - uses cached metadata
-$ python main.py "C:/Books" --provider deepinfra
+$ renai "C:/Books" --provider deepinfra
 [INFO] Using cached metadata for book.pdf (provider: deepinfra, model: llama-3.3-70b)
 ```
 
@@ -181,11 +182,11 @@ $ python main.py "C:/Books" --provider deepinfra
 
 ```bash
 # First run with default model
-$ python main.py "C:/Books" --provider openai
+$ renai "C:/Books" --provider openai
 [INFO] Cached metadata for book.pdf (provider: openai, model: gpt-4o-mini)
 
 # Same provider, different model - NEW cache entry
-$ python main.py "C:/Books" --provider openai --model gpt-4o
+$ renai "C:/Books" --provider openai --model gpt-4o
 [INFO] Cache invalidated for book.pdf (was gpt-4o-mini, now gpt-4o)
 [INFO] Cached metadata for book.pdf (provider: openai, model: gpt-4o)
 ```
@@ -196,50 +197,50 @@ $ python main.py "C:/Books" --provider openai --model gpt-4o
 # Using local Ollama
 $ export CUSTOM_API_BASE_URL="http://localhost:11434/v1"
 $ export CUSTOM_MODEL="llama3"
-$ python main.py "C:/Books" --provider custom
+$ renai "C:/Books" --provider custom
 [INFO] Cached metadata for book.pdf (provider: custom, model: llama3)
 
 # Same local model - uses cache
-$ python main.py "C:/Books" --provider custom
+$ renai "C:/Books" --provider custom
 [INFO] Using cached metadata for book.pdf (provider: custom, model: llama3)
 
 # Different local model - NEW cache entry
-$ python main.py "C:/Books" --provider custom --model mistral
+$ renai "C:/Books" --provider custom --model mistral
 [INFO] Cache invalidated for book.pdf (was llama3, now mistral)
 ```
 
-### Scenario 4: Vision Mode
+### Scenario 4: Vision Mode (PDFs)
 
-Vision mode uses the same metadata cache but processes PDFs differently:
+Vision mode uses a separate cache entry for PDF files to allow switching between text-based and image-based extraction without collision:
 
 ```bash
-# Process with vision model (no OCR)
-$ python main.py "C:/Books" --vision --provider openrouter --model openai/gpt-4o
-[INFO] Using VISION mode - processing PDFs with vision model
-[INFO] Cached metadata for book.pdf (provider: openrouter, model: gpt-4o)
+# Process with vision model (image-based fallback)
+$ renai "C:/Books" --vision --provider openrouter --model openai/gpt-4o
+[INFO] Using VISION mode - falls back to image sampling for PDFs
+[INFO] Cached VISION metadata for book.pdf (abc123_pmhash_vision.json)
 
-# Same files with same provider - uses cached metadata
-$ python main.py "C:/Books" --vision --provider openrouter --model openai/gpt-4o
-[INFO] Using cached metadata for book.pdf (provider: openrouter, model: gpt-4o)
-
-# Regular mode with same files - DIFFERENT cache entry
-$ python main.py "C:/Books" --provider openrouter --model openai/gpt-4o
-[INFO] Cache invalidated for book.pdf (different processing mode)
+# Regular mode with same files - uses standard cache
+$ renai "C:/Books" --provider openrouter --model openai/gpt-4o
+[INFO] Using TEXT/OCR mode - extracting text
+[INFO] Cached standard metadata for book.pdf (abc123_pmhash.json)
 ```
+
+> [!NOTE]
+> The `_vision` suffix is applied when vision mode is active and the file is a PDF. This ensures that a high-quality vision extraction doesn't overwrite a high-quality text extraction, or vice versa.
 
 ### Scenario 5: Image Renaming
 
-Image files use a separate cache with image-specific metadata:
+Image files (JPG, PNG, etc.) are processed via the unified `VisualProcessor` and share the vision-aware cache logic:
 
 ```bash
 # Rename images with vision model
-$ python main.py "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
-[INFO] Using IMAGE RENAME mode - processing images with vision model
-[INFO] Cached image metadata for photo.jpg (provider: openrouter, model: gpt-4o)
+$ renai "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
+[INFO] Processing image photo.jpg with vision model
+[INFO] Cached vision metadata for photo.jpg (img_hash_pmhash_vision.json)
 
 # Same images - uses cached metadata
-$ python main.py "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
-[INFO] Using cached metadata for image photo.jpg
+$ renai "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
+[INFO] Using cached vision metadata for photo.jpg
 ```
 
 ---
@@ -306,7 +307,7 @@ To clean up old cache entries:
 
 ```bash
 # Clear all cache
-python main.py --clear-cache
+renai --clear-cache
 
 # Or manually delete .renamer_cache/ directory
 rm -rf .renamer_cache/
@@ -323,7 +324,8 @@ rm -rf .renamer_cache/
 | 2025-01-26 | Implemented cache validation on read |
 | 2025-01-27 | Added vision mode and image renaming cache scenarios |
 | 2026-03-11 | Removed unused `_cached_at` field from metadata cache |
+| 2026-03-14 | Unified Vision/Image cache with `_vision` suffix for PDFs |
 
 ---
 
-*Last updated: 2026-03-11*
+*Last updated: 2026-03-14*
