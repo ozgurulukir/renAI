@@ -248,47 +248,50 @@ class TestBookProcessorInit:
 
     def test_init_with_defaults(self):
         """Test default initialization."""
-        processor = BookProcessor(Mock(), Mock())
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm)
 
+        assert processor.ocr_engine is mock_ocr
         assert processor.extractor_name == "pymupdf"
+        assert processor.text_extractor.extractor_name == "pymupdf"
+        assert processor.text_extractor.ocr_engine == mock_ocr
+        assert processor.provider == "deepinfra"
         assert processor.supported_extensions == {
-            ".pdf",
-            ".epub",
-            ".mobi",
-            ".docx",
-            ".pptx",
-            ".xlsx",
-            ".txt",
-            ".md",
+            ".pdf", ".epub", ".mobi", ".docx", ".pptx", ".xlsx", ".txt", ".md"
         }
-        assert processor.text_extractor.move_ocr_failures is False
-        assert processor.text_extractor.skip_ocr_files is False
+        assert processor.text_extractor.move_scan_failures is False
+        assert processor.text_extractor.skip_scan_files is False
 
-    def test_init_with_custom_extractor(self):
-        """Test initialization with custom extractor."""
-        processor = BookProcessor(Mock(), Mock(), extractor_name="pdfplumber")
+    def test_init_with_custom_params(self):
+        """Test initialization with custom parameters."""
+        mock_ocr = MagicMock()
+        mock_llm = MagicMock()
+        processor = BookProcessor(mock_ocr, mock_llm, provider="openai", model="gpt-4", extractor_name="pdfplumber")
 
+        assert processor.provider == "openai"
+        assert processor.model == "gpt-4"
         assert processor.extractor_name == "pdfplumber"
 
 
-class TestSetOCRFolders:
-    """Test OCR folder configuration methods."""
+class TestBookProcessorFolders:
+    """Test folder configuration methods."""
 
-    def test_set_ocr_failures_folder(self, tmp_path):
-        """Test setting up OCR failures folder."""
+    def test_set_scan_failures_folder(self, tmp_path):
+        """Test setting up scan failures folder."""
         processor = BookProcessor(Mock(), Mock())
 
-        processor.set_ocr_failures_folder(tmp_path, enabled=True)
-        assert processor.text_extractor.move_ocr_failures is True
-        assert processor.text_extractor.ocr_failures_dir == tmp_path / "OCR_Failures"
-        assert processor.text_extractor.ocr_failures_dir.exists()
+        processor.set_scan_failures_folder(tmp_path, enabled=True)
+        assert processor.text_extractor.move_scan_failures is True
+        assert processor.text_extractor.scan_failures_dir == tmp_path / "Scan_Failures"
+        assert processor.text_extractor.scan_failures_dir.exists()
 
     def test_set_needs_scan_folder(self, tmp_path):
         """Test setting up Needs Scan folder."""
         processor = BookProcessor(Mock(), Mock())
 
         processor.set_needs_scan_folder(tmp_path, skip=True)
-        assert processor.text_extractor.skip_ocr_files is True
+        assert processor.text_extractor.skip_scan_files is True
         assert processor.text_extractor.needs_scan_dir == tmp_path / "Needs_Scan"
         assert processor.text_extractor.needs_scan_dir.exists()
 
@@ -375,41 +378,24 @@ class TestProcessSingleBook:
         llm_engine.get_book_metadata.assert_not_called()
 
 
-class TestGetOCRFailedFiles:
-    """Test OCR failure tracking."""
+class TestScanTracking:
+    """Test tracking of failed and needs-scan files."""
 
-    def test_get_ocr_failed_files_returns_list(self, tmp_path):
-        """Test that OCR failed files are tracked."""
+    def test_get_scan_failed_files_returns_list(self, tmp_path):
+        """Test that scan failed files are tracked."""
         processor = BookProcessor(Mock(), Mock())
-
-        # Simulate failed files
-        processor.ocr_failed_files = {
-            tmp_path / "failed1.pdf",
-            tmp_path / "failed2.pdf",
-        }
-
-        result = processor.get_ocr_failed_files()
-
+        failed_file1 = tmp_path / "failed1.pdf"
+        failed_file2 = tmp_path / "failed2.pdf"
+        processor.scan_failed_files = {failed_file1, failed_file2}
+        
+        result = processor.get_scan_failed_files()
         assert len(result) == 2
-        assert tmp_path / "failed1.pdf" in result
-        assert tmp_path / "failed2.pdf" in result
-
-
-class TestGetNeedsOCRFiles:
-    """Test Needs OCR folder tracking."""
-
-    def test_get_needs_scan_files_empty_when_no_folder(self, tmp_path):
-        """Test empty list when Needs_Scan folder doesn't exist."""
-        processor = BookProcessor(Mock(), Mock())
-
-        processor.text_extractor.needs_scan_dir = None
-        result = processor.text_extractor.get_needs_scan_files()
-        assert result == []
+        assert failed_file1 in result
+        assert failed_file2 in result
 
     def test_get_needs_scan_files_returns_files(self, tmp_path):
         """Test that files in Needs_Scan folder are returned."""
         processor = BookProcessor(Mock(), Mock())
-
         needs_dir = tmp_path / "Needs_Scan"
         needs_dir.mkdir()
         (needs_dir / "file1.pdf").touch()
@@ -419,74 +405,16 @@ class TestGetNeedsOCRFiles:
         result = processor.text_extractor.get_needs_scan_files()
         assert len(result) == 2
 
-
-"""
-Expanded tests for renai.processors.book module.
-
-Tests cover:
-- BookProcessor initialization
-- Vision mode processing
-- Image processing
-- Edge cases
-"""
-import json
-import logging
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
-
-from renai.processors.book import BookProcessor
+    def test_get_needs_scan_files_empty_when_no_folder(self):
+        """Test empty list when Needs_Scan folder doesn't exist."""
+        processor = BookProcessor(Mock(), Mock())
+        processor.text_extractor.needs_scan_dir = None
+        result = processor.text_extractor.get_needs_scan_files()
+        assert result == []
 
 
-class TestBookProcessorInit2:
-    """Test BookProcessor initialization."""
-
-    def test_processor_initialization_defaults(self):
-        """Test BookProcessor with default parameters."""
-        mock_ocr = MagicMock()
-        mock_llm = MagicMock()
-        processor = BookProcessor(mock_ocr, mock_llm)
-        assert processor.ocr_engine is mock_ocr
-        assert processor.extractor_name == "pymupdf"
-        assert processor.text_extractor.extractor_name == "pymupdf"
-        assert processor.text_extractor.ocr_engine == mock_ocr
-        assert processor.provider == "deepinfra"
-
-    def test_processor_initialization_custom_params(self):
-        """Test BookProcessor with custom parameters."""
-        mock_ocr = MagicMock()
-        mock_llm = MagicMock()
-        processor = BookProcessor(mock_ocr, mock_llm, provider="openai", model="gpt-4")
-        assert processor.provider == "openai"
-        assert processor.model == "gpt-4"
-
-    def test_supported_extensions(self):
-        """Test supported_extensions property."""
-        mock_ocr = MagicMock()
-        mock_llm = MagicMock()
-        processor = BookProcessor(mock_ocr, mock_llm)
-        assert ".pdf" in processor.supported_extensions
 
 
-class TestBookProcessorFolders:
-    """Test folder setup methods."""
-
-    def test_set_scan_failures_folder(self, tmp_path):
-        """Test set_scan_failures_folder creates directory."""
-        mock_ocr = MagicMock()
-        mock_llm = MagicMock()
-        processor = BookProcessor(mock_ocr, mock_llm)
-        processor.set_scan_failures_folder(tmp_path, enabled=True)
-        assert (tmp_path / "Scan_Failures").exists()
-
-    def test_set_needs_scan_folder(self, tmp_path):
-        """Test set_needs_scan_folder creates directory."""
-        mock_ocr = MagicMock()
-        mock_llm = MagicMock()
-        processor = BookProcessor(mock_ocr, mock_llm)
-        processor.set_needs_scan_folder(tmp_path, skip=True)
-        assert (tmp_path / "Needs_Scan").exists()
 
 
 class TestProcessSingleBookVision:
@@ -570,30 +498,6 @@ class TestProcessSingleImage:
         assert processor.is_image_file(Path("document.pdf")) is False
 
 
-class TestGetScanFailedFiles:
-    """Test get_scan_failed_files and get_needs_scan_files methods."""
-
-    def test_get_scan_failed_files(self, tmp_path):
-        """Test get_scan_failed_files returns tracked files."""
-        mock_ocr = MagicMock()
-        mock_llm = MagicMock()
-        processor = BookProcessor(mock_ocr, mock_llm)
-        failed_file1 = tmp_path / "failed1.pdf"
-        processor.scan_failed_files = {failed_file1}
-        result = processor.get_scan_failed_files()
-        assert len(result) == 1
-
-    def test_get_needs_scan_files(self, tmp_path):
-        """Test get_needs_scan_files returns files from folder."""
-        mock_ocr = Mock()
-        mock_llm = MagicMock()
-        processor = BookProcessor(mock_ocr, mock_llm)
-        needs_dir = tmp_path / "Needs_Scan"
-        needs_dir.mkdir()
-        (needs_dir / "file1.pdf").write_text("test")
-        processor.text_extractor.needs_scan_dir = needs_dir
-        result = list(needs_dir.iterdir())
-        assert len(result) == 1
 
 
 class TestOrganizeFilesEdgeCases:

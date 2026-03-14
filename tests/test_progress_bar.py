@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from renai.cli import process_files
+from renai.processors.text_extractor import FallbackMode
 
 
 class TestProgressBar:
@@ -61,12 +62,11 @@ class TestProgressBar:
                     root_dir=root_dir,
                     mode="rename",
                     workers=2,
-                    vision=False,
+                    fallback_mode=FallbackMode.NONE,
                     rename_images=False,
                     update_metadata=False,
                     exif=False,
-                    skip_needs_ocr=False,
-                    move_ocr_failures=False,
+                    move_scan_failures=False,
                 )
             except Exception as e:
                 pytest.fail(f"process_files raised exception: {e}")
@@ -89,12 +89,11 @@ class TestProgressBarEdgeCases:
                 root_dir=root_dir,
                 mode="rename",
                 workers=2,
-                vision=False,
+                fallback_mode=FallbackMode.NONE,
                 rename_images=False,
                 update_metadata=False,
                 exif=False,
-                skip_needs_ocr=False,
-                move_ocr_failures=False,
+                move_scan_failures=False,
             )
         except Exception as e:
             pytest.fail(f"process_files raised exception with empty list: {e}")

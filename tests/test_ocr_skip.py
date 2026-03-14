@@ -33,7 +33,7 @@ def test_ocr_skip_functionality():
 
             # Create processor AFTER patching so TextExtractor gets the mock
             processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
-            processor.set_needs_ocr_folder(tmp_path, skip=True)
+            processor.set_needs_scan_folder(tmp_path, skip=True)
 
             # Extract text - should trigger OCR skipping via TextExtractor
             result = processor.text_extractor.extract(test_file, fallback=FallbackMode.MOVE_TO_FOLDER)
