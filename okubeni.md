@@ -1,6 +1,8 @@
 # renAI: Yapay Zeka Destekli Belge ve Görsel Düzenleyici
 
-`renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı metadata çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
+`renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı meta veriler (metadata) çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
+
+*Son güncelleme: 2026-03-14*
 
 ---
 
@@ -10,8 +12,8 @@ Dijital dosya koleksiyonlarınız anlamsız veya tutarsız isimlerle geldiğinde
 
 **İki Güçlü Yaklaşım:**
 
-- **Metin Çıkarma Modu**: Geleneksel metin tabanlı LLM'ler kullanarak belge içeriğinden (PDF, EPUB, DOCX, vb.) başlık, yazar ve yayın yılı gibi bilgileri çıkarır
-- **Multimodal Görüş Modu**: Görüş yeteneğine sahip LLM'ler kullanarak hem belgeleri hem de görselleri "görür" ve anlar - metin çıkarma veya OCR gerektirmez!
+- **Metin Çıkarma Modu**: Geleneksel metin tabanlı LLM'ler kullanarak belge içeriğinden (PDF, EPUB, DOCX, vb.) başlık, yazar ve yayın yılı gibi bilgileri çıkarır.
+- **Multimodal Görüş Modu**: Görüş yeteneğine sahip LLM'ler kullanarak belgeleri ve görselleri "görür". Metin çıkarma başarısız olursa, taranmış PDF'leri OCR yerine vision model ile işler.
 
 İster taranmış PDF'lerle, ister dijital belgelerle veya fotoğraflarla uğraşıyor olun, renAI size en iyi sonuçları verecek şekilde uyum sağlar.
 
@@ -43,7 +45,7 @@ Açıklama -- Kategori -- (Dil).uzantı
 | **Çoklu Format Desteği** | PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD ve görüntü dosyalarını (JPG, PNG, HEIC vb.) işler |
 | **Çoklu PDF Çıkarıcıları** | PyMuPDF, pdfplumber, pypdf veya pypdfium2 arasından seçim yapın |
 | **Yapay Zeka Destekli Meta Veri** | Başlıkları, yazarları, yılları ve kategorileri çıkarmak için LLM'leri kullanır |
-| **Multimodal Modu** | Multimodal (görüntü yetenekli) LLM ile PDF'leri OCR olmadan işle (daha hızlı ve doğru) |
+| **Multimodal Modu** | Önce metin çıkarmayı dener; başarısız olursa PDF'leri OCR yerine vision model ile işle (daha doğru) |
 | **Görüntü Yeniden Adlandırma** | Yapay zeka görüntü analizi ile görüntü dosyalarını yeniden adlandır |
 | **Gelişmiş OCR** | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu |
 | **mutool Desteği** | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır |
@@ -56,7 +58,7 @@ Açıklama -- Kategori -- (Dil).uzantı
 - **`organize`**: Yeniden adlandırılmış dosyaları kategori klasörlerine taşır
 - **`benchmark`**: PDF çıkarma kütüphanesi performansını karşılaştırır
 - **`eval-model`**: Farklı LLM modellerini doğruluk açısından test eder
-- **`--vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Metin çıkarma başarısız olursa, vision modele fallback yapar. PDF olmayan dosyalar `Needs_OCR/` klasörüne taşınabilir.
+- **`--vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Önce metin çıkarmayı dener (OCR kullanmaz). Başarısız olursa, vision modele fallback yapar. PDF olmayan dosyalar `Needs_OCR/` klasörüne taşınabilir.
 - **`--rename-images`**: Görüntü dosyalarını yeniden adlandırır. Ayrıca görüntü olmayan dosyaları metin çıkarma + OCR fallback ile işler.
 
 ---
@@ -118,7 +120,7 @@ Anahtarları şuradan alın: [DeepInfra](https://deepinfra.com) | [OpenRouter](h
 
 ```bash
 # Dizindeki tüm dosyaları yeniden adlandır
-python main.py "C:/Kitaplar/Yolu" --mode rename
+renai process "C:/Kitaplar/Yolu" --mode rename
 ```
 
 ### Klasörlere Düzenleme
@@ -137,14 +139,14 @@ python main.py "C:/Kitaplar/Yolu" --ocr-enhanced --use-mutool
 
 ### Multimodal Modu (OCR'suz PDF)
 
-Vision modu, görüntü yetenekli LLM'leri kullanarak PDF'leri doğrudan işler. Metin çıkarma başarısız olursa, OCR yerine vision modele fallback yapar. Bu, metin tabanlı PDF'ler için daha hızlı ve doğrudur.
+Vision modu akıllı bir fallback stratejisi uygular: Önce (daha hızlı ve ucuz olan) metin çıkarmayı dener. Başarısız olursa, PDF'i bir görsel olarak işlemek için görüş yeteneğine sahip bir LLM'e başvurur.
 
 ```bash
 # Vision model ile PDF'leri işle (OCR yok) - varsayılan provider/model kullanır
-python main.py "C:/Kitaplar/Yolu" --vision
+renai process "C:/Kitaplar/Yolu" --vision
 
 # Belirli vision model kullan
-python main.py "C:/Kitaplar/Yolu" --vision --provider openrouter --model openai/gpt-4o
+renai process "C:/Kitaplar/Yolu" --vision --provider openrouter --model openai/gpt-4o
 
 # DeepInfra ile Llama Vision
 python main.py "C:/Kitaplar/Yolu" --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
@@ -368,7 +370,7 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 
 | Özellik | Vision Modu (`--vision`) | OCR Modu (varsayılan) |
 |---------|--------------------------|-------------------|
-| **Metin Çıkarma** | Ö dener, başarısız olursa vision fallback | Öncence dener, başarısız olursa OCR fallback |
+| **Metin Çıkarma** | Önce dener, başarısız olursa vision fallback | Önce dener, başarısız olursa OCR fallback |
 | **Hız** | Metin PDF'leri için daha hızlı | OCR daha yavaş |
 | **Doğruluk** | Temiz metin için daha yüksek | Tarama kalitesine bağlı |
 | **Taranmış Belgeler** | Vision ile işler | Taramalar için optimize |
@@ -559,17 +561,21 @@ Diğer
 
 ```
 renAI/
-├── main.py              # Giriş noktası ve CLI
-├── config.py            # Yapılandırma ve API ayarları
-├── utils.py             # Yardımcı fonksiyonlar
-├── llm_engine.py        # LLM sağlayıcı entegrasyonu
-├── ocr_engine.py        # OCR işleme
-├── file_processor.py    # Çekirdek işleme mantığı
-├── extractors/          # Belge ayrıştırıcıları
-│   ├── base.py          # Soyut temel sınıf
-│   └── pdf_extractors.py # PDF çıkarma uygulamaları
-├── test_file_processor.py # Birim testleri
-└── requirements.txt     # Bağımlılıklar
+├── src/
+│   └── renai/
+│       ├── cli.py               # Giriş noktası (Typer)
+│       ├── settings.py          # Yapılandırma (Pydantic)
+│       ├── utils.py             # Yardımcı fonksiyonlar
+│       ├── logging_config.py    # Yapılandırılmış günlükleme
+│       ├── engines/             # Görüş ve OCR motorları
+│       ├── extractors/          # Belge ayrıştırıcıları
+│       ├── processors/          # Çekirdek işleme mantığı
+│       ├── file_ops/            # Dosya işlem mantığı
+│       └── filename/            # İsimlendirme kuralları
+├── tests/                       # Birim testleri
+├── scripts/                     # Benchmark ve yardımcı scriptler
+├── pyproject.toml               # Paket meta verileri
+└── requirements.txt             # Bağımlılıklar
 ```
 
 ---

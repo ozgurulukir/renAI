@@ -102,49 +102,7 @@ class TestIsImageFile:
         assert book_processor.is_image_file(Path("Photo.JPEG")) is True
 
 
-class TestConvertPdfPageToImage:
-    """Test _convert_pdf_page_to_image method."""
-
-    @pytest.mark.skip(reason="Internal method moved to VisionProcessor")
-    def test_pdf_page_conversion_success(self, book_processor, tmp_path):
-        """Test successful PDF page to image conversion."""
-        # Create a minimal PDF file
-        pdf_path = tmp_path / "test.pdf"
-        pdf_content = b"""%PDF-1.4
-1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
-2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
-3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >> endobj
-4 0 obj << /Length 44 >> stream
-BT /F1 12 Tf 100 700 Td (Test) Tj ET
-endstream endobj
-xref
-0 5
-0000000000 65535 f
-0000000009 00000 n
-0000000058 00000 n
-0000000115 00000 n
-0000000214 00000 n
-trailer << /Size 5 /Root 1 0 R >>
-startxref
-308
-%%EOF"""
-        pdf_path.write_bytes(pdf_content)
-
-        # This will likely fail due to invalid PDF but tests the method exists
-        result = book_processor._convert_pdf_page_to_image(pdf_path, page_number=0)
-
-        # The test PDF is malformed so this may return None
-        # Just verify the method is callable and returns bytes or None
-        assert result is None or isinstance(result, bytes)
-
-    @pytest.mark.skip(reason="Internal method moved to VisionProcessor")
-    def test_pdf_page_out_of_range(self, book_processor, tmp_path):
-        """Test handling of out-of-range page number."""
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-
-        result = book_processor._convert_pdf_page_to_image(pdf_path, page_number=999)
-        assert result is None
+# These methods moved to VisualProcessor. Unit tests for them are now in test_vision_new.py.
 
 
 class TestProcessSingleBookVision:
@@ -158,11 +116,7 @@ class TestProcessSingleBookVision:
 
         # With new behavior, non-PDF files go through normal processing
         # (which will fail for txt without meaningful content, but that's expected)
-        result = book_processor.process_single_book_vision(test_file, "rename")
-
-        # Should attempt processing (not skip), result depends on whether text can be extracted
-        # The key is it's NOT being skipped like before
-        assert result is not None
+        result = book_processor.process_file(test_file, mode="rename", vision_mode=True)
 
     def test_skips_symlinks(self, book_processor, tmp_path):
         """Test that symlinks are skipped."""
@@ -175,7 +129,7 @@ class TestProcessSingleBookVision:
             symlink_file = tmp_path / "link.pdf"
             symlink_file.symlink_to(real_file)
 
-            result = book_processor.process_single_book_vision(symlink_file, "rename")
+            result = book_processor.process_file(symlink_file, mode="rename", vision_mode=True)
             assert result[0] is False  # Should fail due to PDF parsing
         except (OSError, NotImplementedError):
             pytest.skip("Symlink creation not supported")
@@ -208,7 +162,7 @@ class TestProcessSingleBookVision:
             mock_path.write_text(json.dumps(cache_data))
             mock_cache_path.return_value = mock_path
 
-            result = book_processor.process_single_book_vision(pdf_file, "rename")
+            result = book_processor.process_file(pdf_file, mode="rename", vision_mode=True)
 
             # Should succeed using cached data
             assert result[0] is True
@@ -245,8 +199,8 @@ class TestProcessSingleBookVision:
                 with patch("pymupdf.open", return_value=mock_doc):
                     mock_cache_path.return_value = tmp_path / "nonexistent_cache.json"
 
-                    result = book_processor.process_single_book_vision(
-                        pdf_file, "rename"
+                    result = book_processor.process_file(
+                        pdf_file, mode="rename", vision_mode=True
                     )
 
                     # Should have called the LLM
@@ -265,7 +219,7 @@ class TestProcessSingleImage:
             symlink_file = tmp_path / "link.jpg"
             symlink_file.symlink_to(real_file)
 
-            result = book_processor.process_single_image(symlink_file)
+            result = book_processor.process_file(symlink_file, rename_images=True)
             assert result[0] is False
         except (OSError, NotImplementedError):
             pytest.skip("Symlink creation not supported")
@@ -293,7 +247,7 @@ class TestProcessSingleImage:
             with patch("file_processor.get_file_hash", return_value="img123"):
                 mock_cache_path.return_value = tmp_path / "nonexistent_cache.json"
 
-                result = book_processor.process_single_image(img_file)
+                result = book_processor.process_file(img_file, rename_images=True)
 
                 # Should have called LLM with image data
                 book_processor.llm_engine.get_image_metadata.assert_called_once()
@@ -323,7 +277,7 @@ class TestProcessSingleImage:
                     )
                     mock_cache_path.return_value = tmp_path / "nonexistent.json"
 
-                    result = book_processor.process_single_image(img_file)
+                    result = book_processor.process_file(img_file, rename_images=True)
 
                     # Check filename construction
                     if result[2]:  # new_name
@@ -355,7 +309,7 @@ class TestProcessSingleImage:
                     )
                     mock_cache_path.return_value = tmp_path / "nonexistent.json"
 
-                    result = book_processor.process_single_image(img_file)
+                    result = book_processor.process_file(img_file, rename_images=True)
 
                     if result[2]:
                         assert "(tr)" in result[2]
@@ -382,7 +336,7 @@ class TestProcessSingleImage:
             mock_path.write_text(json.dumps(cache_data))
             mock_cache_path.return_value = mock_path
 
-            result = book_processor.process_single_image(img_file)
+            result = book_processor.process_file(img_file, rename_images=True)
 
             # Should succeed using cached data
             assert result[0] is True
@@ -402,7 +356,7 @@ class TestProcessSingleImage:
             with patch("file_processor.get_file_hash", return_value="abc123"):
                 mock_cache_path.return_value = tmp_path / "nonexistent.json"
 
-                result = book_processor.process_single_image(img_file)
+                result = book_processor.process_file(img_file, rename_images=True)
 
                 assert result[0] is False
 

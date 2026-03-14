@@ -76,14 +76,14 @@ class TestTesseractPath:
         with patch.dict("os.environ", {"TESSERACT_PATH": "/custom/path"}):
             with patch("shutil.which", return_value=None):
                 result = get_tesseract_path()
-                assert str(result) == "/custom/path"
+                assert Path(result).as_posix() == "/custom/path"
 
     def test_which_fallback(self):
         """Should find Tesseract in PATH if env not set."""
         with patch.dict("os.environ", {}, clear=True):
             with patch("shutil.which", return_value="/usr/bin/tesseract"):
                 result = get_tesseract_path()
-                assert str(result) == "/usr/bin/tesseract"
+                assert Path(result).as_posix() == "/usr/bin/tesseract"
 
 
 class TestDisplayWarnings:

@@ -20,9 +20,8 @@ from .filename import (
 )
 from .processors import (
     BookProcessor,
-    ImageProcessor,
     TextExtractor,
-    VisionProcessor,
+    VisualProcessor,
 )
 
 __version__ = "1.1.0"
@@ -36,8 +35,7 @@ __all__ = [
     # Processors
     "BookProcessor",
     "TextExtractor",
-    "VisionProcessor",
-    "ImageProcessor",
+    "VisualProcessor",
     # Cache
     "clear_all_cache",
     "get_metadata_cache_path",

@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-*Last updated: 2026-03-11*
+*Last updated: 2026-03-14*
 
 ---
 
@@ -44,12 +44,12 @@ Description -- Category -- (Language).ext
 | **Multi-Format Support** | Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD, and image files (JPG, PNG, HEIC, etc.) |
 | **Multiple PDF Extractors** | Choose from PyMuPDF, pdfplumber, pypdf, or pypdfium2 |
 | **AI-Driven Metadata** | Uses LLMs to extract titles, authors, years, and categories |
-| **Vision Mode** | Process PDFs directly with vision-capable LLMs. If text extraction fails, falls back to vision model instead of OCR |
+| **Vision Mode** | Tries text extraction first; falls back to vision-capable LLM for PDFs if text extraction fails (instead of OCR) |
 | **Image Renaming** | Rename image files using AI vision analysis |
 | **Advanced OCR** | Tesseract integration with Enhanced Mode for low-quality scans |
 | **mutool Support** | Extracts high-quality images from fixed-layout PDFs |
 | **Smart Caching** | MD5-based caching reduces API costs and processing time |
-| **Custom Categories** | Define your own categories per language in `categories.txt` |
+| **Custom Categories** | Define your own categories per language in `categories.toml` |
 
 ### Operating Modes
 
@@ -57,7 +57,7 @@ Description -- Category -- (Language).ext
 - **`organize`**: Moves renamed files into category folders
 - **`benchmark`**: Compares PDF extraction library performance
 - **`eval-model`**: Tests different LLM models for accuracy
-- **`--vision`**: Uses vision-capable LLM to process PDFs. If text extraction fails, falls back to vision model. Non-PDF files can be moved to `Needs_OCR/` folder.
+- **`--vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs. Non-PDF files can be moved to `Needs_OCR/` folder.
 - **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + OCR fallback.
 
 ---
@@ -86,6 +86,9 @@ cd renAI
 
 # Install (creates 'renai' command)
 pip install -e .
+
+# Optional: Install with extra PDF extractors (pdfplumber, pypdf, pypdfium2)
+pip install -e ".[pdf-extra]"
 ```
 
 ### API Keys
@@ -114,6 +117,10 @@ Configuration options in `.env`:
 - `RENAI_TEXT_LENGTH` - Max text length for LLM (default: 10000)
 - `RENAI_EXTRACTOR` - PDF extractor (pymupdf, pdfplumber, pypdf, pypdfium2)
 
+### Custom Categories
+
+Custom categories are now managed via `categories.toml`. See [Configuration](#configuration-1) for details.
+
 ---
 
 ## 📖 Usage Examples
@@ -134,7 +141,7 @@ renai process "C:/Path/To/Books" --mode organize
 
 ### Vision Mode (PDF without OCR)
 
-Vision mode uses vision-capable LLMs to process PDFs directly - no OCR needed! This is faster and more accurate for text-based PDFs.
+Vision mode implements a "smart fallback" strategy: it tries text extraction first (which is faster and cheaper). If extraction fails, it falls back to a vision-capable LLM to process the PDF as an image.
 
 ```bash
 # Process PDFs with vision model (no OCR) - uses default provider/model
@@ -317,7 +324,7 @@ renai process "C:/Path/To/Books" --clear-cache
 
 ## 🤖 Vision Models
 
-renAI supports vision-capable LLMs that can process PDFs and images directly without OCR. This is faster and more accurate for text-based documents.
+renAI supports vision-capable LLMs that can process PDFs and images as visual content. By default, it tries text extraction first to save costs, falling back to vision only if necessary.
 
 ### Recommended Vision Models
 
@@ -342,10 +349,10 @@ renAI supports vision-capable LLMs that can process PDFs and images directly wit
 | **API Cost** | Image tokens | Text tokens |
 
 **When to use Vision Mode:**
-- Text-based PDFs (books, articles)
+- PDFs where text extraction might fail
 - When you don't have Tesseract installed
-- When OCR is too slow
-- When you want better accuracy on clean documents
+- When OCR is too slow or inaccurate
+- When you want better results on formatted documents
 
 **When to use OCR:**
 - Scanned documents
@@ -480,59 +487,22 @@ renAI now utilizes modern OS-agnostic path management via the `platformdirs` lib
 
 ### Custom Categories
 
-Create `categories.txt` in your OS's respective user config directory for `renAI` (e.g., `~/.config/renAI/categories.txt` on Linux, `%APPDATA%\renAI` on Windows):
+Create `categories.toml` in your OS's respective user config directory for `renAI` (e.g., `~/.config/renAI/categories.toml` on Linux, `%APPDATA%\renAI\categories.toml` on Windows):
 
-```txt
-# English Categories
-LANG: en
-Article
-Fiction
-Non-Fiction
-Textbook
-Report
-Gov
-Presentation
-Manual
-Thesis
-Research
-Other
-Dictionary
+```toml
+[en]
+categories = [
+    "Article", "Fiction", "Non-Fiction", "Textbook", "Report",
+    "Gov", "Presentation", "Manual", "Thesis", "Research",
+    "Other", "Dictionary", "Magazine"
+]
 
-# Turkish Categories
-LANG: tr
-Makale
-Kurgu
-Kurgu Dışı
-Ders Kitabı
-Rapor
-Devlet
-Sunum
-Kılavuz
-Tez
-Araştırma
-Diğer
-Sözlük
-
-# Image Categories (for --rename-images)
-LANG: en
-Photo
-Screenshot
-Design
-Art
-Diagram
-Chart
-Document
-Other
-
-LANG: tr
-Fotoğraf
-Ekran Görüntüsü
-Tasarım
-Sanat
-Diyagram
-Grafik
-Belge
-Diğer
+[tr]
+categories = [
+    "Makale", "Kurgu", "Kurgu Dışı", "Ders Kitabı", "Rapor",
+    "Devlet", "Sunum", "Kılavuz", "Tez", "Araştırma",
+    "Diğer", "Sözlük", "Dergi"
+]
 ```
 
 ### Command Options
@@ -565,17 +535,21 @@ Diğer
 
 ```
 renAI/
-├── cli.py               # CLI entry point (Typer)
-├── config.py            # Configuration & API settings
-├── utils.py             # Helper functions
-├── llm_engine.py        # LLM provider integration (including vision)
-├── ocr_engine.py        # OCR processing
-├── file_processor.py    # Core processing logic (including vision processing)
-├── extractors/         # Document parsers
-│   ├── base.py         # Abstract base class
-│   └── pdf_extractors.py # PDF extraction implementations
-├── test_*.py          # Unit tests
-└── requirements.txt    # Dependencies
+├── src/
+│   └── renai/
+│       ├── cli.py               # CLI entry point (Typer)
+│       ├── settings.py          # Configuration & Pydantic settings
+│       ├── utils.py             # Helper functions
+│       ├── logging_config.py    # Structured logging
+│       ├── engines/             # Vision & OCR engines
+│       ├── extractors/          # Document parsers
+│       ├── processors/          # Core processing logic
+│       ├── file_ops/            # File manipulation logic
+│       └── filename/            # Naming conventions
+├── tests/                       # Unit tests
+├── scripts/                     # Benchmark & Utility scripts
+├── pyproject.toml               # Package metadata & dependencies
+└── requirements.txt             # Dependency list
 ```
 
 ---

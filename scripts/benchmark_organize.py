@@ -1,9 +1,16 @@
+import sys
 import time
 import shutil
-import uuid
 from pathlib import Path
 from unittest.mock import Mock
-from file_processor import BookProcessor
+
+# Add src to path if running from root or scripts/
+if (Path.cwd() / "src").exists():
+    sys.path.insert(0, str(Path.cwd() / "src"))
+elif (Path.cwd().parent / "src").exists():
+    sys.path.insert(0, str(Path.cwd().parent / "src"))
+
+from renai.processors.book import BookProcessor
 
 def setup_files(tmp_path, num_files, file_size_mb):
     """Creates a source directory and destination directory with large files to test hash collision speed."""
@@ -50,7 +57,7 @@ def benchmark():
             # Let's pass the 4-tuple to cause ValueError, but fallback to compute hash
             processor.organize_files(files, dest_dir)
         except ValueError:
-            from utils import get_file_hash
+            from renai.utils import get_file_hash
 
             # Since my optimization requires passing the hash down, the benchmark itself needs
             # to be updated to compute the hash *before* we start the timer (which is what happens

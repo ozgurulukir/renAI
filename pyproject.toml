@@ -40,6 +40,15 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "structlog",
+    "platformdirs",
+    "colorama",
+]
+
+[project.optional-dependencies]
+pdf-extra = [
+    "pdfplumber",
+    "pypdf",
+    "pypdfium2",
 ]
 
 [project.scripts]

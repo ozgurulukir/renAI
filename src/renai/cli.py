@@ -246,34 +246,15 @@ def process_files(
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {}
             for p in file_paths:
-                if p.suffix.lower() in IMAGE_EXTENSIONS:
-                    if rename_images:
-                        future = executor.submit(
-                            processor.process_single_image,
-                            p,
-                            mode,
-                            update_metadata,
-                            exif,
-                        )
-                    else:
-                        console.print(f"[dim]Skipping image: {p.name}[/dim]")
-                        progress.advance(task)
-                        continue
-                else:
-                    if vision:
-                        future = executor.submit(
-                            processor.process_single_book_vision,
-                            p,
-                            mode,
-                            update_metadata,
-                        )
-                    else:
-                        future = executor.submit(
-                            processor.process_single_book,
-                            p,
-                            mode,
-                            update_metadata,
-                        )
+                future = executor.submit(
+                    processor.process_file,
+                    p,
+                    mode=mode,
+                    vision_mode=vision,
+                    rename_images=rename_images,
+                    update_metadata=update_metadata,
+                    add_exif_date=exif,
+                )
                 futures[future] = p
 
             for future in futures:

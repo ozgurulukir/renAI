@@ -18,6 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GitHub Actions CI/CD** - Automated testing with matrix testing (Python 3.10, 3.11, 3.12), coverage reporting, and linting.
 - **Rich Terminal Output** - Colored output and progress bars for better UX.
 - **New CLI Commands**: `renai process`, `renai providers`, `renai cache`, `renai version`.
+- **Documentation Refinement**: Clarified Vision Mode flow (Text extraction first, then Vision fallback) in `README.md` and `okubeni.md`.
+
+### Changed
+
+- **CLI Entry Point**: Migrated from `main.py` to `cli.py` using Typer.
+- **Configuration**: Migrated from `config.py` to `settings.py` using Pydantic.
+- **Package Structure**: Now uses modern `src/renai` layout.
+- **Project Metadata**: Version updated to 1.1.0.
+- **Dependency Sync**: Unified `pyproject.toml` and `requirements.txt`.
+- **Extraction Libraries**: Moved heavy PDF extractors (`pdfplumber`, etc.) to optional extras.
+
+### Fixed
+
+- **Broken Benchmark Scripts**: Fixed legacy imports and pathing in `scripts/benchmark_script.py` and `scripts/benchmark_organize.py`.
+- **Dead Code Cleanup**: Removed unreferenced legacy files and obsolete imports.
+- **Missing Dependencies**: Resolved runtime errors by adding `pydantic`, `structlog`, and `platformdirs`.
 
 ### Changed
 
