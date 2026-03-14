@@ -91,8 +91,9 @@ Module Functions:
 """
 
 import logging
+from enum import Enum, auto
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional, Set, Dict, Any
 
 from ..settings import (
     CACHE_DIR,
@@ -112,6 +113,12 @@ from ..cache.manager import (
     write_text_cache,
 )
 
+class FallbackMode(Enum):
+    """Modes for handling failed text extraction."""
+    NONE = "none"           # No fallback, return empty string
+    OCR = "ocr"             # Fallback to OCR engine
+    MOVE_TO_FOLDER = "move" # Move to Needs_Scan folder
+    VISION = "vision"       # Fallback to vision model (handled by BookProcessor)
 
 # Supported extensions
 OFFICE_EXTENSIONS: Set[str] = {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
@@ -148,12 +155,17 @@ class TextExtractor:
         self.target_length = target_length
         self.office_extensions = OFFICE_EXTENSIONS
         self.plain_text_extensions = PLAIN_TEXT_EXTENSIONS
+        # Move to folder management
+        self.needs_scan_dir = None
+        self.skip_ocr_files = False
+        self.scan_failures_dir = None
+        self.move_scan_failures = False
 
     def extract(
         self,
         file_path: Path,
         target_length: Optional[int] = None,
-        use_ocr_fallback: bool = True,
+        fallback: FallbackMode = FallbackMode.OCR,
     ) -> str:
         """
         Extract text from a file with caching.
@@ -182,8 +194,8 @@ class TextExtractor:
         # Check cache
         cache_path = get_text_cache_path(
             file_hash,
-            self.ocr_engine.enhanced if use_ocr_fallback else False,
-            self.ocr_engine.use_mutool if use_ocr_fallback else False,
+            self.ocr_engine.enhanced if fallback == FallbackMode.OCR else False,
+            self.ocr_engine.use_mutool if fallback == FallbackMode.OCR else False,
             CACHE_DIR,
         )
 
@@ -203,7 +215,7 @@ class TextExtractor:
         else:
             # PDF/EPUB/MOBI
             extracted_text = self._extract_from_document(
-                file_path, target_length, use_ocr_fallback
+                file_path, target_length, fallback
             )
 
         # Cache result if we got meaningful text
@@ -277,7 +289,7 @@ class TextExtractor:
         self,
         file_path: Path,
         target_length: int,
-        use_ocr_fallback: bool,
+        fallback: FallbackMode,
     ) -> str:
         """
         Extract text from documents (PDF/EPUB/MOBI).
@@ -308,15 +320,23 @@ class TextExtractor:
         if len(full_text.strip()) > 100:  # Heuristic for meaningful text
             return proportional_chunk_trim(full_text, target_length, 10)
 
-        # Insufficient text - try OCR fallback if enabled
-        if use_ocr_fallback:
-            logging.info(
-                f"Insufficient text from {self.extractor_name} for {file_path.name}, "
-                "falling back to OCR"
-            )
-            return self._fallback_to_ocr(file_path, target_length)
-
-        return ""
+        # Insufficient text - Apply fallback strategy
+        match fallback:
+            case FallbackMode.MOVE_TO_FOLDER:
+                logging.info(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
+                self._move_to_needs_scan(file_path)
+                return ""
+            
+            case FallbackMode.OCR:
+                logging.info(f"Primary text insufficient for {file_path.name}, falling back to OCR")
+                return self._fallback_to_ocr(file_path, target_length)
+            
+            case FallbackMode.VISION:
+                logging.info(f"Primary text insufficient for {file_path.name}, marking for Vision fallback")
+                return ""
+                
+            case _: # FallbackMode.NONE or anything else
+                return ""
 
     def _fallback_to_ocr(
         self,
@@ -349,51 +369,83 @@ class TextExtractor:
 
         return ""
 
-    def extract_without_ocr(
-        self,
-        file_path: Path,
-        target_length: Optional[int] = None,
-    ) -> str:
-        """
-        Extract text WITHOUT OCR fallback.
 
-        Used by vision mode to try text extraction first.
-        """
-        if target_length is None:
-            target_length = self.target_length
+    def set_needs_scan_folder(self, root_dir: Path, skip: bool = False) -> None:
+        """Configure folder for files that need scanning/additional processing."""
+        from ..utils import ensure_secure_dir
+
+        self.needs_scan_dir = ensure_secure_dir(root_dir / "Needs_Scan")
+        self.skip_ocr_files = skip
+
+    def set_scan_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
+        """Configure folder for files that failed both standard extraction and fallbacks."""
+        from ..utils import ensure_secure_dir
+
+        self.scan_failures_dir = ensure_secure_dir(root_dir / "Scan_Failures")
+        self.move_scan_failures = enabled
+
+    def get_needs_scan_files(self) -> list[Path]:
+        """Returns a list of files in the Needs_Scan folder."""
+        if not self.needs_scan_dir or not self.needs_scan_dir.exists():
+            return []
+        return [f for f in self.needs_scan_dir.iterdir() if f.is_file()]
+
+    def _move_to_needs_scan(self, file_path: Path) -> None:
+        """Move file to Needs_Scan folder."""
+        import shutil
+
+        target_dir = self.needs_scan_dir
+        if not target_dir:
+            return
+        try:
+            dest = target_dir / file_path.name
+            shutil.move(str(file_path), str(dest))
+        except Exception as e:
+            logging.error(f"Failed to move {file_path.name} to Needs_Scan: {e}")
+
+    def _move_to_scan_failures(self, file_path: Path) -> None:
+        """Move file to Scan_Failures folder."""
+        import shutil
+
+        target_dir = self.scan_failures_dir
+        if not target_dir:
+            return
+        try:
+            dest = target_dir / file_path.name
+            shutil.move(str(file_path), str(dest))
+        except Exception as e:
+            logging.error(f"Failed to move {file_path.name} to Scan_Failures: {e}")
+
+    def benchmark_extractors(self, file_path: Path) -> None:
+        """Run extraction benchmark for a single file."""
+        from ..extractors import (
+            PyMuPDFExtractor,
+            PDFPlumberExtractor,
+            PyPDFExtractor,
+            PyPdfium2Extractor,
+        )
 
         if file_path.is_symlink():
-            return ""
+            logging.warning(f"Skipping symlink for benchmark: {file_path.name}")
+            return
 
-        # Get file hash for caching (without OCR settings)
-        file_hash = get_file_hash(file_path)
-        cache_path = get_text_cache_path(file_hash, False, False, CACHE_DIR)
+        extractors = [
+            PyMuPDFExtractor(),
+            PDFPlumberExtractor(),
+            PyPDFExtractor(),
+            PyPdfium2Extractor(),
+        ]
 
-        # Check cache
-        cached_text = read_text_cache(cache_path)
-        if cached_text is not None:
-            return cached_text
-
-        ext = file_path.suffix.lower()
-        extracted_text = ""
-
-        if ext in self.office_extensions:
-            extracted_text = self._extract_from_office(file_path, target_length)
-        elif ext in self.plain_text_extensions:
-            extracted_text = self._extract_from_plain_text(file_path, target_length)
-        elif ext == ".pdf":
-            # PDF: try extractor only, no OCR fallback
-            full_text = self.extractor.extract_text(file_path) or ""
-            if len(full_text.strip()) > 100:
-                extracted_text = proportional_chunk_trim(
-                    full_text, target_length, 10
-                )
-
-        # Cache result
-        if extracted_text.strip():
-            write_text_cache(cache_path, extracted_text)
-
-        return extracted_text
+        logging.info(f"\n{'='*20} BENCHMARK: {file_path.name} {'='*20}")
+        for ext in extractors:
+            try:
+                text = ext.extract_text(file_path) or ""
+                length = len(text.strip())
+                status = "SUCCESS" if length > 0 else "EMPTY"
+                logging.info(f"{ext.name:15} | {status:7} | Length: {length:6,}")
+            except Exception as e:
+                logging.error(f"{ext.name:15} | FAILED: {str(e)[:50]}")
+        logging.info("=" * (52 + len(file_path.name)))
 
 
 def has_sufficient_text(text: str, min_length: int = 100) -> bool:

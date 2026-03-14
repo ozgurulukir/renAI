@@ -1,50 +1,45 @@
 import sys
 import pytest
+from pathlib import Path
+from unittest.mock import Mock, patch
+import tempfile
 
 sys.path.insert(0, "src")
 
-#!/usr/bin/env python3
-"""Test OCR skipping functionality"""
-
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch
-
 from renai.processors.book import BookProcessor
+from renai.processors.text_extractor import FallbackMode
 
-
-@pytest.mark.skip(reason="Mock setup issues - refactor needed")
 def test_ocr_skip_functionality():
-    """Test that files requiring OCR are moved to Needs_OCR folder when skip_ocr_files is enabled"""
+    """Test that files requiring scan are moved to Needs_Scan folder when skip_ocr_files is enabled"""
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
 
         # Mock OCR and LLM engines
         mock_ocr_engine = Mock()
+        mock_ocr_engine.extract_text.return_value = "" # Return string to avoid len() error
         mock_llm_engine = Mock()
-
-        # Create processor with OCR skipping enabled
-        processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
-        processor.set_needs_ocr_folder(tmp_path, skip=True)
 
         # Create a test PDF file
         test_file = tmp_path / "test.pdf"
         test_file.write_bytes(b"fake pdf content 1")
 
-        # Mock extractor to return insufficient text (triggering OCR fallback)
-        mock_extractor = Mock()
-        mock_extractor.extract_text.return_value = ""  # Insufficient text
-        processor.extractor = mock_extractor
+        # Mock internal extractor
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_mu_instance = Mock()
+            mock_mu_instance.extract_text.return_value = ""  # Insufficient
+            mock_mu_instance.name = "pymupdf"
+            mock_get_extractor.return_value = mock_mu_instance
 
-        # Mock OCR engine to simulate OCR failure
-        mock_ocr_engine.extract_text.return_value = ""
+            # Create processor AFTER patching so TextExtractor gets the mock
+            processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
+            processor.set_needs_ocr_folder(tmp_path, skip=True)
 
-        # Extract text - should trigger OCR skipping
-        result = processor.extract_text_from_file(test_file)
+            # Extract text - should trigger OCR skipping via TextExtractor
+            result = processor.text_extractor.extract(test_file, fallback=FallbackMode.MOVE_TO_FOLDER)
 
-        # Check that file was moved to Needs_OCR folder
-        needs_ocr_dir = tmp_path / "Needs_OCR"
+        # Check that file was moved to Needs_Scan folder
+        needs_ocr_dir = tmp_path / "Needs_Scan"
         assert needs_ocr_dir.exists()
 
         moved_files = list(needs_ocr_dir.iterdir())
@@ -53,9 +48,6 @@ def test_ocr_skip_functionality():
 
         # Result should be empty since file was moved
         assert result == ""
-
-        print("PASS: OCR skipping functionality test passed")
-
 
 def test_ocr_skip_disabled():
     """Test that OCR is attempted when skip_ocr_files is disabled"""
@@ -67,27 +59,29 @@ def test_ocr_skip_disabled():
         mock_ocr_engine = Mock()
         mock_llm_engine = Mock()
 
-        # Create processor with OCR skipping disabled
-        processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
-        processor.set_needs_ocr_folder(tmp_path, skip=False)
-
         # Create a test PDF file
         test_file = tmp_path / "test.pdf"
         test_file.write_bytes(b"fake pdf content 2")
 
-        # Mock extractor to return insufficient text
-        mock_extractor = Mock()
-        mock_extractor.extract_text.return_value = ""  # Insufficient text
-        processor.extractor = mock_extractor
+        # Mock internal extractor
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_mu_instance = Mock()
+            mock_mu_instance.extract_text.return_value = ""  # Insufficient
+            mock_mu_instance.name = "pymupdf"
+            mock_get_extractor.return_value = mock_mu_instance
 
-        # Mock OCR engine to return OCR text
-        mock_ocr_engine.extract_text.return_value = "OCR extracted text"
+            # Create processor with OCR skipping disabled
+            processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
+            processor.set_needs_scan_folder(tmp_path, skip=False)
 
-        # Extract text - should attempt OCR
-        result = processor.extract_text_from_file(test_file)
+            # Mock OCR engine to return OCR text
+            mock_ocr_engine.extract_text.return_value = "OCR extracted text"
 
-        # Check that file was NOT moved to Needs_OCR folder
-        needs_ocr_dir = tmp_path / "Needs_OCR"
+            # Extract text - should attempt OCR
+            result = processor.text_extractor.extract(test_file, fallback=FallbackMode.OCR)
+
+        # Check that file was NOT moved to Needs_Scan folder
+        needs_ocr_dir = tmp_path / "Needs_Scan"
         if needs_ocr_dir.exists():
             moved_files = list(needs_ocr_dir.iterdir())
             assert len(moved_files) == 0
@@ -95,10 +89,6 @@ def test_ocr_skip_disabled():
         # Result should contain OCR text
         assert result == "OCR extracted text"
 
-        print("PASS: OCR skipping disabled test passed")
-
-
-@pytest.mark.skip(reason="Mock setup issues - refactor needed")
 def test_sufficient_text_no_ocr_needed():
     """Test that files with sufficient text don't trigger OCR skipping"""
 
@@ -109,39 +99,32 @@ def test_sufficient_text_no_ocr_needed():
         mock_ocr_engine = Mock()
         mock_llm_engine = Mock()
 
-        # Create processor with OCR skipping enabled
-        processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
-        processor.set_needs_ocr_folder(tmp_path, skip=True)
-
         # Create a test PDF file
         test_file = tmp_path / "test.pdf"
         test_file.write_bytes(b"fake pdf content 3")
 
-        # Mock extractor to return sufficient text
-        mock_extractor = Mock()
-        mock_extractor.extract_text.return_value = "This is a long text that should be sufficient for processing" * 10
-        processor.extractor = mock_extractor
+        # Mock internal extractor
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_mu_instance = Mock()
+            mock_mu_instance.extract_text.return_value = "Sufficient text " * 20
+            mock_mu_instance.name = "pymupdf"
+            mock_get_extractor.return_value = mock_mu_instance
 
-        # Extract text - should not trigger OCR
-        result = processor.extract_text_from_file(test_file)
+            # Create processor with OCR skipping enabled
+            processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
+            processor.set_needs_scan_folder(tmp_path, skip=True)
 
-        # Check that file was NOT moved to Needs_OCR folder
-        needs_ocr_dir = tmp_path / "Needs_OCR"
+            # Extract text - should NOT trigger OCR
+            result = processor.text_extractor.extract(test_file, fallback=FallbackMode.OCR)
+
+        # Check that file was NOT moved to Needs_Scan folder
+        needs_ocr_dir = tmp_path / "Needs_Scan"
         if needs_ocr_dir.exists():
             moved_files = list(needs_ocr_dir.iterdir())
             assert len(moved_files) == 0
 
         # Result should contain extracted text
-        assert len(result) > 0
-
-        print("PASS: Sufficient text no OCR needed test passed")
-
+        assert "Sufficient text" in result
 
 if __name__ == "__main__":
-    print("Running OCR skipping tests...\n")
-
-    test_ocr_skip_functionality()
-    test_ocr_skip_disabled()
-    test_sufficient_text_no_ocr_needed()
-
-    print("\nSUCCESS: All OCR skipping tests passed!")
+    pytest.main([__file__])

@@ -18,6 +18,7 @@ from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
 from renai.logging_config import configure_logging
 from renai.processors.book import BookProcessor
+from renai.processors.text_extractor import FallbackMode
 from renai.settings import (
     IMAGE_EXTENSIONS,
     PROVIDERS,
@@ -115,7 +116,6 @@ def setup_engines(
     mutool_path: str,
     extractor: str,
     text_length: int,
-    vision: bool,
 ) -> Tuple[OCREngine, LLMEngine, BookProcessor]:
     """Initialize OCR, LLM, and book processor engines."""
     # Initialize OCR engine
@@ -124,7 +124,7 @@ def setup_engines(
         debug=debug_ocr,
         use_mutool=use_mutool,
         mutool_path=mutool_path,
-        silent=vision,
+        silent=False,  # OCR engine silence is handled internally now
     )
 
     # Get provider configuration
@@ -223,12 +223,11 @@ def process_files(
     root_dir: Path,
     mode: str,
     workers: int,
-    vision: bool,
+    fallback_mode: FallbackMode,
     rename_images: bool,
     update_metadata: bool,
     exif: bool,
-    skip_needs_ocr: bool,
-    move_ocr_failures: bool,
+    move_scan_failures: bool,
 ) -> None:
     """Process files based on mode."""
     results = []
@@ -250,7 +249,7 @@ def process_files(
                     processor.process_file,
                     p,
                     mode=mode,
-                    vision_mode=vision,
+                    fallback_mode=fallback_mode,
                     rename_images=rename_images,
                     update_metadata=update_metadata,
                     add_exif_date=exif,
@@ -273,14 +272,17 @@ def process_files(
     if mode == "organize":
         processor.organize_files(results, root_dir)
 
-    # Handle OCR folders
-    if skip_needs_ocr:
-        needs_ocr_files = processor.get_needs_ocr_files()
-        if needs_ocr_files:
-            console.print(f"[yellow]Files moved to Needs_OCR folder: {len(needs_ocr_files)}[/yellow]")
+    # Handle Scan folders
+    if fallback_mode == FallbackMode.MOVE_TO_FOLDER:
+        needs_scan_files = processor.get_needs_scan_files()
+        if needs_scan_files:
+            console.print(f"[yellow]Files moved to Needs_Scan folder: {len(needs_scan_files)}[/yellow]")
 
-    if move_ocr_failures:
-        console.print("[green]OCR failure handling enabled[/green]")
+    if move_scan_failures:
+        console.print("[green]Scan failure handling enabled[/green]")
+        if processor.scan_failed_files:
+            console.print(f"[red]Total files failed processing: {len(processor.scan_failed_files)}[/red]")
+            console.print("[red]Files moved to Scan_Failures directory.[/red]")
 
 
 # =============================================================================
@@ -358,22 +360,16 @@ def process(
         "--update-metadata",
         help="Force update metadata from LLM (ignore cache)",
     ),
-    # OCR fallback options
-    skip_needs_ocr: bool = typer.Option(
-        False,
-        "--skip-needs-ocr",
-        help="Skip OCR processing, move files to Needs_OCR folder",
+    # Fallback options
+    fallback_mode: FallbackMode = typer.Option(
+        FallbackMode.NONE,
+        "--fallback-mode",
+        help="Strategy to use when text extraction fails (none/ocr/vision/move)",
     ),
-    move_ocr_failures: bool = typer.Option(
+    move_scan_failures: bool = typer.Option(
         False,
-        "--move-ocr-failures",
-        help="Move files that cannot be processed to OCR_Failures folder",
-    ),
-    # Vision options
-    vision: bool = typer.Option(
-        False,
-        "--vision",
-        help="Use vision-capable LLM to process PDFs",
+        "--move-scan-failures",
+        help="Move files that cannot be processed to Scan_Failures folder",
     ),
     rename_images: bool = typer.Option(
         False,
@@ -439,8 +435,8 @@ def process(
     console.print()
 
     # Vision mode warnings
-    if vision or rename_images:
-        console.print("[yellow]Note: --vision and --rename-images require a vision-capable model. Please ensure your model supports vision.[/yellow]\n")
+    if fallback_mode == FallbackMode.VISION or rename_images:
+        console.print("[yellow]Note: vision fallback and --rename-images require a vision-capable model. Please ensure your model supports vision.[/yellow]\n")
 
     # Setup engines
     try:
@@ -453,7 +449,6 @@ def process(
             mutool_path=mutool_path,
             extractor=extractor,
             text_length=text_length,
-            vision=vision,
         )
     except typer.Exit:
         raise
@@ -461,17 +456,17 @@ def process(
         console.print(f"[red]Error setting up engines: {e}[/red]")
         raise typer.Exit(code=1)
 
-    # Configure OCR folders
-    if skip_needs_ocr:
-        processor.set_needs_ocr_folder(root_dir, skip=True)
-    if move_ocr_failures:
-        processor.set_ocr_failures_folder(root_dir, enabled=True)
+    # Configure fallback folders
+    if fallback_mode == FallbackMode.MOVE_TO_FOLDER:
+        processor.set_needs_scan_folder(root_dir, skip=True)
+    if move_scan_failures:
+        processor.set_scan_failures_folder(root_dir, enabled=True)
 
     # Display warnings
     display_warnings(mode, recursive)
 
     # Collect files
-    if vision and rename_images:
+    if (fallback_mode == FallbackMode.VISION) and rename_images:
         pdf_files = collect_files(root_dir, processor, recursive)
         image_files = collect_image_files(root_dir, processor, recursive)
         file_paths = pdf_files + image_files
@@ -506,12 +501,11 @@ def process(
             root_dir=root_dir,
             mode=mode,
             workers=workers,
-            vision=vision,
+            fallback_mode=fallback_mode,
             rename_images=rename_images,
             update_metadata=update_metadata,
             exif=exif,
-            skip_needs_ocr=skip_needs_ocr,
-            move_ocr_failures=move_ocr_failures,
+            move_scan_failures=move_scan_failures,
         )
     except Exception as e:
         console.print(f"[red]Error processing files: {e}[/red]")

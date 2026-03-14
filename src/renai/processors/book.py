@@ -3,6 +3,7 @@ BookProcessor - Main orchestrator for document and image processing.
 Unified and refactored to eliminate redundancy between text, vision, and image modes.
 """
 
+import json
 import logging
 import threading
 from pathlib import Path
@@ -24,7 +25,7 @@ from ..filename.builder import (
 )
 from ..settings import IMAGE_EXTENSIONS, CACHE_DIR
 from ..utils import get_file_hash, ensure_secure_dir
-from .text_extractor import TextExtractor
+from .text_extractor import TextExtractor, FallbackMode
 from .visual import VisualProcessor
 
 
@@ -48,49 +49,43 @@ class BookProcessor:
         self.provider = provider
         self.model = model or getattr(llm_engine, "model_name", "")
         self.target_length = target_length
+        self.extractor_name = extractor_name
 
         self.text_extractor = TextExtractor(
             ocr_engine=ocr_engine,
             extractor_name=extractor_name,
             target_length=target_length,
         )
-
-        self.visual_processor = VisualProcessor(
-            llm_engine=llm_engine,
-            provider=provider,
-            model=self.model,
-        )
-
+        self.visual_processor = VisualProcessor(llm_engine=llm_engine)
         self.file_operation_lock = threading.Lock()
+        
+        # Tracking for reporting/failure handling
+        self.scan_failed_files: set[Path] = set()
         self.supported_extensions = {
             ".pdf", ".epub", ".mobi", ".docx", ".pptx", ".xlsx", ".txt", ".md"
         }
 
-        # Failure/Skip Tracking
-        self.move_ocr_failures = False
-        self.ocr_failures_dir: Optional[Path] = None
-        self.ocr_failed_files: set[Path] = set()
-        
-        self.skip_ocr_files = False
-        self.needs_ocr_dir: Optional[Path] = None
+    def set_needs_scan_folder(self, root_dir: Path, skip: bool = False) -> None:
+        """Delegate to text_extractor."""
+        self.text_extractor.set_needs_scan_folder(root_dir, skip)
 
-    def set_ocr_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
-        self.move_ocr_failures = enabled
-        if enabled:
-            self.ocr_failures_dir = root_dir / "OCR_Failures"
-            ensure_secure_dir(self.ocr_failures_dir)
+    def set_scan_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
+        """Delegate to text_extractor."""
+        self.text_extractor.set_scan_failures_folder(root_dir, enabled)
 
-    def set_needs_ocr_folder(self, root_dir: Path, skip: bool = True) -> None:
-        self.skip_ocr_files = skip
-        if skip:
-            self.needs_ocr_dir = root_dir / "Needs_OCR"
-            ensure_secure_dir(self.needs_ocr_dir)
+    def benchmark_extractors(self, file_path: Path) -> None:
+        """Delegate to text_extractor."""
+        self.text_extractor.benchmark_extractors(file_path)
+
+    def get_needs_scan_files(self) -> list[Path]:
+        """Delegate to text_extractor."""
+        return self.text_extractor.get_needs_scan_files()
 
     def process_file(
         self,
         file_path: Path,
         mode: str = "rename",
-        vision_mode: bool = False,
+        fallback_mode: FallbackMode = FallbackMode.NONE,
         rename_images: bool = False,
         update_metadata: bool = False,
         add_exif_date: bool = False,
@@ -107,8 +102,7 @@ class BookProcessor:
             is_image = file_path.suffix.lower() in IMAGE_EXTENSIONS
             
             # Check for cached metadata
-            # Vision uses a separate cache entry if it's a PDF
-            use_vision_cache = vision_mode and file_path.suffix.lower() == ".pdf"
+            use_vision_cache = fallback_mode == FallbackMode.VISION and file_path.suffix.lower() == ".pdf"
             cache_path = get_metadata_cache_path(
                 file_hash, self.provider, self.model, CACHE_DIR, use_vision=use_vision_cache
             )
@@ -117,13 +111,16 @@ class BookProcessor:
 
             if not metadata:
                 metadata = self._extract_metadata_dispatch(
-                    file_path, is_image, vision_mode, rename_images, add_exif_date, file_hash
+                    file_path, is_image, fallback_mode, rename_images, add_exif_date, file_hash
                 )
                 if metadata:
                     write_metadata_cache(cache_path, metadata, self.provider, self.model)
 
             if not metadata:
                 logging.warning(f"Failed to extract metadata for {file_path.name}")
+                self.scan_failed_files.add(file_path)
+                if self.text_extractor.move_scan_failures:
+                    self.text_extractor._move_to_scan_failures(file_path)
                 return False, None, None, None, None
 
             # Build filename and category
@@ -153,49 +150,32 @@ class BookProcessor:
             return False, None, None, None, None
 
     def _extract_metadata_dispatch(
-        self, file_path: Path, is_image: bool, vision_mode: bool, 
+        self, file_path: Path, is_image: bool, fallback_mode: FallbackMode, 
         rename_images: bool, add_exif_date: bool, file_hash: str
     ) -> Optional[Dict[str, Any]]:
-        """Dispatcher for different extraction strategies."""
+        """Dispatcher for different extraction strategies using switch-based fallback."""
         if is_image:
             if not rename_images:
                 return None
             return self.visual_processor.extract_metadata_from_image(file_path, add_exif_date)
 
-        # Document Flow
-        if vision_mode:
-            # Vision Fallback Strategy: Text (no OCR) -> Vision
-            text = self.text_extractor.extract_without_ocr(file_path)
-            if text:
-                return self.llm_engine.get_book_metadata(text)
-            
-            if file_path.suffix.lower() == ".pdf":
-                logging.info(f"Text extraction failed for {file_path.name}, falling back to vision")
-                return self.visual_processor.extract_metadata_from_pdf(file_path)
-            return None
-
-        # Regular Mode Flow: Text -> OCR Fallback
-        text = self.text_extractor.extract(file_path, use_ocr_fallback=True)
-        if text:
-            return self.llm_engine.get_book_metadata(text)
+        # 1. Extract Text (Always Try First)
+        # In OCR/SKIP/VISION mode, the TextExtractor handles the internal logic or marks for further fallback.
+        text = self.text_extractor.extract(file_path, fallback=fallback_mode)
         
-        # If extraction completely failed (including OCR)
-        self.ocr_failed_files.add(file_path)
-        if self.move_ocr_failures and self.ocr_failures_dir:
-            self._move_to_failures(file_path, file_hash)
-            
-        return None
+        if text.strip():
+            return self.llm_engine.get_book_metadata(text)
 
-    def _move_to_failures(self, file_path: Path, file_hash: str):
-        """Helper to move failed files to OCR_Failures."""
-        failures_dir = self.ocr_failures_dir
-        if failures_dir is None:
-            return
-        try:
-            dest = failures_dir / file_path.name
-            safe_move_file(file_path, dest, "move to OCR_Failures", source_hash=file_hash)
-        except Exception as e:
-            logging.error(f"Failed to move {file_path.name} to failures: {e}")
+        # 2. Handle Fallback if Text Extraction Failed
+        match fallback_mode:
+            case FallbackMode.VISION if file_path.suffix.lower() == ".pdf":
+                logging.info(f"Text insufficient for {file_path.name}, falling back to Vision")
+                return self.visual_processor.extract_metadata_from_pdf(file_path)
+            
+            case _: # FallbackMode.OCR, MOVE_TO_FOLDER, NONE
+                # TextExtractor already handled internal fallbacks or skips.
+                # If we are here and text was empty, we implicitly failed.
+                return None
 
     def organize_files(self, processed_info: List[Tuple[bool, Optional[Path], str, str, str]], root_dir: Path):
         """Moves renamed files into category folders."""
@@ -205,65 +185,62 @@ class BookProcessor:
                 continue
 
             category_dir = root_dir / category
-            if category_dir not in created_dirs:
-                category_dir.mkdir(parents=True, exist_ok=True)
-                created_dirs.add(category_dir)
-
-            dest_path = category_dir / name
             try:
+                if category_dir not in created_dirs:
+                    category_dir.mkdir(parents=True, exist_ok=True)
+                    created_dirs.add(category_dir)
+
+                dest_path = category_dir / name
                 with self.file_operation_lock:
                     safe_move_file(current_path, dest_path, "organize", ensure_dirs=False, source_hash=file_hash)
                 logging.info(f"Organized {name} -> {category}/{name}")
             except Exception as e:
-                logging.error(f"Failed to organize {name}: {e}")
+                logging.error(f"Failed to organize {name} into {category}: {e}")
 
-    # --- Legacy Compatibility & Helpers ---
-
-    def benchmark_extractors(self, file_path: Path):
-        """Run all PDF extractors for comparison."""
-        from ..extractors import (
-            PyMuPDFExtractor, PDFPlumberExtractor, PyPDFExtractor, PyPdfium2Extractor
-        )
-        extractors = [PyMuPDFExtractor(), PDFPlumberExtractor(), PyPDFExtractor(), PyPdfium2Extractor()]
-        logging.info(f"BENCHMARK: {file_path.name}")
-        for ext in extractors:
-            try:
-                import time
-                start = time.time()
-                text = ext.extract_text(file_path) or ""
-                logging.info(f"{ext.name:<15} | {time.time()-start:<10.3f}s | {len(text)} chars")
-            except Exception as e:
-                logging.error(f"{ext.name} failed: {e}")
-
-    def evaluate_models(self, file_path: Path, provider: str, model_names: List[str]):
-        """Evaluate multiple models for metadata quality."""
+    def evaluate_models(self, file_path: Path, provider: str, model_names: list[str]) -> None:
+        """Evaluate multiple LLM models for a single file."""
         from ..settings import PROVIDERS, EVAL_LOG_FILE
-        text = self.text_extractor.extract(file_path)
-        if not text: return
-        
-        p_config = PROVIDERS.get(provider)
-        for model in model_names:
-            try:
-                temp_llm = LLMEngine(provider, p_config["api_key"], p_config["base_url"], model)
-                metadata = temp_llm.get_book_metadata(text)
-                logging.info(f"Model: {model[:30]:<30} | Status: {'SUCCESS' if metadata else 'FAILED'}")
-            except Exception as e:
-                logging.error(f"Model {model} error: {e}")
 
-    def get_ocr_failed_files(self) -> List[Path]:
-        return list(self.ocr_failed_files)
+        if file_path.is_symlink():
+            logging.warning(f"Skipping symlink for evaluation: {file_path.name}")
+            return
+
+        text = self.text_extractor.extract(file_path)
+        if not text:
+            logging.error(f"FAILED: No text extracted for {file_path.name}")
+            return
+
+        logging.info(f"\n{'='*20} MODEL EVALUATION: {file_path.name} {'='*20}")
+        config = PROVIDERS.get(provider)
+        if not config:
+            logging.error(f"Invalid provider: {provider}")
+            return
+
+        with open(EVAL_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"EVALUATION: {file_path.name} ({provider})\n")
+            f.write(f"{'='*80}\n")
+
+            for model_name in model_names:
+                try:
+                    temp_engine = LLMEngine(
+                        provider=provider,
+                        api_key=config.api_key,
+                        base_url=config.base_url,
+                        model_name=model_name,
+                    )
+                    metadata = temp_engine.get_book_metadata(text)
+                    status = "SUCCESS"
+                    logging.info(f"{model_name:25} | {status} | {str(metadata)[:50]}...")
+                    f.write(f"[{model_name}] -> {json.dumps(metadata, ensure_ascii=False)}\n")
+                except Exception as e:
+                    logging.error(f"{model_name:25} | ERROR: {str(e)[:25]}")
+                    f.write(f"[{model_name}] -> ERROR: {str(e)}\n")
+        
+        logging.info("=" * (46 + len(file_path.name)))
+
+    def get_scan_failed_files(self) -> List[Path]:
+        return list(self.scan_failed_files)
 
     def is_image_file(self, file_path: Path) -> bool:
         return file_path.suffix.lower() in IMAGE_EXTENSIONS
-
-    # Shims for old API compatibility if needed (deprecated)
-    def process_single_book(self, *args, **kwargs):
-        return self.process_file(*args, **kwargs)
-
-    def process_single_book_vision(self, *args, **kwargs):
-        kwargs['vision_mode'] = True
-        return self.process_file(*args, **kwargs)
-
-    def process_single_image(self, *args, **kwargs):
-        kwargs['rename_images'] = True
-        return self.process_file(*args, **kwargs)

@@ -57,8 +57,10 @@ Description -- Category -- (Language).ext
 - **`organize`**: Moves renamed files into category folders
 - **`benchmark`**: Compares PDF extraction library performance
 - **`eval-model`**: Tests different LLM models for accuracy
-- **`--vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs. Non-PDF files can be moved to `Needs_OCR/` folder.
-- **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + OCR fallback.
+- **`--fallback-mode ocr`**: Tries text extraction first. If it fails, falls back to Tesseract OCR (default behavior).
+- **`--fallback-mode vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs.
+- **`--fallback-mode move`**: Moves files where text extraction fails to `Needs_Scan/` folder.
+- **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + selected fallback.
 
 ---
 
@@ -104,7 +106,7 @@ cp .env.example .env
 
 Then edit `.env` with your API keys:
 - `DEEPINFRA_API_KEY`
-- `OPENROUTER_API_KEY`  
+- `OPENROUTER_API_KEY`
 - `OPENAI_API_KEY`
 
 Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrouter.ai) | [OpenAI](https://platform.openai.com/api-keys)
@@ -145,16 +147,16 @@ Vision mode implements a "smart fallback" strategy: it tries text extraction fir
 
 ```bash
 # Process PDFs with vision model (no OCR) - uses default provider/model
-renai process "C:/Path/To/Books" --vision
+renai process "C:/Path/To/Books" --fallback-mode vision
 
 # Use specific vision model
-renai process "C:/Path/To/Books" --vision --provider openrouter --model openai/gpt-4o
+renai process "C:/Path/To/Books" --fallback-mode vision --provider openrouter --model openai/gpt-4o
 
 # DeepInfra with Llama Vision
-renai process "C:/Path/To/Books" --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
+renai process "C:/Path/To/Books" --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct
 
 # OpenAI GPT-4o
-renai process "C:/Path/To/Books" --vision --provider openai --model gpt-4o
+renai process "C:/Path/To/Books" --fallback-mode vision --provider openai --model gpt-4o
 ```
 
 ### Image Renaming
@@ -166,10 +168,10 @@ Rename image files using AI vision analysis. Requires a vision-capable model:
 renai process "C:/Path/To/Photos" --rename-images --provider openai --model gpt-4o
 
 # With EXIF date (if available)
-renai process "C:/Path/To/Photos" --vision --rename-images --provider openai --model gpt-4o --exif
+renai process "C:/Path/To/Photos" --fallback-mode vision --rename-images --provider openai --model gpt-4o --exif
 
 # With DeepInfra
-renai process "C:/Path/To/Images" --vision --rename-images --provider deepinfra --model Qwen/Qwen2-VL-72B-Instruct
+renai process "C:/Path/To/Images" --fallback-mode vision --rename-images --provider deepinfra --model Qwen/Qwen2-VL-72B-Instruct
 ```
 
 ### Mixed Folders (PDF + Images)
@@ -178,19 +180,19 @@ Process both PDFs and images in the same folder:
 
 | Parameter | PDF/Supported | Image |
 |-----------|---------------|-------|
-| `--vision` | Normal → Vision fallback | ⏭️ Skipped |
-| `--vision --rename-images` | Normal → Vision fallback | 🔄 Vision rename |
+| `--fallback-mode vision` | Normal → Vision fallback | ⏭️ Skipped |
+| `--fallback-mode vision --rename-images` | Normal → Vision fallback | 🔄 Vision rename |
 | `--rename-images` | Normal → OCR fallback | 🔄 Vision rename |
 
 ```bash
 # PDFs with vision, images with vision
-renai process "C:/Path/To/Mixed" --vision --rename-images --provider openai --model gpt-4o
+renai process "C:/Path/To/Mixed" --fallback-mode vision --rename-images --provider openai --model gpt-4o
 
 # Only rename images (PDFs with OCR)
 renai process "C:/Path/To/Mixed" --rename-images --provider openai --model gpt-4o
 
 # Only process PDFs with vision (skip images)
-renai process "C:/Path/To/PDFs" --vision --provider openai --model gpt-4o
+renai process "C:/Path/To/PDFs" --fallback-mode vision --provider openai --model gpt-4o
 ```
 
 ### High-Quality OCR for Scanned Documents
@@ -218,7 +220,7 @@ renai process "C:/Path/To/Books" --mode rename --provider openai
 Use the `custom` provider to connect to local inference servers like [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/). These tools provide OpenAI-compatible APIs.
 
 > **⚠️ Important: Not all models are capable of structured output, particularly LLMs below 7B parameters. Check the model card README if you are unsure if the model supports structured output.**
-> 
+>
 > renAI requires JSON output from the LLM for reliable metadata extraction. Models with fewer than 7B parameters may struggle with structured output formatting.
 
 ```bash
@@ -394,8 +396,8 @@ When using `--mode organize`:
 
 ### OCR Handling Options
 
-- **`--skip-needs-ocr`**: Moves files with insufficient text to `Needs_OCR` folder (skips OCR)
-- **`--move-ocr-failures`**: Moves completely unprocessable files to `OCR_Failures` folder
+- **`--fallback-mode move`**: Moves files with insufficient text to `Needs_Scan` folder (skips fallback processing)
+- **`--move-scan-failures`**: Moves files that fail both standard and fallback extraction to `Scan_Failures` folder
 
 ---
 
@@ -406,7 +408,7 @@ When using `--mode organize`:
 3. **Monitor Costs**: Set up usage alerts with your LLM provider
 4. **Use Caching**: Avoid `--update-metadata` unless necessary
 5. **Choose OCR Wisely**: Use `--ocr-enhanced --use-mutool` only for scanned documents
-6. **Vision for PDFs**: Use `--vision` for text-based PDFs (faster, more accurate)
+6. **Vision for PDFs**: Use `--fallback-mode vision` for text-based PDFs (faster, more accurate)
 7. **Compare Providers**: OpenRouter often offers competitive pricing
 8. **Clear Cache**: Use `--clear-cache` when switching models or settings
 9. **Protect Privacy**: For sensitive or private documents, use a local LLM (Ollama, LM Studio) with the `custom` provider. This keeps your document content on your machine rather than sending it to cloud services.
@@ -518,16 +520,14 @@ categories = [
 | `--debug-ocr` | Save debug images |
 | `--recursive` | Process subdirectories (default: True) |
 | `--no-recursive` | Process root only |
-| `--vision` | Use vision-capable LLM for PDFs (no OCR needed) |
-| `--rename-images` | Rename images using vision AI (requires --vision) |
 | `--exif` | Add EXIF date to image filenames when available |
 | `--text-length` | Target text length for LLM (default: 10000) |
 | `--update-metadata` | Force refresh metadata cache |
-| `--skip-needs-ocr` | Move files needing OCR to folder |
-| `--move-ocr-failures` | Move failed files to folder |
+| `--fallback-mode` | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`) |
+| `--move-scan-failures` | Move failed files to `Scan_Failures` folder |
 | `--clear-cache` | Clear cache and exit |
 
-> **Important:** When using `--vision` or `--rename-images`, you must use a vision-capable model. renAI does not validate vision capability - please ensure your model supports multimodal/vision input.
+> **Important:** When using `--fallback-mode vision` or `--rename-images`, you must use a vision-capable model. renAI does not validate vision capability - please ensure your model supports multimodal/vision input.
 
 ---
 
@@ -589,7 +589,7 @@ Vision mode allows renAI to process PDFs and images without text extraction, usi
 Rename image files (photos, screenshots) using AI:
 
 ```bash
-renai process "C:/Photos" --mode rename --vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
+renai process "C:/Photos" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
 ```
 
 This will analyze each image and rename it based on its visual content.
