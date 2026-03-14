@@ -364,17 +364,17 @@ def process(
     fallback_mode: FallbackMode = typer.Option(
         FallbackMode.NONE,
         "--fallback-mode",
-        help="Strategy to use when text extraction fails (none/ocr/vision/move)",
+        help="Strategy to use when text extraction fails (none/ocr/vision/move). 'move' shifts files to Needs_Scan/ folder.",
     ),
     move_scan_failures: bool = typer.Option(
         False,
         "--move-scan-failures",
-        help="Move files that cannot be processed to Scan_Failures folder",
+        help="Move files that fail all extraction attempts (including fallback) to Scan_Failures folder",
     ),
     rename_images: bool = typer.Option(
         False,
         "--rename-images",
-        help="Rename image files using vision-capable LLM",
+        help="Rename image files using vision model. Also processes non-images with selected fallback.",
     ),
     exif: bool = typer.Option(
         False,
