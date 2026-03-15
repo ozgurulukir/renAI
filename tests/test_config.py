@@ -12,22 +12,16 @@ import sys
 sys.path.insert(0, "src")
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from renai.settings import (
-    CACHE_DIR,
-    CONFIG_DIR,
-    CUSTOM_CATEGORIES,
     DEFAULT_CATEGORIES,
-    PACKAGE_CONFIG_DIR,
     display_warnings,
     get_allowed_categories,
     get_tesseract_path,
     initialize_directories,
-    load_categories_from_file,
-    load_eval_models,
 )
 
 

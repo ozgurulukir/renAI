@@ -1,6 +1,5 @@
 import sys
 import time
-import shutil
 from pathlib import Path
 from unittest.mock import Mock
 

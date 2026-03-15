@@ -3,10 +3,9 @@ import pytest
 """Integration test for the main functionality"""
 
 import tempfile
-import json
 import shutil
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from renai.processors.book import BookProcessor
 
 

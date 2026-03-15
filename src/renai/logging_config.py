@@ -19,7 +19,6 @@ from typing import Any, Optional
 
 import structlog
 
-from renai.settings import app_settings
 
 
 def is_development() -> bool:

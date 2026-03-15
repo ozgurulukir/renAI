@@ -2,7 +2,6 @@ import sys
 
 sys.path.insert(0, "src")
 
-import logging
 
 """
 Unit tests for renai.processors.book module.
@@ -14,7 +13,6 @@ Tests cover:
 """
 
 import json
-import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 

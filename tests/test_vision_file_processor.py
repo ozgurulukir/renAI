@@ -19,7 +19,6 @@ import pytest
 
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
-from renai.settings import IMAGE_EXTENSIONS
 
 
 @pytest.fixture

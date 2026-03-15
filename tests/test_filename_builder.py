@@ -2,7 +2,6 @@ import sys
 
 sys.path.insert(0, "src")
 
-import pytest
 
 from renai.filename.builder import (
     build_book_filename,

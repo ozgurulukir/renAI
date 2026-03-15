@@ -1,10 +1,7 @@
 import sys
 sys.path.insert(0, "src")
 
-import logging
-import shutil
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 from renai.file_ops import safe_move_file, safe_copy_file
