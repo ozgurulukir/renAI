@@ -426,7 +426,7 @@ def process(
         raise typer.Exit(code=1)
 
     # Display header
-    console.print(f"\n[bold cyan]renAI[/bold cyan] - AI-Powered Book Renamer")
+    console.print("\n[bold cyan]renAI[/bold cyan] - AI-Powered Book Renamer")
     console.print(f"[blue]Directory:[/blue] {root_dir}")
     console.print(f"[green]Mode:[/green] {mode}")
     console.print(f"[yellow]Provider:[/yellow] {provider}")

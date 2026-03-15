@@ -22,7 +22,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import tomllib
 from platformdirs import user_cache_dir, user_config_dir, user_data_dir
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -291,7 +290,7 @@ def load_eval_models(provider: str) -> list:
     import tomllib
 
     # Try user config first (TOML)
-    user_file = CONFIG_DIR / f"eval_models.toml"
+    user_file = CONFIG_DIR / "eval_models.toml"
     if user_file.exists():
         try:
             with open(user_file, "rb") as f:

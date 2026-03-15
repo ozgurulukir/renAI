@@ -19,8 +19,6 @@ from typing import Any, Optional
 
 import structlog
 
-from renai.settings import app_settings
-
 
 def is_development() -> bool:
     """Check if running in development mode."""
