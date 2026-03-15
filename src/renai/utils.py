@@ -5,7 +5,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Pre-compiled regular expressions for filename sanitization
 RE_INVALID_CHARS = re.compile(r'[<>:"/\\|?*]')
@@ -167,7 +166,7 @@ def ensure_secure_dir(path: Path) -> None:
         )
     except Exception as e:
         logging.debug(f"Failed to set secure permissions on {path}: {e}")
-    
+
     return path
 
 

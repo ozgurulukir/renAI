@@ -1,4 +1,5 @@
 import sys
+
 sys.path.insert(0, "src")
 
 import hashlib
@@ -16,6 +17,7 @@ from renai.utils import (
     read_text_limited,
 )
 
+
 def test_get_file_hash_small(tmp_path):
     """Test MD5 calculation for a small file."""
     test_file = tmp_path / "test.txt"
@@ -25,6 +27,7 @@ def test_get_file_hash_small(tmp_path):
     expected_hash = hashlib.md5(content).hexdigest()
     assert get_file_hash(test_file) == expected_hash
 
+
 def test_get_file_hash_empty(tmp_path):
     """Test MD5 calculation for an empty file."""
     test_file = tmp_path / "empty.txt"
@@ -32,6 +35,7 @@ def test_get_file_hash_empty(tmp_path):
 
     expected_hash = hashlib.md5(b"").hexdigest()
     assert get_file_hash(test_file) == expected_hash
+
 
 def test_get_file_hash_large(tmp_path):
     """Test MD5 calculation for a file larger than the chunk size (4096)."""
@@ -43,10 +47,12 @@ def test_get_file_hash_large(tmp_path):
     expected_hash = hashlib.md5(content).hexdigest()
     assert get_file_hash(test_file) == expected_hash
 
+
 def test_get_file_hash_nonexistent():
     """Test that get_file_hash raises FileNotFoundError for non-existent files."""
     with pytest.raises(FileNotFoundError):
         get_file_hash(Path("non_existent_file.txt"))
+
 
 def test_get_file_hash_mocked():
     """Test get_file_hash with mocking to verify file_digest usage."""
@@ -54,8 +60,10 @@ def test_get_file_hash_mocked():
 
     mock_path = Path("mocked_file.txt")
 
-    with patch("builtins.open") as mock_open, \
-         patch("hashlib.file_digest") as mock_file_digest:
+    with (
+        patch("builtins.open") as mock_open,
+        patch("hashlib.file_digest") as mock_file_digest,
+    ):
         mock_file = MagicMock()
         mock_open.return_value.__enter__.return_value = mock_file
 
@@ -73,6 +81,7 @@ def test_get_file_hash_mocked():
         mock_file_digest.assert_called_once_with(mock_file, "md5")
         mock_digest_obj.hexdigest.assert_called_once()
 
+
 def test_generate_cache_key():
     """Test cache key generation from multiple strings."""
     # Basic combination
@@ -84,12 +93,14 @@ def test_generate_cache_key():
     # Single value
     assert generate_cache_key("only") == hashlib.md5(b"only").hexdigest()
 
+
 def test_get_provider_model_key():
     """Test provider-model key generation."""
     provider = "openai"
     model = "gpt-4o"
     expected = generate_cache_key(provider, model)
     assert get_provider_model_key(provider, model) == expected
+
 
 def test_get_metadata_cache_path(tmp_path):
     """Test metadata cache path construction."""
@@ -102,6 +113,7 @@ def test_get_metadata_cache_path(tmp_path):
 
     path = get_metadata_cache_path(file_hash, provider, model, tmp_path)
     assert path == tmp_path / expected_name
+
 
 def test_get_text_cache_path(tmp_path):
     """Test text cache path construction with various options."""
@@ -122,6 +134,7 @@ def test_get_text_cache_path(tmp_path):
     # Basic + mutool
     path = get_text_cache_path(file_hash, False, True, tmp_path)
     assert path == tmp_path / f"{file_hash}_basic_mutool.txt"
+
 
 @pytest.mark.parametrize(
     "filename, expected",
@@ -180,6 +193,7 @@ def test_sanitize_filename_length():
     # 'a' * 150 + ' ' -> 'a' * 150 (strip) -> len is 150, not > 150
     assert sanitize_filename("a" * 50 + " .", max_length=50) == "a" * 50
 
+
 def test_proportional_chunk_trim_basic():
     """Test basic functionality of proportional_chunk_trim."""
     # Empty text
@@ -197,6 +211,7 @@ def test_proportional_chunk_trim_basic():
     # result: "12" + "56" = "1256"
     assert proportional_chunk_trim("12345678", 4, 2) == "1256"
 
+
 def test_proportional_chunk_trim_edge_cases():
     """Test edge cases for proportional_chunk_trim."""
     # num_chunks = 0 (defaults to 1 chunk)
@@ -213,6 +228,7 @@ def test_proportional_chunk_trim_edge_cases():
     # Actually if len(text) > 0 and num_chunks > len(text), chunk_size = 0
     # The code handles chunk_size == 0 by returning text[:target_length]
     assert proportional_chunk_trim("abc", 2, 10) == "ab"
+
 
 def test_proportional_chunk_trim_rounding_behavior():
     """

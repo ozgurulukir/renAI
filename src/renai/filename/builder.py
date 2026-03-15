@@ -42,7 +42,7 @@ Key Features:
 Functions:
 =========
 - build_book_filename(): Build filename for documents
-- build_image_filename(): Build filename for images  
+- build_image_filename(): Build filename for images
 - build_vision_filename(): Build filename for vision-processed PDFs
 - extract_category_from_metadata(): Extract and sanitize category
 - is_filename_changed(): Check if filename would change
@@ -50,14 +50,14 @@ Functions:
 Usage:
 ======
     from new_modules.filename_builder import build_book_filename
-    
+
     book_data = {
         "title": "Introduction to ML",
-        "author": "Andrew Ng", 
+        "author": "Andrew Ng",
         "year": 2018,
         "category": "Textbook"
     }
-    
+
     new_name = build_book_filename(book_data, ".pdf")
     # Output: "Introduction to ML -- Andrew Ng -- (2018).pdf"
 """
@@ -213,7 +213,9 @@ def build_image_filename(
     if not new_name_base:
         new_name_base = "Image"
 
-    return f"{sanitize_filename(new_name_base)} -- ({lang_indicator}){original_extension}"
+    return (
+        f"{sanitize_filename(new_name_base)} -- ({lang_indicator}){original_extension}"
+    )
 
 
 def extract_category_from_metadata(
@@ -236,7 +238,7 @@ def extract_category_from_metadata(
     Example:
         >>> extract_category_from_metadata({"category": "Academic/Research"})
         "Academic&Research"
-        
+
         >>> extract_category_from_metadata({})
         "Uncategorized"
     """
@@ -268,7 +270,7 @@ def is_filename_changed(
     Example:
         >>> is_filename_changed(Path("old_name.pdf"), "new_name.pdf")
         True
-        
+
         >>> is_filename_changed(Path("same_name.pdf"), "same_name.pdf")
         False
     """
@@ -329,4 +331,6 @@ def build_vision_filename(
     if not new_name_base:
         new_name_base = "Document"
 
-    return f"{sanitize_filename(new_name_base)} -- ({lang_indicator}){original_extension}"
+    return (
+        f"{sanitize_filename(new_name_base)} -- ({lang_indicator}){original_extension}"
+    )

@@ -11,7 +11,13 @@ import pymupdf
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-from ..settings import CACHE_DIR, DEBUG_DIR, OCR_LANG, SUBPROCESS_TIMEOUT, TESSERACT_PATH
+from ..settings import (
+    CACHE_DIR,
+    DEBUG_DIR,
+    OCR_LANG,
+    SUBPROCESS_TIMEOUT,
+    TESSERACT_PATH,
+)
 from ..utils import ensure_secure_dir, sanitize_filename
 
 # OpenCV is imported locally in _deskew() to handle optional skew correction
@@ -104,6 +110,7 @@ class OCREngine:
         if OPENCV_AVAILABLE is None:
             try:
                 import cv2
+
                 OPENCV_AVAILABLE = True
             except ImportError:
                 OPENCV_AVAILABLE = False
@@ -220,11 +227,11 @@ class OCREngine:
             pages_to_extract += [mid, mid + 1]
         if total_pages > 30:
             pages_to_extract += [total_pages - 1, total_pages]
-        return sorted(
-            set(p for p in pages_to_extract if 0 <= p < total_pages)
-        )
+        return sorted(set(p for p in pages_to_extract if 0 <= p < total_pages))
 
-    def _bulk_extract_images(self, file_path: Path, pages: list[int], target_dpi: int) -> dict[int, Path]:
+    def _bulk_extract_images(
+        self, file_path: Path, pages: list[int], target_dpi: int
+    ) -> dict[int, Path]:
         """Extract multiple pages from a PDF in a single mutool call."""
         if not pages:
             return {}
@@ -258,7 +265,11 @@ class OCREngine:
                 kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
             subprocess.run(
-                cmd, check=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT, **kwargs
+                cmd,
+                check=True,
+                capture_output=True,
+                timeout=SUBPROCESS_TIMEOUT,
+                **kwargs,
             )
 
             # Map back to 0-based pno
@@ -288,10 +299,10 @@ class OCREngine:
                 image.load()
                 return image, pre_extracted_path
             except Exception as e:
-                logging.error(f"Failed to load pre-extracted image for page {pno + 1}: {e}")
-        use_mutool_for_page = (
-            self.use_mutool and file_path.suffix.lower() == ".pdf"
-        )
+                logging.error(
+                    f"Failed to load pre-extracted image for page {pno + 1}: {e}"
+                )
+        use_mutool_for_page = self.use_mutool and file_path.suffix.lower() == ".pdf"
 
         image = None
         temp_img = None
@@ -320,7 +331,11 @@ class OCREngine:
                     kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
                 subprocess.run(
-                    cmd, check=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT, **kwargs
+                    cmd,
+                    check=True,
+                    capture_output=True,
+                    timeout=SUBPROCESS_TIMEOUT,
+                    **kwargs,
                 )
                 image = Image.open(temp_img)
                 image.load()
@@ -389,9 +404,7 @@ class OCREngine:
             )
             return page_text
         except RuntimeError as e:
-            logging.error(
-                f"Tesseract timed out or failed for page {pno + 1}: {e}"
-            )
+            logging.error(f"Tesseract timed out or failed for page {pno + 1}: {e}")
             return ""
 
     def extract_text(self, file_path: Path) -> str:
@@ -412,7 +425,9 @@ class OCREngine:
             # Bulk extract if mutool is available and file is PDF
             bulk_images = {}
             if self.use_mutool and file_path.suffix.lower() == ".pdf":
-                bulk_images = self._bulk_extract_images(file_path, pages_to_extract, self.cfg["dpi"])
+                bulk_images = self._bulk_extract_images(
+                    file_path, pages_to_extract, self.cfg["dpi"]
+                )
 
             extracted_text = []
             total_chars = 0
