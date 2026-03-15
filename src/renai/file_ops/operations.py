@@ -11,7 +11,7 @@ Module Structure:
 
 Usage:
     from new_modules.file_operations import safe_move_file
-    
+
     result = safe_move_file(
         source_path=Path("old_name.pdf"),
         dest_path=Path("new_name.pdf"),
@@ -114,7 +114,9 @@ def safe_move_file(
     if dest_path.exists():
         # Check if files have same content (same hash)
         existing_hash = get_file_hash(dest_path)
-        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
+        new_hash = (
+            source_hash if source_hash is not None else get_file_hash(source_path)
+        )
 
         if existing_hash == new_hash:
             # Same content - skip moving
@@ -179,7 +181,5 @@ def safe_copy_file(
         )
         return dest_path
     except Exception as e:
-        logging.error(
-            f"ERROR: Failed to {operation_type} {source_path.name}: {e}"
-        )
+        logging.error(f"ERROR: Failed to {operation_type} {source_path.name}: {e}")
         raise

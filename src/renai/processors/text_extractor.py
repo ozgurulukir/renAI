@@ -59,7 +59,7 @@ Usage:
 ======
     from new_modules.text_extractor import TextExtractor
     from ..engines.ocr import OCREngine
-    
+
     # Create extractor
     ocr_engine = OCREngine()  # Configure as needed
     extractor = TextExtractor(
@@ -67,10 +67,10 @@ Usage:
         extractor_name="pymupdf",
         target_length=10000
     )
-    
+
     # Extract text
     text = extractor.extract(Path("document.pdf"))
-    
+
     # Extract WITHOUT OCR (for vision mode)
     text = extractor.extract_without_ocr(Path("document.pdf"))
 
@@ -91,9 +91,9 @@ Module Functions:
 """
 
 import logging
-from enum import Enum, auto
+from enum import Enum
 from pathlib import Path
-from typing import Optional, Set, Dict, Any
+from typing import Optional, Set
 
 from ..settings import (
     CACHE_DIR,
@@ -113,18 +113,28 @@ from ..cache.manager import (
     write_text_cache,
 )
 
+
 class FallbackMode(Enum):
     """Modes for handling failed text extraction."""
-    NONE = "none"           # No fallback, return empty string
-    OCR = "ocr"             # Fallback to OCR engine
-    MOVE_TO_FOLDER = "move" # Move to Needs_Scan folder
-    VISION = "vision"       # Fallback to vision model (handled by BookProcessor)
+
+    NONE = "none"  # No fallback, return empty string
+    OCR = "ocr"  # Fallback to OCR engine
+    MOVE_TO_FOLDER = "move"  # Move to Needs_Scan folder
+    VISION = "vision"  # Fallback to vision model (handled by BookProcessor)
+
 
 # Supported extensions
 OFFICE_EXTENSIONS: Set[str] = {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
 PLAIN_TEXT_EXTENSIONS: Set[str] = {".txt", ".md"}
 SUPPORTED_EXTENSIONS: Set[str] = {
-    ".pdf", ".epub", ".mobi", ".docx", ".pptx", ".xlsx", ".txt", ".md"
+    ".pdf",
+    ".epub",
+    ".mobi",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".txt",
+    ".md",
 }
 
 
@@ -310,9 +320,7 @@ class TextExtractor:
             after stripping whitespace. This is a heuristic and may need tuning
             for specific use cases.
         """
-        logging.info(
-            f"Using extractor: {self.extractor_name} for {file_path.name}"
-        )
+        logging.info(f"Using extractor: {self.extractor_name} for {file_path.name}")
 
         full_text = self.extractor.extract_text(file_path) or ""
 
@@ -323,19 +331,25 @@ class TextExtractor:
         # Insufficient text - Apply fallback strategy
         match fallback:
             case FallbackMode.MOVE_TO_FOLDER:
-                logging.info(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
+                logging.info(
+                    f"Primary text insufficient, moving {file_path.name} to Needs_Scan"
+                )
                 self._move_to_needs_scan(file_path)
                 return ""
-            
+
             case FallbackMode.OCR:
-                logging.info(f"Primary text insufficient for {file_path.name}, falling back to OCR")
+                logging.info(
+                    f"Primary text insufficient for {file_path.name}, falling back to OCR"
+                )
                 return self._fallback_to_ocr(file_path, target_length)
-            
+
             case FallbackMode.VISION:
-                logging.info(f"Primary text insufficient for {file_path.name}, marking for Vision fallback")
+                logging.info(
+                    f"Primary text insufficient for {file_path.name}, marking for Vision fallback"
+                )
                 return ""
-                
-            case _: # FallbackMode.NONE or anything else
+
+            case _:  # FallbackMode.NONE or anything else
                 return ""
 
     def _fallback_to_ocr(
@@ -368,7 +382,6 @@ class TextExtractor:
             logging.error(f"OCR failed for {file_path.name}: {e}")
 
         return ""
-
 
     def set_needs_scan_folder(self, root_dir: Path, skip: bool = False) -> None:
         """Configure folder for files that need scanning/additional processing."""
@@ -436,7 +449,7 @@ class TextExtractor:
             PyPdfium2Extractor(),
         ]
 
-        logging.info(f"\n{'='*20} BENCHMARK: {file_path.name} {'='*20}")
+        logging.info(f"\n{'=' * 20} BENCHMARK: {file_path.name} {'=' * 20}")
         for ext in extractors:
             try:
                 text = ext.extract_text(file_path) or ""
@@ -465,10 +478,10 @@ def has_sufficient_text(text: str, min_length: int = 100) -> bool:
     Example:
         >>> has_sufficient_text("  Hello world  ")
         True
-        
+
         >>> has_sufficient_text("  Hi  ")
         False
-        
+
         >>> has_sufficient_text("", min_length=10)
         False
     """

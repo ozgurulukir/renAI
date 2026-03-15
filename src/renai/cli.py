@@ -4,6 +4,7 @@ renAI CLI - Modern Typer-based command line interface.
 This is the main CLI entry point for renAI. All functionality from the
 original main.py has been migrated here.
 """
+
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -46,6 +47,7 @@ app = typer.Typer(
 # Helper Functions (migrated from main.py)
 # =============================================================================
 
+
 def setup_environment() -> None:
     """Setup cross-platform encoding and terminal settings."""
     if sys.platform == "win32":
@@ -57,6 +59,7 @@ def setup_environment() -> None:
 
     try:
         from colorama import init
+
         init()
     except ImportError:
         pass
@@ -101,7 +104,9 @@ def handle_clear_cache() -> None:
                 if cache_file.is_file():
                     cache_file.unlink()
             except Exception as e:
-                console.print(f"[yellow]Warning: Failed to delete {cache_file.name}: {e}[/yellow]")
+                console.print(
+                    f"[yellow]Warning: Failed to delete {cache_file.name}: {e}[/yellow]"
+                )
         console.print(f"[green]Cache cleared: {len(cache_files)} files removed[/green]")
     else:
         console.print("[green]Cache directory is empty. Nothing to clear.[/green]")
@@ -135,7 +140,9 @@ def setup_engines(
     provider_config = PROVIDERS[provider]
     api_key = provider_config.api_key or get_api_key(provider)
     if not api_key:
-        console.print(f"[red]API Key for {provider} not found. Set {provider.upper()}_API_KEY environment variable.[/red]")
+        console.print(
+            f"[red]API Key for {provider} not found. Set {provider.upper()}_API_KEY environment variable.[/red]"
+        )
         raise typer.Exit(code=1)
 
     # Determine model to use
@@ -162,7 +169,9 @@ def setup_engines(
     return ocr_engine, llm_engine, processor
 
 
-def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> list[Path]:
+def collect_files(
+    root_dir: Path, processor: BookProcessor, recursive: bool
+) -> list[Path]:
     """Collect supported files from directory."""
     file_paths = []
     iterator = root_dir.rglob("*") if recursive else root_dir.iterdir()
@@ -176,7 +185,9 @@ def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> 
     return file_paths
 
 
-def collect_image_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> list[Path]:
+def collect_image_files(
+    root_dir: Path, processor: BookProcessor, recursive: bool
+) -> list[Path]:
     """Collect image files for --rename-images mode."""
     file_paths = []
     iterator = root_dir.rglob("*") if recursive else root_dir.iterdir()
@@ -208,7 +219,9 @@ def run_model_eval(
 
     eval_models = EVAL_MODELS.get(provider, [])
     if not eval_models:
-        console.print(f"[red]No evaluation models defined for provider: {provider}[/red]")
+        console.print(
+            f"[red]No evaluation models defined for provider: {provider}[/red]"
+        )
         raise typer.Exit(code=1)
 
     console.print("[cyan]Starting Model Evaluation Mode...[/cyan]")
@@ -238,8 +251,7 @@ def process_files(
         console=console,
     ) as progress:
         task = progress.add_task(
-            f"Processing {len(file_paths)} files...",
-            total=len(file_paths)
+            f"Processing {len(file_paths)} files...", total=len(file_paths)
         )
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -260,13 +272,17 @@ def process_files(
                 try:
                     results.append(future.result())
                 except Exception as e:
-                    console.print(f"[red]Error processing {futures[future].name}: {e}[/red]")
+                    console.print(
+                        f"[red]Error processing {futures[future].name}: {e}[/red]"
+                    )
                     results.append((False, None, None, None, None))
                 progress.advance(task)
 
     # Log results
     success_count = sum(1 for r in results if r[0])
-    console.print(f"[green]Processed {success_count}/{len(file_paths)} files successfully[/green]")
+    console.print(
+        f"[green]Processed {success_count}/{len(file_paths)} files successfully[/green]"
+    )
 
     # Organize files if mode is organize
     if mode == "organize":
@@ -276,12 +292,16 @@ def process_files(
     if fallback_mode == FallbackMode.MOVE_TO_FOLDER:
         needs_scan_files = processor.get_needs_scan_files()
         if needs_scan_files:
-            console.print(f"[yellow]Files moved to Needs_Scan folder: {len(needs_scan_files)}[/yellow]")
+            console.print(
+                f"[yellow]Files moved to Needs_Scan folder: {len(needs_scan_files)}[/yellow]"
+            )
 
     if move_scan_failures:
         console.print("[green]Scan failure handling enabled[/green]")
         if processor.scan_failed_files:
-            console.print(f"[red]Total files failed processing: {len(processor.scan_failed_files)}[/red]")
+            console.print(
+                f"[red]Total files failed processing: {len(processor.scan_failed_files)}[/red]"
+            )
             console.print("[red]Files moved to Scan_Failures directory.[/red]")
 
 
@@ -289,11 +309,12 @@ def process_files(
 # CLI Commands
 # =============================================================================
 
+
 @app.command()
 def process(
     directory: str = typer.Argument(
         None,
-        help="Directory containing book files (required unless using --clear-cache)"
+        help="Directory containing book files (required unless using --clear-cache)",
     ),
     # Mode options
     mode: str = typer.Option(
@@ -409,7 +430,9 @@ def process(
 
     # Validate directory
     if not directory:
-        console.print("[red]Error: Directory is required (use --clear-cache to clear cache only)[/red]")
+        console.print(
+            "[red]Error: Directory is required (use --clear-cache to clear cache only)[/red]"
+        )
         raise typer.Exit(code=1)
 
     root_dir = Path(directory).resolve()
@@ -426,7 +449,7 @@ def process(
         raise typer.Exit(code=1)
 
     # Display header
-    console.print(f"\n[bold cyan]renAI[/bold cyan] - AI-Powered Book Renamer")
+    console.print("\n[bold cyan]renAI[/bold cyan] - AI-Powered Book Renamer")
     console.print(f"[blue]Directory:[/blue] {root_dir}")
     console.print(f"[green]Mode:[/green] {mode}")
     console.print(f"[yellow]Provider:[/yellow] {provider}")
@@ -436,7 +459,9 @@ def process(
 
     # Vision mode warnings
     if fallback_mode == FallbackMode.VISION or rename_images:
-        console.print("[yellow]Note: vision fallback and --rename-images require a vision-capable model. Please ensure your model supports vision.[/yellow]\n")
+        console.print(
+            "[yellow]Note: vision fallback and --rename-images require a vision-capable model. Please ensure your model supports vision.[/yellow]\n"
+        )
 
     # Setup engines
     try:
@@ -470,7 +495,9 @@ def process(
         pdf_files = collect_files(root_dir, processor, recursive)
         image_files = collect_image_files(root_dir, processor, recursive)
         file_paths = pdf_files + image_files
-        console.print(f"[cyan]Found {len(pdf_files)} PDFs and {len(image_files)} images[/cyan]\n")
+        console.print(
+            f"[cyan]Found {len(pdf_files)} PDFs and {len(image_files)} images[/cyan]\n"
+        )
     elif rename_images:
         pdf_files = collect_files(root_dir, processor, recursive)
         image_files = collect_image_files(root_dir, processor, recursive)
@@ -520,8 +547,8 @@ def list_providers() -> None:
     table.add_column("Default Model", style="green")
 
     for name, config in PROVIDERS.items():
-        default = config.default_model if hasattr(config, 'default_model') else 'N/A'
-        base_url = config.base_url if hasattr(config, 'base_url') else 'N/A'
+        default = config.default_model if hasattr(config, "default_model") else "N/A"
+        base_url = config.base_url if hasattr(config, "base_url") else "N/A"
         table.add_row(name, default, base_url)
 
     console.print(table)
@@ -531,7 +558,8 @@ def list_providers() -> None:
 def clear_cache_cmd(
     confirm: bool = typer.Option(
         False,
-        "--yes", "-y",
+        "--yes",
+        "-y",
         help="Skip confirmation prompt",
     ),
 ) -> None:
@@ -553,6 +581,7 @@ def show_version() -> None:
     """Show renAI version."""
     try:
         from renai import __version__
+
         console.print(f"[bold cyan]renAI[/bold cyan] version {__version__}")
     except ImportError:
         console.print("[bold cyan]renAI[/bold cyan] version unknown (not installed)")

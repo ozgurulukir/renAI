@@ -150,8 +150,6 @@ Choose the nearest category from the list below matching the detected content/la
 }
 """
 
-
-
     def get_book_metadata(self, text: str) -> Optional[Dict[str, Any]]:
         """Generate book metadata using the LLM with category validation and retries."""
         if not self.client.api_key:

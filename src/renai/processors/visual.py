@@ -6,7 +6,7 @@ Merged from legacy vision.py and image.py.
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import pymupdf
 from PIL import Image
@@ -42,15 +42,19 @@ class VisualProcessor:
         try:
             with pymupdf.open(str(file_path)) as doc:
                 total_pages = len(doc)
-            
+
             pages_to_process = self._select_pages(total_pages)
 
             for page_num in pages_to_process:
-                img_bytes = self._convert_pdf_page_to_image(file_path, page_number=page_num)
+                img_bytes = self._convert_pdf_page_to_image(
+                    file_path, page_number=page_num
+                )
                 if not img_bytes:
                     continue
 
-                metadata = self.llm_engine.get_book_metadata_from_image(file_path, img_bytes)
+                metadata = self.llm_engine.get_book_metadata_from_image(
+                    file_path, img_bytes
+                )
                 if metadata:
                     return metadata
 
@@ -66,12 +70,12 @@ class VisualProcessor:
         try:
             image_bytes = file_path.read_bytes()
             metadata = self.llm_engine.get_image_metadata(file_path, image_bytes)
-            
+
             if metadata and add_exif_date:
                 exif_date = self.get_exif_date(file_path)
                 if exif_date:
                     metadata["exif_date"] = exif_date
-            
+
             return metadata
         except Exception as e:
             logging.error(f"Vision extraction failed for image {file_path.name}: {e}")
@@ -115,11 +119,18 @@ class VisualProcessor:
                 img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
                 if img.width > self.image_max_size or img.height > self.image_max_size:
-                    img.thumbnail((self.image_max_size, self.image_max_size), Image.Resampling.LANCZOS)
+                    img.thumbnail(
+                        (self.image_max_size, self.image_max_size),
+                        Image.Resampling.LANCZOS,
+                    )
 
                 buffer = BytesIO()
-                img.save(buffer, format="JPEG", quality=self.image_quality, optimize=True)
+                img.save(
+                    buffer, format="JPEG", quality=self.image_quality, optimize=True
+                )
                 return buffer.getvalue()
         except Exception as e:
-            logging.error(f"Failed to convert PDF page to image for {file_path.name}: {e}")
+            logging.error(
+                f"Failed to convert PDF page to image for {file_path.name}: {e}"
+            )
             return None

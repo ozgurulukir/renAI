@@ -11,15 +11,14 @@ Tests cover:
 - is_image_file method
 """
 
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
+from unittest.mock import MagicMock, patch  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
-from renai.processors.book import BookProcessor
-from renai.processors.text_extractor import FallbackMode
-from renai.settings import IMAGE_EXTENSIONS
+from renai.processors.book import BookProcessor  # noqa: E402
+from renai.processors.text_extractor import FallbackMode  # noqa: E402
 
 
 @pytest.fixture
@@ -117,7 +116,9 @@ class TestProcessSingleBookVision:
 
         # With new behavior, non-PDF files go through normal processing
         # (which will fail for txt without meaningful content, but that's expected)
-        result = book_processor.process_file(test_file, mode="rename", fallback_mode=FallbackMode.VISION)
+        book_processor.process_file(
+            test_file, mode="rename", fallback_mode=FallbackMode.VISION
+        )
 
     def test_skips_symlinks(self, book_processor, tmp_path):
         """Test that symlinks are skipped."""
@@ -130,7 +131,9 @@ class TestProcessSingleBookVision:
             symlink_file = tmp_path / "link.pdf"
             symlink_file.symlink_to(real_file)
 
-            result = book_processor.process_file(symlink_file, mode="rename", fallback_mode=FallbackMode.VISION)
+            result = book_processor.process_file(
+                symlink_file, mode="rename", fallback_mode=FallbackMode.VISION
+            )
             assert result[0] is False  # Should fail due to PDF parsing
         except (OSError, NotImplementedError):
             pytest.skip("Symlink creation not supported")
@@ -163,7 +166,9 @@ class TestProcessSingleBookVision:
             mock_path.write_text(json.dumps(cache_data))
             mock_cache_path.return_value = mock_path
 
-            result = book_processor.process_file(pdf_file, mode="rename", fallback_mode=FallbackMode.VISION)
+            result = book_processor.process_file(
+                pdf_file, mode="rename", fallback_mode=FallbackMode.VISION
+            )
 
             # Should succeed using cached data
             assert result[0] is True
@@ -200,7 +205,7 @@ class TestProcessSingleBookVision:
                 with patch("pymupdf.open", return_value=mock_doc):
                     mock_cache_path.return_value = tmp_path / "nonexistent_cache.json"
 
-                    result = book_processor.process_file(
+                    book_processor.process_file(
                         pdf_file, mode="rename", fallback_mode=FallbackMode.VISION
                     )
 
@@ -248,7 +253,7 @@ class TestProcessSingleImage:
             with patch("file_processor.get_file_hash", return_value="img123"):
                 mock_cache_path.return_value = tmp_path / "nonexistent_cache.json"
 
-                result = book_processor.process_file(img_file, rename_images=True)
+                book_processor.process_file(img_file, rename_images=True)
 
                 # Should have called LLM with image data
                 book_processor.llm_engine.get_image_metadata.assert_called_once()
