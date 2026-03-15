@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-import pytest
 """Integration test for the main functionality"""
 
-import tempfile
 import shutil
+import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock
+
+import pytest
+
+sys.path.insert(0, "src")
+
 from renai.processors.book import BookProcessor
 
 
@@ -45,7 +50,7 @@ def test_file_processing_integration():
         success, new_path, new_name, category, file_hash = processor.process_single_book(test_file, "rename")
         
         # Check results
-        assert success == True
+        assert success
         assert new_path is not None
         assert new_name is not None
         assert "AI Fundamentals" in new_name
@@ -137,9 +142,9 @@ def test_cache_functionality():
         # Process same file again with update_metadata=False (should use cache)
         # Use new_path1 because the file was renamed
         success2, _, _, _, _ = processor.process_single_book(new_path1, "rename", update_metadata=False)
-        
-        assert success1 == True
-        assert success2 == True
+
+        assert success1
+        assert success2
         
         # LLM should be called once for each file processing
         # (cache is based on file hash, but since file is renamed, it's treated as different)
