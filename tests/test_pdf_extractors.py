@@ -3,8 +3,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 import logging
 
-import pytest
-
 sys.path.insert(0, "src")
 
 from renai.extractors.pdf_extractors import (
