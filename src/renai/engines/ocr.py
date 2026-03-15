@@ -4,6 +4,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pymupdf
@@ -223,9 +224,71 @@ class OCREngine:
             set(p for p in pages_to_extract if 0 <= p < total_pages)
         )
 
-    def _extract_image_from_page(self, doc: pymupdf.Document, pno: int, file_path: Path, target_dpi: int) -> tuple[Image.Image | None, Path | None]:
+    def _bulk_extract_images(self, file_path: Path, pages: list[int], target_dpi: int) -> dict[int, Path]:
+        """Extract multiple pages from a PDF in a single mutool call."""
+        if not pages:
+            return {}
+
+        batch_id = uuid.uuid4().hex
+        output_pattern = CACHE_DIR / f"temp_batch_{batch_id}_%d.png"
+
+        # mutool uses 1-based page numbers
+        page_range = ",".join(str(p + 1) for p in pages)
+
+        try:
+            cmd = [
+                self.mutool_path,
+                "draw",
+                "-q",
+                "-o",
+                str(output_pattern),
+                "-c",
+                "gray",
+                "-r",
+                str(int(target_dpi)),
+                str(file_path),
+                page_range,
+            ]
+
+            kwargs = {}
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                kwargs["startupinfo"] = startupinfo
+                kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+            subprocess.run(
+                cmd, check=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT, **kwargs
+            )
+
+            # Map back to 0-based pno
+            results = {}
+            for pno in pages:
+                img_path = CACHE_DIR / f"temp_batch_{batch_id}_{pno + 1}.png"
+                if img_path.exists():
+                    results[pno] = img_path
+            return results
+
+        except Exception as e:
+            logging.error(f"Bulk mutool extraction failed: {e}")
+            return {}
+
+    def _extract_image_from_page(
+        self,
+        doc: pymupdf.Document,
+        pno: int,
+        file_path: Path,
+        target_dpi: int,
+        pre_extracted_path: Optional[Path] = None,
+    ) -> tuple[Optional[Image.Image], Optional[Path]]:
         """Handles mutool or pymupdf fallback to extract an image from a page."""
-        page = doc.load_page(pno)
+        if pre_extracted_path and pre_extracted_path.exists():
+            try:
+                image = Image.open(pre_extracted_path)
+                image.load()
+                return image, pre_extracted_path
+            except Exception as e:
+                logging.error(f"Failed to load pre-extracted image for page {pno + 1}: {e}")
         use_mutool_for_page = (
             self.use_mutool and file_path.suffix.lower() == ".pdf"
         )
@@ -267,6 +330,7 @@ class OCREngine:
                 logging.error(f"mutool failed for page {pno + 1}: {e}")
 
         if not image:
+            page = doc.load_page(pno)
             zoom = target_dpi / 72
             pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
             image = Image.frombytes(  # type: ignore
@@ -345,14 +409,28 @@ class OCREngine:
             # Page sampling strategy
             pages_to_extract = self._get_pages_to_extract(total_pages)
 
+            # Bulk extract if mutool is available and file is PDF
+            bulk_images = {}
+            if self.use_mutool and file_path.suffix.lower() == ".pdf":
+                bulk_images = self._bulk_extract_images(file_path, pages_to_extract, self.cfg["dpi"])
+
             extracted_text = []
             total_chars = 0
             for pno in pages_to_extract:
-                page = doc.load_page(pno)
-                source_dpi = self.get_page_source_dpi(page)
-                target_dpi = min(self.cfg["dpi"], source_dpi)
+                pre_path = bulk_images.get(pno)
 
-                image, temp_img = self._extract_image_from_page(doc, pno, file_path, target_dpi)
+                if pre_path:
+                    # Use a default target_dpi when using pre-extracted images
+                    # as we don't want to load the page just to calculate source_dpi
+                    target_dpi = self.cfg["dpi"]
+                else:
+                    page = doc.load_page(pno)
+                    source_dpi = self.get_page_source_dpi(page)
+                    target_dpi = min(self.cfg["dpi"], source_dpi)
+
+                image, temp_img = self._extract_image_from_page(
+                    doc, pno, file_path, target_dpi, pre_extracted_path=pre_path
+                )
 
                 if image:
                     image = self._preprocess_image(image)
@@ -377,6 +455,15 @@ class OCREngine:
                     break
 
             doc.close()
+
+            # Cleanup any remaining bulk images that weren't processed/unlinked
+            for img_path in bulk_images.values():
+                if img_path.exists():
+                    try:
+                        img_path.unlink()
+                    except Exception:
+                        pass
+
             logging.info(
                 f"OCR extracted text from {len(pages_to_extract)} pages of {file_path.name}"
             )
