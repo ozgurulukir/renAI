@@ -1,10 +1,11 @@
-import sys
-sys.path.insert(0, "src")
-
 import hashlib
+import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
+
+sys.path.insert(0, "src")
 from renai.utils import (
     get_file_hash,
     generate_cache_key,

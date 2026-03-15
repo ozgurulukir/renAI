@@ -1,12 +1,14 @@
 import sys
+
 sys.path.insert(0, "src")
 
-import pytest
 import logging
-import numpy as np
-import cv2
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
+
+import cv2
+import numpy as np
+import pytest
 from PIL import Image, ImageDraw
 from renai.engines.ocr import OCREngine, OPENCV_AVAILABLE
 
@@ -93,11 +95,13 @@ def test_deskew_various_angles(angle):
 
     angles = []
     for c in contours:
-        if cv2.contourArea(c) < 100: continue
+        if cv2.contourArea(c) < 100:
+            continue
         rect = cv2.minAreaRect(c)
         w, h = rect[1]
         a = rect[2]
-        if w < h: a += 90
+        if w < h:
+            a += 90
         angles.append(a)
 
     if angles:
@@ -212,7 +216,7 @@ class TestExtractImageFromPage:
         # Create a simple PDF for testing
         import pymupdf
         doc = pymupdf.open()
-        page = doc.new_page()
+        doc.new_page()
         test_pdf = tmp_path / "test.pdf"
         doc.save(str(test_pdf))
         doc.close()
@@ -364,7 +368,7 @@ class TestExtractText:
             # Create a test PDF
             import pymupdf
             doc = pymupdf.open()
-            page = doc.new_page()
+            doc.new_page()
             test_pdf = tmp_path / "test.pdf"
             doc.save(str(test_pdf))
             doc.close()
@@ -401,7 +405,7 @@ class TestExtractText:
                 with patch.object(engine, '_extract_image_from_page') as mock_extract:
                     mock_extract.return_value = (Image.new("L", (100, 100)), None)
                     with patch.object(engine, '_perform_ocr', return_value="A" * 5000):
-                        result = engine.extract_text(Path("test.pdf"))
-                        
+                        engine.extract_text(Path("test.pdf"))
+
                         # Should stop after getting enough text
                         assert mock_extract.call_count <= 3

@@ -1,11 +1,10 @@
 import sys
+
 sys.path.insert(0, "src")
 
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
-import sys
-import pytest
+from unittest.mock import MagicMock, mock_open, patch
 
 from renai.extractors.pdf_extractors import (
     PDFPlumberExtractor,

@@ -7,7 +7,6 @@ Tests cover:
 - _call_vision_llm helper method
 """
 
-import base64
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch

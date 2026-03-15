@@ -1,7 +1,3 @@
-import sys
-
-sys.path.insert(0, "src")
-
 """Tests for vision functionality in file_processor.py.
 
 Tests cover:
@@ -10,16 +6,17 @@ Tests cover:
 - process_single_image method
 - is_image_file method
 """
-
 import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+sys.path.insert(0, "src")
+
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
-from renai.settings import IMAGE_EXTENSIONS
 
 
 @pytest.fixture
@@ -117,7 +114,7 @@ class TestProcessSingleBookVision:
 
         # With new behavior, non-PDF files go through normal processing
         # (which will fail for txt without meaningful content, but that's expected)
-        result = book_processor.process_file(test_file, mode="rename", fallback_mode=FallbackMode.VISION)
+        book_processor.process_file(test_file, mode="rename", fallback_mode=FallbackMode.VISION)
 
     def test_skips_symlinks(self, book_processor, tmp_path):
         """Test that symlinks are skipped."""
@@ -200,7 +197,7 @@ class TestProcessSingleBookVision:
                 with patch("pymupdf.open", return_value=mock_doc):
                     mock_cache_path.return_value = tmp_path / "nonexistent_cache.json"
 
-                    result = book_processor.process_file(
+                    book_processor.process_file(
                         pdf_file, mode="rename", fallback_mode=FallbackMode.VISION
                     )
 
@@ -248,7 +245,7 @@ class TestProcessSingleImage:
             with patch("file_processor.get_file_hash", return_value="img123"):
                 mock_cache_path.return_value = tmp_path / "nonexistent_cache.json"
 
-                result = book_processor.process_file(img_file, rename_images=True)
+                book_processor.process_file(img_file, rename_images=True)
 
                 # Should have called LLM with image data
                 book_processor.llm_engine.get_image_metadata.assert_called_once()

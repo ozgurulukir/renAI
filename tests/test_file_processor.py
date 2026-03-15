@@ -2,19 +2,8 @@ import sys
 
 sys.path.insert(0, "src")
 
-import logging
-
-"""
-Unit tests for renai.processors.book module.
-
-Tests cover:
-- safe_move_file function
-- BookProcessor.organize_files method
-- File operation safety and error handling
-"""
 
 import json
-import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -372,7 +361,7 @@ class TestProcessSingleBook:
         }
         with patch("renai.utils.get_file_hash", return_value=file_hash), \
              patch("renai.processors.book.read_metadata_cache", return_value=cached_metadata):
-            result = processor.process_file(test_file, mode="rename")
+            processor.process_file(test_file, mode="rename")
 
         # LLM should not be called since cache exists
         llm_engine.get_book_metadata.assert_not_called()
