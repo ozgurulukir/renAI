@@ -50,6 +50,12 @@ pdf-extra = [
     "pypdf",
     "pypdfium2",
 ]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
 
 [project.scripts]
 renai = "renai.cli:app"
