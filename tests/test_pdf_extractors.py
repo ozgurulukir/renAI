@@ -6,6 +6,10 @@ import logging
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
+# Mock pypdf if not installed to prevent ModuleNotFoundError during patching
+if 'pypdf' not in sys.modules:
+    sys.modules['pypdf'] = MagicMock()
+
 from renai.extractors.pdf_extractors import (
     PDFPlumberExtractor,
     PyMuPDFExtractor,
