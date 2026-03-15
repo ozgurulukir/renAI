@@ -128,7 +128,7 @@ def ensure_secure_dir(path: Path) -> None:
             path.chmod(0o700)
         except Exception as e:
             logging.debug(f"Failed to set secure permissions on {path}: {e}")
-        return
+        return path
 
     # Windows: Best effort to restrict permissions to current user using icacls
     username = os.environ.get("USERNAME")

@@ -215,7 +215,10 @@ def load_categories_from_file() -> dict:
     1. User config in platformdirs (CONFIG_DIR/categories.toml)
     2. Package default (PACKAGE_CONFIG_DIR/categories.default.toml)
     """
-    import tomllib
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
 
     # Try user config first
     if CUSTOM_CATEGORIES_FILE.exists():
@@ -287,7 +290,10 @@ TESSERACT_PATH = get_tesseract_path()
 
 def load_eval_models(provider: str) -> list:
     """Load evaluation models from TOML config with fallback to package default."""
-    import tomllib
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
 
     # Try user config first (TOML)
     user_file = CONFIG_DIR / "eval_models.toml"
