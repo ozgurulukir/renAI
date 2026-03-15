@@ -95,7 +95,7 @@ def get_text_cache_path(
     OCR mode changes (e.g., switching from regular to enhanced OCR).
 
     Args:
-        file_hash: MD5 hash of the source file. This uniquely identifies
+        file_hash: SHA256 hash of the source file. This uniquely identifies
                    the file content for cache lookup.
         ocr_enabled: Whether OCR was enabled during extraction. If True,
                     cache key includes "_ocr" suffix.
@@ -109,10 +109,10 @@ def get_text_cache_path(
         Path format: {cache_dir}/text/{file_hash}[_ocr][_mutool].txt
 
     Example:
-        >>> path = get_text_cache_path("abc123def456")
-        >>> # Returns: Path("C:/Users/user/AppData/Local/renAI/Cache/text/abc123def456.txt")
+        >>> path = get_text_cache_path("a" * 64)
+        >>> # Returns: Path("C:/Users/user/AppData/Local/renAI/Cache/text/" + "a" * 64 + ".txt")
         >>> 
-        >>> path = get_text_cache_path("abc123", ocr_enabled=True)
+        >>> path = get_text_cache_path("a" * 64, ocr_enabled=True)
         >>> # Returns: Path(".../text/abc123_ocr.txt")
 
     Note:
@@ -146,7 +146,7 @@ def get_metadata_cache_path(
     without losing cached results.
 
     Args:
-        file_hash: MD5 hash of the source file.
+        file_hash: SHA256 hash of the source file.
         provider: LLM provider name (e.g., "deepinfra", "openrouter", "openai").
         model: LLM model name (e.g., "Qwen/Qwen2.5-72B-Instruct").
         cache_dir: Override the default cache directory.
@@ -158,8 +158,8 @@ def get_metadata_cache_path(
         Path format: {cache_dir}/metadata/{file_hash}_{provider_model_key}[_vision].json
 
     Example:
-        >>> path = get_metadata_cache_path("abc123", "deepinfra", "llama-3.1-70b")
-        >>> # Returns: Path(".../metadata/abc123_hashed_provider_model.json")
+        >>> path = get_metadata_cache_path("a" * 64, "deepinfra", "llama-3.1-70b")
+        >>> # Returns: Path(".../metadata/" + "a" * 64 + "_hashed_provider_model.json")
     """
     if cache_dir is None:
         cache_dir = CACHE_DIR
