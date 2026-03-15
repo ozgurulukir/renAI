@@ -8,10 +8,13 @@ Tests cover:
 """
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+sys.path.insert(0, "src")
 
 from renai.engines.llm import LLMEngine
 
@@ -28,7 +31,9 @@ def mock_allowed_categories():
 def llm_engine(mock_allowed_categories):
     with patch(
         "renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories
-    ):
+    ), patch("openai.OpenAI") as mock_openai:
+        mock_openai.return_value.api_key = "test-key"
+        mock_openai.return_value._is_mock = True
         return LLMEngine(
             provider="openai",
             api_key="test-key",
@@ -41,7 +46,9 @@ def llm_engine(mock_allowed_categories):
 def llm_engine_deepinfra(mock_allowed_categories):
     with patch(
         "renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories
-    ):
+    ), patch("openai.OpenAI") as mock_openai:
+        mock_openai.return_value.api_key = "test-key"
+        mock_openai.return_value._is_mock = True
         return LLMEngine(
             provider="deepinfra",
             api_key="test-key",
@@ -252,7 +259,9 @@ class TestVisionLLMCall:
         """Test that OpenRouter includes required headers."""
         with patch(
             "renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories
-        ):
+        ), patch("openai.OpenAI") as mock_openai:
+            mock_openai.return_value.api_key = "test-key"
+            mock_openai.return_value._is_mock = True
             engine = LLMEngine(
                 provider="openrouter",
                 api_key="test-key",

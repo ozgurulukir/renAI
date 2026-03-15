@@ -22,7 +22,13 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import tomllib
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        tomllib = None
 from platformdirs import user_cache_dir, user_config_dir, user_data_dir
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -217,6 +223,9 @@ def load_categories_from_file() -> dict:
     2. Package default (PACKAGE_CONFIG_DIR/categories.default.toml)
     """
 
+    if tomllib is None:
+        return {}
+
     # Try user config first
     if CUSTOM_CATEGORIES_FILE.exists():
         try:
@@ -287,6 +296,8 @@ TESSERACT_PATH = get_tesseract_path()
 
 def load_eval_models(provider: str) -> list:
     """Load evaluation models from TOML config with fallback to package default."""
+    if tomllib is None:
+        return []
 
     # Try user config first (TOML)
     user_file = CONFIG_DIR / "eval_models.toml"

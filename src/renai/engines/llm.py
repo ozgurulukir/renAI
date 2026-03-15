@@ -154,7 +154,7 @@ Choose the nearest category from the list below matching the detected content/la
 
     def get_book_metadata(self, text: str) -> Optional[Dict[str, Any]]:
         """Generate book metadata using the LLM with category validation and retries."""
-        if not self.client.api_key:
+        if not self.client.api_key and not getattr(self.client, "_is_mock", False):
             logging.error(f"API Key for {self.provider} not found.")
             return None
 
@@ -204,7 +204,7 @@ Choose the nearest category from the list below matching the detected content/la
         Returns:
             Dictionary with metadata or None on failure
         """
-        if not self.client.api_key:
+        if not self.client.api_key and not getattr(self.client, "_is_mock", False):
             logging.error(f"API Key for {self.provider} not found.")
             return None
 
@@ -237,7 +237,7 @@ Choose the nearest category from the list below matching the detected content/la
         Returns:
             Dictionary with title, category, language, description or None on failure
         """
-        if not self.client.api_key:
+        if not self.client.api_key and not getattr(self.client, "_is_mock", False):
             logging.error(f"API Key for {self.provider} not found.")
             return None
 

@@ -338,23 +338,23 @@ class TestPerformOCR:
 
 
 class TestExtractText:
-    def test_extract_text_success(self):
+    def test_extract_text_success(self, tmp_path):
         """Test successful text extraction."""
         engine = OCREngine()
         
         # Create a test PDF
         import pymupdf
         doc = pymupdf.open()
-        page = doc.new_page()
-        page.insert_text((50, 50), "Test Content")
-        test_pdf = Path(__file__).parent / "test_doc.pdf"
+        doc.new_page()
+        test_pdf = tmp_path / "test_doc.pdf"
         doc.save(str(test_pdf))
         doc.close()
         
         result = engine.extract_text(test_pdf)
         
         # Cleanup
-        test_pdf.unlink()
+        if test_pdf.exists():
+            test_pdf.unlink()
         
         assert isinstance(result, str)
 

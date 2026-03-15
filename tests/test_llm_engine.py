@@ -15,7 +15,9 @@ def mock_allowed_categories():
 
 @pytest.fixture
 def llm_engine(mock_allowed_categories):
-    with patch("renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories):
+    with patch("renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories), \
+         patch("openai.OpenAI") as mock_openai:
+        mock_openai.return_value.api_key = "test-key"
         return LLMEngine(
             provider="openai",
             api_key="test-key",
@@ -128,7 +130,9 @@ def test_call_llm_content_none(llm_engine):
 
 def test_call_llm_openrouter_headers(mock_allowed_categories):
     """Test that extra headers are included for openrouter provider."""
-    with patch("renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories):
+    with patch("renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories), \
+         patch("openai.OpenAI") as mock_openai:
+        mock_openai.return_value.api_key = "test-key"
         engine = LLMEngine(
             provider="openrouter",
             api_key="test-key",
