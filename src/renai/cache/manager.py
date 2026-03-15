@@ -76,8 +76,6 @@ from typing import Any, Dict, Optional
 
 from ..settings import CACHE_DIR
 from ..utils import (
-    generate_cache_key,
-    get_file_hash,
     get_provider_model_key,
 )
 
@@ -360,8 +358,6 @@ def invalidate_cache_for_provider_model(
         >>> count = invalidate_cache_for_provider_model()
         >>> print(f"Cleared {count} cached entries")
     """
-    import shutil
-
     if cache_dir is None:
         cache_dir = CACHE_DIR
 

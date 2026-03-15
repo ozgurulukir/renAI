@@ -6,7 +6,7 @@ Merged from legacy vision.py and image.py.
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import pymupdf
 from PIL import Image

@@ -5,7 +5,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Pre-compiled regular expressions for filename sanitization
 RE_INVALID_CHARS = re.compile(r'[<>:"/\\|?*]')

@@ -24,7 +24,7 @@ from ..filename.builder import (
     is_filename_changed,
 )
 from ..settings import IMAGE_EXTENSIONS, CACHE_DIR
-from ..utils import get_file_hash, ensure_secure_dir
+from ..utils import get_file_hash
 from .text_extractor import TextExtractor, FallbackMode
 from .visual import VisualProcessor
 

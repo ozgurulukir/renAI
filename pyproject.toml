@@ -21,11 +21,6 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
 ]
 
-[project.urls]
-Homepage = "https://github.com/ozgurulukir/renAI"
-Repository = "https://github.com/ozgurulukir/renAI"
-Issues = "https://github.com/ozgurulukir/renAI/issues"
-
 dependencies = [
     "pymupdf",
     "pytesseract",
@@ -43,6 +38,11 @@ dependencies = [
     "platformdirs",
     "colorama",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ozgurulukir/renAI"
+Repository = "https://github.com/ozgurulukir/renAI"
+Issues = "https://github.com/ozgurulukir/renAI/issues"
 
 [project.optional-dependencies]
 pdf-extra = [
