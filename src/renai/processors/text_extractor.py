@@ -93,7 +93,8 @@ Module Functions:
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional
+from typing import Set
 
 from ..settings import (
     CACHE_DIR,

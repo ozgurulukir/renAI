@@ -256,7 +256,14 @@ class TestBookProcessorInit:
         assert processor.text_extractor.ocr_engine == mock_ocr
         assert processor.provider == "deepinfra"
         assert processor.supported_extensions == {
-            ".pdf", ".epub", ".mobi", ".docx", ".pptx", ".xlsx", ".txt", ".md"
+            ".pdf",
+            ".epub",
+            ".mobi",
+            ".docx",
+            ".pptx",
+            ".xlsx",
+            ".txt",
+            ".md",
         }
         assert processor.text_extractor.move_scan_failures is False
         assert processor.text_extractor.skip_scan_files is False
@@ -265,7 +272,13 @@ class TestBookProcessorInit:
         """Test initialization with custom parameters."""
         mock_ocr = MagicMock()
         mock_llm = MagicMock()
-        processor = BookProcessor(mock_ocr, mock_llm, provider="openai", model="gpt-4", extractor_name="pdfplumber")
+        processor = BookProcessor(
+            mock_ocr,
+            mock_llm,
+            provider="openai",
+            model="gpt-4",
+            extractor_name="pdfplumber",
+        )
 
         assert processor.provider == "openai"
         assert processor.model == "gpt-4"
@@ -368,8 +381,13 @@ class TestProcessSingleBook:
             "year": "2024",
             "category": "Fiction",
         }
-        with patch("renai.utils.get_file_hash", return_value=file_hash), \
-             patch("renai.processors.book.read_metadata_cache", return_value=cached_metadata):
+        with (
+            patch("renai.utils.get_file_hash", return_value=file_hash),
+            patch(
+                "renai.processors.book.read_metadata_cache",
+                return_value=cached_metadata,
+            ),
+        ):
             processor.process_file(test_file, mode="rename")
 
         # LLM should not be called since cache exists
@@ -385,7 +403,7 @@ class TestScanTracking:
         failed_file1 = tmp_path / "failed1.pdf"
         failed_file2 = tmp_path / "failed2.pdf"
         processor.scan_failed_files = {failed_file1, failed_file2}
-        
+
         result = processor.get_scan_failed_files()
         assert len(result) == 2
         assert failed_file1 in result
@@ -411,10 +429,6 @@ class TestScanTracking:
         assert result == []
 
 
-
-
-
-
 class TestProcessSingleBookVision:
     """Test process_single_book_vision method."""
 
@@ -423,10 +437,14 @@ class TestProcessSingleBookVision:
         mock_ocr = MagicMock()
         mock_llm = MagicMock()
         mock_llm.is_multimodal_capable.return_value = True
-        processor = BookProcessor(mock_ocr, mock_llm, provider="deepinfra", model="test-model")
+        processor = BookProcessor(
+            mock_ocr, mock_llm, provider="deepinfra", model="test-model"
+        )
         test_file = tmp_path / "test.epub"
         test_file.write_text("test content")
-        result = processor.process_file(test_file, mode="rename", fallback_mode=FallbackMode.VISION)
+        result = processor.process_file(
+            test_file, mode="rename", fallback_mode=FallbackMode.VISION
+        )
         assert result == (False, None, None, None, None)
 
     def test_vision_symlink_skips(self, tmp_path):
@@ -434,7 +452,7 @@ class TestProcessSingleBookVision:
         # Create a real file
         real_file = tmp_path / "real.pdf"
         real_file.write_text("test")
-        
+
         # Test BookProcessor symlink skipping
         mock_ocr = MagicMock()
         mock_llm = MagicMock()
@@ -443,10 +461,12 @@ class TestProcessSingleBookVision:
         symlink = tmp_path / "link.pdf"
         try:
             symlink.symlink_to(real_file)
-            result = processor.process_file(symlink, mode="rename", fallback_mode=FallbackMode.VISION)
+            result = processor.process_file(
+                symlink, mode="rename", fallback_mode=FallbackMode.VISION
+            )
             assert result == (False, None, None, None, None)
         except (OSError, NotImplementedError):
-             pytest.skip("Symlink creation not supported")
+            pytest.skip("Symlink creation not supported")
 
     def test_vision_model_not_capable(self, tmp_path):
         """Test error when model doesn't support vision."""
@@ -456,7 +476,9 @@ class TestProcessSingleBookVision:
         processor = BookProcessor(mock_ocr, mock_llm)
         test_file = tmp_path / "test.pdf"
         test_file.write_text("test")
-        result = processor.process_file(test_file, mode="rename", fallback_mode=FallbackMode.VISION)
+        result = processor.process_file(
+            test_file, mode="rename", fallback_mode=FallbackMode.VISION
+        )
         assert result == (False, None, None, None, None)
 
 
@@ -468,16 +490,23 @@ class TestProcessSingleImage:
         mock_ocr = MagicMock()
         mock_llm = MagicMock()
         mock_llm.is_multimodal_capable.return_value = True
-        processor = BookProcessor(mock_ocr, mock_llm, provider="deepinfra", model="vision-model")
+        processor = BookProcessor(
+            mock_ocr, mock_llm, provider="deepinfra", model="vision-model"
+        )
         test_image = tmp_path / "test.jpg"
         test_image.write_bytes(b"fake jpeg")
-        mock_llm.get_image_metadata.return_value = {"title": "Test Image", "category": "Photos", "language": "en"}
+        mock_llm.get_image_metadata.return_value = {
+            "title": "Test Image",
+            "category": "Photos",
+            "language": "en",
+        }
         result = processor.process_file(test_image, mode="rename", rename_images=True)
         assert result[0] is True
 
     def test_get_image_exif_date_without_exif(self, tmp_path):
         """Test EXIF date returns None when not available."""
         from PIL import Image
+
         mock_ocr = MagicMock()
         mock_llm = MagicMock()
         processor = BookProcessor(mock_ocr, mock_llm)
@@ -494,8 +523,6 @@ class TestProcessSingleImage:
         processor = BookProcessor(mock_ocr, mock_llm)
         assert processor.is_image_file(Path("photo.jpg")) is True
         assert processor.is_image_file(Path("document.pdf")) is False
-
-
 
 
 class TestOrganizeFilesEdgeCases:

@@ -128,12 +128,12 @@ def ensure_secure_dir(path: Path) -> None:
             path.chmod(0o700)
         except Exception as e:
             logging.debug(f"Failed to set secure permissions on {path}: {e}")
-        return
+        return path
 
     # Windows: Best effort to restrict permissions to current user using icacls
     username = os.environ.get("USERNAME")
     if not username:
-        return
+        return path
 
     # Security: Validate username to prevent command injection
     # Allows alphanumeric, spaces, dots, underscores, hyphens, @, and backslashes.
@@ -141,7 +141,7 @@ def ensure_secure_dir(path: Path) -> None:
     # This covers standard local users, domain users (DOMAIN\user), and email-style names.
     if not re.match(r"^\w[\w\s.@\\-]*$", username):
         logging.warning(f"Invalid username for secure permissions: {username}")
-        return
+        return path
 
     try:
         # /inheritance:r - remove inherited ACEs

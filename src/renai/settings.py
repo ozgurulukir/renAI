@@ -23,7 +23,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import tomllib
+try:
+    import tomllib  # noqa: F401
+except ImportError:
+    import tomli as tomllib
 from platformdirs import user_cache_dir, user_config_dir, user_data_dir
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict

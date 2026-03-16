@@ -24,8 +24,8 @@ def test_ocr_skip_functionality():
         mock_llm_engine = Mock()
 
         # Create a test PDF file
-        test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf content 1")
+        test_file = tmp_path / "test_skip.pdf"
+        test_file.write_bytes(b"fake pdf content skip")
 
         # Mock internal extractor
         with patch(
@@ -51,7 +51,7 @@ def test_ocr_skip_functionality():
 
         moved_files = list(needs_ocr_dir.iterdir())
         assert len(moved_files) == 1
-        assert moved_files[0].name == "test.pdf"
+        assert moved_files[0].name == "test_skip.pdf"
 
         # Result should be empty since file was moved
         assert result == ""
@@ -68,8 +68,8 @@ def test_ocr_skip_disabled():
         mock_llm_engine = Mock()
 
         # Create a test PDF file
-        test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf content 2")
+        test_file = tmp_path / "test_ocr.pdf"
+        test_file.write_bytes(b"fake pdf content ocr")
 
         # Mock internal extractor
         with patch(
@@ -113,8 +113,8 @@ def test_sufficient_text_no_ocr_needed():
         mock_llm_engine = Mock()
 
         # Create a test PDF file
-        test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf content 3")
+        test_file = tmp_path / "test_sufficient.pdf"
+        test_file.write_bytes(b"fake pdf content sufficient")
 
         # Mock internal extractor
         with patch(
