@@ -215,5 +215,94 @@ class TestEnvironmentIntegration:
         assert settings_module.provider_settings.model_config.get("env_prefix") == ""
 
 
+class TestLoadEvalModels:
+    """Test the load_eval_models function."""
+
+    @pytest.fixture
+    def mock_dirs(self, tmp_path):
+        """Fixture to mock configuration directories."""
+        config_dir = tmp_path / "config"
+        pkg_dir = tmp_path / "pkg"
+        config_dir.mkdir()
+        pkg_dir.mkdir()
+
+        with patch("renai.settings.CONFIG_DIR", config_dir), \
+             patch("renai.settings.PACKAGE_CONFIG_DIR", pkg_dir):
+            yield config_dir, pkg_dir
+
+    def test_load_user_config_success(self, mock_dirs):
+        """Should load models from user config if valid."""
+        config_dir, _ = mock_dirs
+        user_file = config_dir / "eval_models.toml"
+        user_file.write_text('[test_provider]\nmodels = ["user_model_1", "user_model_2"]')
+
+        from renai.settings import load_eval_models
+        result = load_eval_models("test_provider")
+        assert result == ["user_model_1", "user_model_2"]
+
+    def test_load_user_fallback_on_error(self, mock_dirs):
+        """Should fallback to package default if user config is invalid."""
+        config_dir, pkg_dir = mock_dirs
+
+        # Invalid TOML
+        user_file = config_dir / "eval_models.toml"
+        user_file.write_text('invalid toml content')
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
+
+        from renai.settings import load_eval_models
+        with patch("logging.warning") as mock_warn:
+            result = load_eval_models("test_provider")
+            assert result == ["pkg_model_1"]
+            mock_warn.assert_called_once()
+            assert "Could not load user eval models" in mock_warn.call_args[0][0]
+
+    def test_load_package_config_success(self, mock_dirs):
+        """Should load from package config if user config does not exist."""
+        _, pkg_dir = mock_dirs
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1", "pkg_model_2"]')
+
+        from renai.settings import load_eval_models
+        result = load_eval_models("test_provider")
+        assert result == ["pkg_model_1", "pkg_model_2"]
+
+    def test_load_empty_or_missing_provider(self, mock_dirs):
+        """Should return empty list if provider not found in configs."""
+        config_dir, pkg_dir = mock_dirs
+
+        user_file = config_dir / "eval_models.toml"
+        user_file.write_text('[other_provider]\nmodels = ["model_1"]')
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('[other_provider]\nmodels = ["model_2"]')
+
+        from renai.settings import load_eval_models
+        result = load_eval_models("test_provider")
+        assert result == []
+
+    def test_load_no_files_found(self, mock_dirs):
+        """Should return empty list if neither config file exists."""
+        from renai.settings import load_eval_models
+        result = load_eval_models("test_provider")
+        assert result == []
+
+    def test_load_package_fallback_on_error(self, mock_dirs):
+        """Should return empty list and log warning if package config is invalid."""
+        _, pkg_dir = mock_dirs
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('invalid toml content')
+
+        from renai.settings import load_eval_models
+        with patch("logging.warning") as mock_warn:
+            result = load_eval_models("test_provider")
+            assert result == []
+            mock_warn.assert_called_once()
+            assert "Could not load package eval models" in mock_warn.call_args[0][0]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
