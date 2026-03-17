@@ -28,33 +28,34 @@ def test_ocr_skip_functionality():
         test_file.write_bytes(b"fake pdf content 1")
 
         # Mock internal extractor
-        with patch(
-            "renai.processors.text_extractor.get_extractor"
-        ) as mock_get_extractor:
-            mock_mu_instance = Mock()
-            mock_mu_instance.extract_text.return_value = ""  # Insufficient
-            mock_mu_instance.name = "pymupdf"
-            mock_get_extractor.return_value = mock_mu_instance
+        with patch("renai.utils.sys.platform", "linux"):
+            with patch(
+                "renai.processors.text_extractor.get_extractor"
+            ) as mock_get_extractor:
+                mock_mu_instance = Mock()
+                mock_mu_instance.extract_text.return_value = ""  # Insufficient
+                mock_mu_instance.name = "pymupdf"
+                mock_get_extractor.return_value = mock_mu_instance
 
-            # Create processor AFTER patching so TextExtractor gets the mock
-            processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
-            processor.set_needs_scan_folder(tmp_path, skip=True)
+                # Create processor AFTER patching so TextExtractor gets the mock
+                processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
+                processor.set_needs_scan_folder(tmp_path, skip=True)
 
-            # Extract text - should trigger OCR skipping via TextExtractor
-            result = processor.text_extractor.extract(
-                test_file, fallback=FallbackMode.MOVE_TO_FOLDER
-            )
+                # Extract text - should trigger OCR skipping via TextExtractor
+                result = processor.text_extractor.extract(
+                    test_file, fallback=FallbackMode.MOVE_TO_FOLDER
+                )
 
-        # Check that file was moved to Needs_Scan folder
-        needs_ocr_dir = tmp_path / "Needs_Scan"
-        assert needs_ocr_dir.exists()
+            # Check that file was moved to Needs_Scan folder
+            needs_ocr_dir = tmp_path / "Needs_Scan"
+            assert needs_ocr_dir.exists()
 
-        moved_files = list(needs_ocr_dir.iterdir())
-        assert len(moved_files) == 1
-        assert moved_files[0].name == "test.pdf"
+            moved_files = list(needs_ocr_dir.iterdir())
+            assert len(moved_files) == 1
+            assert moved_files[0].name == "test.pdf"
 
-        # Result should be empty since file was moved
-        assert result == ""
+            # Result should be empty since file was moved
+            assert result == ""
 
 
 def test_ocr_skip_disabled():
