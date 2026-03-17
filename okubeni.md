@@ -69,7 +69,7 @@ Açıklama -- Kategori -- (Dil).uzantı
 
 ### Ön Gereksinimler
 
-1. **Python 3.10+**
+1. **Python 3.12+**
 2. **Tesseract OCR** - [Windows için indirin](https://github.com/UB-Mannheim/tesseract/wiki/Tesseract-at-UB-Mannheim) veya paket yöneticisi ile yükleyin:
    ```bash
    # Ubuntu/Debian
