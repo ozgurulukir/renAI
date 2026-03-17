@@ -15,6 +15,7 @@ from renai.utils import (
     sanitize_filename,
     proportional_chunk_trim,
     read_text_limited,
+    ensure_secure_dir,
 )
 
 
@@ -312,3 +313,38 @@ def test_read_text_limited_nonexistent(tmp_path):
 
     result = read_text_limited(test_file, max_chars=100)
     assert result == ""
+
+@patch("renai.utils.sys")
+@patch("renai.utils.os")
+@patch("renai.utils.subprocess")
+@patch("renai.utils.logging")
+def test_ensure_secure_dir_windows_exception(mock_logging, mock_subprocess, mock_os, mock_sys, tmp_path):
+    """Test ensure_secure_dir on Windows when subprocess.run raises an exception."""
+    mock_sys.platform = "win32"
+    mock_os.environ.get.return_value = "valid_user"
+
+    # Mock Windows-specific subprocess attributes to prevent AttributeError on Linux
+    mock_startupinfo = MagicMock()
+    mock_startupinfo.dwFlags = 0
+    mock_subprocess.STARTUPINFO.return_value = mock_startupinfo
+    mock_subprocess.STARTF_USESHOWWINDOW = 1
+    mock_subprocess.CREATE_NO_WINDOW = 0x08000000
+
+    mock_subprocess.run.side_effect = Exception("Mock icacls failure")
+
+    test_dir = tmp_path / "secure_test_dir"
+
+    result = ensure_secure_dir(test_dir)
+
+    # Assert directory was created and returned
+    assert result == test_dir
+    assert test_dir.exists()
+
+    # Assert subprocess.run was called
+    mock_subprocess.run.assert_called_once()
+
+    # Assert the exception was logged
+    mock_logging.debug.assert_called_once()
+    log_msg = mock_logging.debug.call_args[0][0]
+    assert "Failed to set secure permissions on" in log_msg
+    assert "Mock icacls failure" in log_msg
