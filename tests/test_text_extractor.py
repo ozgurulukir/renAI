@@ -1,11 +1,9 @@
 import sys
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 sys.path.insert(0, "src")
 
-from renai.processors.text_extractor import TextExtractor, FallbackMode
+from renai.processors.text_extractor import TextExtractor
 
 class TestTextExtractor:
     def test_get_needs_scan_files_returns_files(self, tmp_path):
