@@ -26,6 +26,89 @@ from renai.settings import (
 )
 
 
+class TestLoadCategories:
+    """Test load_categories_from_file function."""
+
+    def test_user_config(self, tmp_path):
+        """Should load categories from user config with priority."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "categories.toml"
+        user_file.write_text(
+            '[en]\ncategories = ["UserEn"]\n[tr]\ncategories = ["UserTr"]\n'
+        )
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            result = load_categories_from_file()
+            assert result == {"en": ["UserEn"], "tr": ["UserTr"]}
+
+    def test_package_default(self, tmp_path):
+        """Should fallback to package config if user config missing."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "nonexistent.toml"
+        package_file = tmp_path / "categories.default.toml"
+        package_file.write_text(
+            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
+        )
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+                result = load_categories_from_file()
+                assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+
+    def test_user_invalid(self, tmp_path):
+        """Should fallback and log warning if user config is invalid."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "categories.toml"
+        user_file.write_text("invalid toml = ")
+
+        package_file = tmp_path / "categories.default.toml"
+        package_file.write_text(
+            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
+        )
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+                with patch("logging.warning") as mock_warn:
+                    result = load_categories_from_file()
+
+                    assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                    mock_warn.assert_called_once()
+                    assert "Could not load user categories" in mock_warn.call_args[0][0]
+
+    def test_package_invalid(self, tmp_path):
+        """Should return empty and log warning if both configs missing/invalid."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "nonexistent.toml"
+
+        package_file = tmp_path / "categories.default.toml"
+        package_file.write_text("invalid toml = ")
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+                with patch("logging.warning") as mock_warn:
+                    result = load_categories_from_file()
+
+                    assert result == {}
+                    mock_warn.assert_called_once()
+                    assert "Could not load package categories" in mock_warn.call_args[0][0]
+
+    def test_empty(self, tmp_path):
+        """Should return empty dict if no configs exist."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "nonexistent1.toml"
+        package_dir = tmp_path / "nonexistent_dir"
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            with patch("renai.settings.PACKAGE_CONFIG_DIR", package_dir):
+                result = load_categories_from_file()
+                assert result == {}
+
+
 class TestCategories:
     """Test categories loading from TOML config."""
 
