@@ -344,5 +344,40 @@ class TestLoadEvalModels:
             assert "Could not load package eval models" in mock_warn.call_args[0][0]
 
 
+class TestGetBaseUrl:
+    """Test get_base_url function."""
+
+    def test_get_base_url_known_provider(self):
+        """Should return correct base url for known providers."""
+        from renai.settings import get_base_url, PROVIDERS
+
+        assert get_base_url("openai") == PROVIDERS["openai"].base_url
+        assert get_base_url("deepinfra") == PROVIDERS["deepinfra"].base_url
+        assert get_base_url("openrouter") == PROVIDERS["openrouter"].base_url
+
+    def test_get_base_url_unknown_provider_with_settings_custom_url(self):
+        """Should return provider_settings.custom_api_base_url if provider is unknown."""
+        from renai.settings import get_base_url
+
+        with patch("renai.settings.provider_settings.custom_api_base_url", "http://custom-url:9000/v1"):
+            assert get_base_url("unknown_provider") == "http://custom-url:9000/v1"
+
+    def test_get_base_url_unknown_provider_with_env_override(self):
+        """Should fallback to CUSTOM_API_BASE_URL env var if provider_settings custom url is empty/None."""
+        from renai.settings import get_base_url
+
+        with patch("renai.settings.provider_settings.custom_api_base_url", ""):
+            with patch.dict("os.environ", {"CUSTOM_API_BASE_URL": "http://env-url:8080/v1"}):
+                assert get_base_url("unknown_provider") == "http://env-url:8080/v1"
+
+    def test_get_base_url_unknown_provider_fallback_default(self):
+        """Should fallback to default localhost url if both setting and env var are absent."""
+        from renai.settings import get_base_url
+
+        with patch("renai.settings.provider_settings.custom_api_base_url", ""):
+            with patch.dict("os.environ", {}, clear=True):
+                assert get_base_url("unknown_provider") == "http://localhost:8000/v1"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
