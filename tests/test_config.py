@@ -344,5 +344,45 @@ class TestLoadEvalModels:
             assert "Could not load package eval models" in mock_warn.call_args[0][0]
 
 
+class TestEffectiveModel:
+    """Test get_effective_model function."""
+
+    def test_explicit_override(self):
+        """Should return explicit model if set in app_settings."""
+        from renai.settings import get_effective_model
+
+        with patch("renai.settings.app_settings.model", "explicit-model"):
+            result = get_effective_model("deepinfra")
+            assert result == "explicit-model"
+
+    def test_provider_specific_model(self):
+        """Should return provider-specific model if explicitly set in provider_settings."""
+        from renai.settings import get_effective_model
+
+        with patch("renai.settings.app_settings.model", None):
+            with patch("renai.settings.provider_settings.deepinfra_model", "provider-model"):
+                result = get_effective_model("deepinfra")
+                assert result == "provider-model"
+
+    def test_default_fallback(self):
+        """Should fallback to default model if neither explicit nor provider model is set."""
+        from renai.settings import get_effective_model
+
+        with patch("renai.settings.app_settings.model", None):
+            with patch("renai.settings.provider_settings.deepinfra_model", None):
+                with patch("renai.settings.get_default_model", return_value="default-model"):
+                    result = get_effective_model("deepinfra")
+                    assert result == "default-model"
+
+    def test_invalid_provider_fallback(self):
+        """Should fallback to default model if provider is unknown."""
+        from renai.settings import get_effective_model
+
+        with patch("renai.settings.app_settings.model", None):
+            with patch("renai.settings.get_default_model", return_value="default-model"):
+                result = get_effective_model("unknown_provider")
+                assert result == "default-model"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
