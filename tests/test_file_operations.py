@@ -13,7 +13,6 @@ Tests cover:
 - File operation safety and error handling
 """
 
-from pathlib import Path  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
 import pytest  # noqa: E402
