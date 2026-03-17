@@ -203,25 +203,29 @@ class TestDisplayWarnings:
         """Should log cancellation and exit when KeyboardInterrupt is raised."""
         with patch("builtins.input", side_effect=KeyboardInterrupt):
             with patch("logging.info") as mock_info:
-                with patch("sys.exit") as mock_exit:
-                    mock_exit.side_effect = SystemExit(0)
-                    with pytest.raises(SystemExit) as exc_info:
-                        display_warnings("rename", False)
-                    assert exc_info.value.code == 0
-                    mock_info.assert_called_with("\nOperation cancelled by user.")
-                    mock_exit.assert_called_with(0)
+                with patch("logging.warning") as mock_warning:
+                    with patch("sys.exit") as mock_exit:
+                        mock_exit.side_effect = SystemExit(0)
+                        with pytest.raises(SystemExit) as exc_info:
+                            display_warnings("rename", False)
+                        assert exc_info.value.code == 0
+                        mock_warning.assert_called_once()
+                        mock_info.assert_called_with("\nOperation cancelled by user.")
+                        mock_exit.assert_called_with(0)
 
     def test_display_warnings_cancel_eof_error(self):
         """Should log cancellation and exit when EOFError is raised."""
         with patch("builtins.input", side_effect=EOFError):
             with patch("logging.info") as mock_info:
-                with patch("sys.exit") as mock_exit:
-                    mock_exit.side_effect = SystemExit(0)
-                    with pytest.raises(SystemExit) as exc_info:
-                        display_warnings("rename", False)
-                    assert exc_info.value.code == 0
-                    mock_info.assert_called_with("\nOperation cancelled by user.")
-                    mock_exit.assert_called_with(0)
+                with patch("logging.warning") as mock_warning:
+                    with patch("sys.exit") as mock_exit:
+                        mock_exit.side_effect = SystemExit(0)
+                        with pytest.raises(SystemExit) as exc_info:
+                            display_warnings("rename", False)
+                        assert exc_info.value.code == 0
+                        mock_warning.assert_called_once()
+                        mock_info.assert_called_with("\nOperation cancelled by user.")
+                        mock_exit.assert_called_with(0)
 
 
 class TestDirectories:
@@ -343,6 +347,69 @@ class TestLoadEvalModels:
             mock_warn.assert_called_once()
             assert "Could not load package eval models" in mock_warn.call_args[0][0]
 
+
+class TestSettingsAccessorFunctions:
+    """Test accessor functions in settings.py."""
+
+    def test_get_api_key(self):
+        """Should return correct API key for provider."""
+        from renai.settings import get_api_key
+
+        with patch("renai.settings.provider_settings.deepinfra_api_key", "fake_key_1"):
+            assert get_api_key("deepinfra") == "fake_key_1"
+
+        with patch("renai.settings.provider_settings.deepinfra_api_key", None):
+            with patch.dict("os.environ", {"DEEPINFRA_API_KEY": "fake_key_env"}):
+                assert get_api_key("deepinfra") == "fake_key_env"
+
+        with patch("renai.settings.provider_settings.custom_api_key", "custom_key"):
+            assert get_api_key("custom") == "custom_key"
+
+        with patch("renai.settings.provider_settings.custom_api_key", None):
+            with patch.dict("os.environ", {}, clear=True):
+                assert get_api_key("custom") == "not-required"
+
+    def test_get_base_url(self):
+        """Should return correct base URL for provider."""
+        from renai.settings import get_base_url, PROVIDERS
+
+        assert get_base_url("deepinfra") == PROVIDERS["deepinfra"].base_url
+        assert get_base_url("custom") == PROVIDERS["custom"].base_url
+
+        with patch("renai.settings.provider_settings.custom_api_base_url", "http://custom/v1"):
+            assert get_base_url("unknown") == "http://custom/v1"
+
+        with patch("renai.settings.provider_settings.custom_api_base_url", None):
+            with patch.dict("os.environ", {"CUSTOM_API_BASE_URL": "http://env/v1"}):
+                assert get_base_url("unknown") == "http://env/v1"
+
+    def test_get_default_model(self):
+        """Should return correct default model for provider."""
+        from renai.settings import get_default_model, PROVIDERS
+
+        assert get_default_model("deepinfra") == PROVIDERS["deepinfra"].default_model
+
+        with patch.dict("os.environ", {"CUSTOM_MODEL": "custom_model_env"}):
+            assert get_default_model("unknown") == "custom_model_env"
+
+    def test_get_effective_model(self):
+        """Should return the effective model with proper priority."""
+        from renai.settings import get_effective_model
+
+        # 1. Explicit model override
+        with patch("renai.settings.app_settings.model", "explicit_model"):
+            assert get_effective_model("deepinfra") == "explicit_model"
+
+        # 2. Provider-specific model
+        with patch("renai.settings.app_settings.model", None):
+            with patch("renai.settings.provider_settings.deepinfra_model", "provider_model"):
+                assert get_effective_model("deepinfra") == "provider_model"
+
+        # 3. Default model
+        with patch("renai.settings.app_settings.model", None):
+            with patch("renai.settings.provider_settings.deepinfra_model", None):
+                with patch("renai.settings.get_default_model", return_value="default_model"):
+                    assert get_effective_model("deepinfra") == "default_model"
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
