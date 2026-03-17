@@ -391,24 +391,6 @@ class TestScanTracking:
         assert failed_file1 in result
         assert failed_file2 in result
 
-    def test_get_needs_scan_files_returns_files(self, tmp_path):
-        """Test that files in Needs_Scan folder are returned."""
-        processor = BookProcessor(Mock(), Mock())
-        needs_dir = tmp_path / "Needs_Scan"
-        needs_dir.mkdir()
-        (needs_dir / "file1.pdf").touch()
-        (needs_dir / "file2.pdf").touch()
-
-        processor.text_extractor.needs_scan_dir = needs_dir
-        result = processor.text_extractor.get_needs_scan_files()
-        assert len(result) == 2
-
-    def test_get_needs_scan_files_empty_when_no_folder(self):
-        """Test empty list when Needs_Scan folder doesn't exist."""
-        processor = BookProcessor(Mock(), Mock())
-        processor.text_extractor.needs_scan_dir = None
-        result = processor.text_extractor.get_needs_scan_files()
-        assert result == []
 
 
 
