@@ -167,8 +167,6 @@ def ensure_secure_dir(path: Path) -> None:
     except Exception as e:
         logging.debug(f"Failed to set secure permissions on {path}: {e}")
 
-    return path
-
 
 def read_text_limited(file_path: Path, max_chars: int) -> str:
     """
