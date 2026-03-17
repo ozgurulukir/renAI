@@ -19,8 +19,10 @@ import pytest
 
 from renai.settings import (
     DEFAULT_CATEGORIES,
+    PROVIDERS,
     display_warnings,
     get_allowed_categories,
+    get_default_model,
     get_tesseract_path,
     initialize_directories,
 )
@@ -130,6 +132,25 @@ class TestEnvironmentIntegration:
 
         # Provider settings should not have prefix
         assert settings_module.provider_settings.model_config.get("env_prefix") == ""
+
+
+class TestProviderGetters:
+    """Test provider-specific getter functions."""
+
+    def test_get_default_model_known_provider(self):
+        """Should return the default model for a known provider."""
+        assert get_default_model("openai") == PROVIDERS["openai"].default_model
+        assert get_default_model("deepinfra") == PROVIDERS["deepinfra"].default_model
+
+    def test_get_default_model_unknown_provider_fallback(self):
+        """Should fallback to CUSTOM_MODEL or 'llama3' for unknown providers."""
+        # Default behavior when no env var is set
+        with patch.dict("os.environ", {}, clear=True):
+            assert get_default_model("unknown_provider") == "llama3"
+
+        # Behavior when CUSTOM_MODEL is explicitly set
+        with patch.dict("os.environ", {"CUSTOM_MODEL": "my-custom-model"}, clear=True):
+            assert get_default_model("unknown_provider") == "my-custom-model"
 
 
 if __name__ == "__main__":
