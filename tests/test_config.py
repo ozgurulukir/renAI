@@ -183,6 +183,46 @@ class TestDisplayWarnings:
                 display_warnings("rename", False)
                 mock.assert_called()
 
+    def test_display_warnings_organize_mode(self):
+        """Warnings should include directory layout warning when mode is organize."""
+        with patch("builtins.input", return_value=""):
+            with patch("logging.warning") as mock:
+                display_warnings("organize", False)
+                mock.assert_called()
+                assert "📁 DIRECTORY LAYOUT WARNING:" in mock.call_args[0][0]
+
+    def test_display_warnings_recursive_true(self):
+        """Warnings should include recursive mode warning when recursive is True."""
+        with patch("builtins.input", return_value=""):
+            with patch("logging.warning") as mock:
+                display_warnings("rename", True)
+                mock.assert_called()
+                assert "🔄 RECURSIVE MODE:" in mock.call_args[0][0]
+
+    def test_display_warnings_cancel_keyboard_interrupt(self):
+        """Should log cancellation and exit when KeyboardInterrupt is raised."""
+        with patch("builtins.input", side_effect=KeyboardInterrupt):
+            with patch("logging.info") as mock_info:
+                with patch("sys.exit") as mock_exit:
+                    mock_exit.side_effect = SystemExit(0)
+                    with pytest.raises(SystemExit) as exc_info:
+                        display_warnings("rename", False)
+                    assert exc_info.value.code == 0
+                    mock_info.assert_called_with("\nOperation cancelled by user.")
+                    mock_exit.assert_called_with(0)
+
+    def test_display_warnings_cancel_eof_error(self):
+        """Should log cancellation and exit when EOFError is raised."""
+        with patch("builtins.input", side_effect=EOFError):
+            with patch("logging.info") as mock_info:
+                with patch("sys.exit") as mock_exit:
+                    mock_exit.side_effect = SystemExit(0)
+                    with pytest.raises(SystemExit) as exc_info:
+                        display_warnings("rename", False)
+                    assert exc_info.value.code == 0
+                    mock_info.assert_called_with("\nOperation cancelled by user.")
+                    mock_exit.assert_called_with(0)
+
 
 class TestDirectories:
     """Test directory initialization."""
