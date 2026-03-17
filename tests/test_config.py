@@ -96,6 +96,24 @@ class TestLoadCategories:
                     mock_warn.assert_called_once()
                     assert "Could not load package categories" in mock_warn.call_args[0][0]
 
+    def test_package_error_path(self, tmp_path):
+        """Should return empty dict and log warning if package config read fails."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "nonexistent.toml"
+        package_file = tmp_path / "categories.default.toml"
+        package_file.write_text('[en]\ncategories = ["PkgEn"]\n')
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+                with patch("tomllib.load", side_effect=Exception("Read error")):
+                    with patch("logging.warning") as mock_warn:
+                        result = load_categories_from_file()
+
+                        assert result == {}
+                        mock_warn.assert_called_once()
+                        assert "Could not load package categories" in mock_warn.call_args[0][0]
+
     def test_empty(self, tmp_path):
         """Should return empty dict if no configs exist."""
         from renai.settings import load_categories_from_file
