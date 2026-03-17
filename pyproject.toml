@@ -55,6 +55,9 @@ dev = [
     "pytest-cov",
     "ruff",
     "mypy",
+    "pdfplumber",
+    "pypdf",
+    "pypdfium2",
 ]
 
 [project.scripts]
