@@ -1,6 +1,7 @@
 """
 Tests for CLI progress bar functionality.
 """
+
 import sys
 
 sys.path.insert(0, "src")
@@ -20,6 +21,7 @@ class TestProgressBar:
     def test_progress_bar_imports(self):
         """Test that Rich progress is imported."""
         from renai.cli import Progress, SpinnerColumn, TextColumn
+
         assert Progress is not None
         assert SpinnerColumn is not None
         assert TextColumn is not None
@@ -27,6 +29,7 @@ class TestProgressBar:
     def test_progress_bar_structure(self):
         """Test that process_files uses Progress context manager."""
         import inspect
+
         source = inspect.getsource(process_files)
 
         # Check for progress bar implementation
@@ -38,19 +41,27 @@ class TestProgressBar:
         """Test progress bar with mock processor."""
         # Create mock objects
         mock_processor = MagicMock()
-        mock_processor.process_single_book.return_value = (True, "Title", "Author", "Category", None)
+        mock_processor.process_single_book.return_value = (
+            True,
+            "Title",
+            "Author",
+            "Category",
+            None,
+        )
 
         # Test files
         file_paths = [Path(f"test_{i}.pdf") for i in range(3)]
         root_dir = Path("test_dir")
 
         # Mock ThreadPoolExecutor to avoid actual threading
-        with patch('renai.cli.ThreadPoolExecutor') as mock_executor:
+        with patch("renai.cli.ThreadPoolExecutor") as mock_executor:
             mock_executor.return_value.__enter__ = MagicMock()
             mock_executor.return_value.__exit__ = MagicMock()
             mock_executor.return_value.submit = MagicMock(
                 return_value=MagicMock(
-                    result=MagicMock(return_value=(True, "Title", "Author", "Category", None))
+                    result=MagicMock(
+                        return_value=(True, "Title", "Author", "Category", None)
+                    )
                 )
             )
 

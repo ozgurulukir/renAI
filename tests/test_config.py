@@ -7,27 +7,22 @@ Tests the TOML-based configuration system:
 - Environment variable overrides
 - Default fallbacks
 """
+
 import sys
 
 sys.path.insert(0, "src")
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from renai.settings import (
-    CACHE_DIR,
-    CONFIG_DIR,
-    CUSTOM_CATEGORIES,
     DEFAULT_CATEGORIES,
-    PACKAGE_CONFIG_DIR,
     display_warnings,
     get_allowed_categories,
     get_tesseract_path,
     initialize_directories,
-    load_categories_from_file,
-    load_eval_models,
 )
 
 
@@ -62,6 +57,7 @@ class TestEvalModels:
     def test_eval_models_structure(self):
         """Eval models should be a dict."""
         from renai.settings import EVAL_MODELS
+
         assert isinstance(EVAL_MODELS, dict)
         assert "deepinfra" in EVAL_MODELS
         assert "openai" in EVAL_MODELS
@@ -124,12 +120,14 @@ class TestEnvironmentIntegration:
     def test_env_prefix_renai(self):
         """Settings should use RENAI_ prefix."""
         import renai.settings as settings_module
+
         # AppSettings should have env_prefix
         assert settings_module.app_settings.model_config.get("env_prefix") == "RENAI_"
 
     def test_provider_settings_no_prefix(self):
         """ProviderSettings should not have prefix."""
         import renai.settings as settings_module
+
         # Provider settings should not have prefix
         assert settings_module.provider_settings.model_config.get("env_prefix") == ""
 
