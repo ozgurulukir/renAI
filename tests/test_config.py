@@ -57,6 +57,23 @@ class TestLoadCategories:
                 result = load_categories_from_file()
                 assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
+    def test_user_config_empty_categories_fallback_to_package(self, tmp_path):
+        """Should fallback to package config if user config has no categories."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "categories.toml"
+        user_file.write_text('[en]\n[tr]\n')
+
+        package_file = tmp_path / "categories.default.toml"
+        package_file.write_text(
+            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
+        )
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+                result = load_categories_from_file()
+                assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+
     def test_user_invalid(self, tmp_path):
         """Should fallback and log warning if user config is invalid."""
         from renai.settings import load_categories_from_file
