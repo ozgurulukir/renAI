@@ -21,6 +21,7 @@ from renai.settings import (
     DEFAULT_CATEGORIES,
     display_warnings,
     get_allowed_categories,
+    get_api_key,
     get_tesseract_path,
     initialize_directories,
 )
@@ -130,6 +131,47 @@ class TestEnvironmentIntegration:
 
         # Provider settings should not have prefix
         assert settings_module.provider_settings.model_config.get("env_prefix") == ""
+
+
+class TestGetApiKey:
+    """Test get_api_key function."""
+
+    def test_get_api_key_from_provider_settings(self):
+        """Should return API key from provider_settings if set."""
+        with patch("renai.settings.provider_settings.deepinfra_api_key", "sk-deep-123"):
+            assert get_api_key("deepinfra") == "sk-deep-123"
+
+        with patch("renai.settings.provider_settings.openrouter_api_key", "sk-or-123"):
+            assert get_api_key("openrouter") == "sk-or-123"
+
+        with patch("renai.settings.provider_settings.openai_api_key", "sk-oa-123"):
+            assert get_api_key("openai") == "sk-oa-123"
+
+        with patch("renai.settings.provider_settings.custom_api_key", "sk-custom-123"):
+            assert get_api_key("custom") == "sk-custom-123"
+
+    def test_get_api_key_from_env(self):
+        """Should fall back to environment variables if provider_settings are empty."""
+        with patch("renai.settings.provider_settings.deepinfra_api_key", None), patch.dict("os.environ", {"DEEPINFRA_API_KEY": "env-deep-123"}):
+            assert get_api_key("deepinfra") == "env-deep-123"
+
+        with patch("renai.settings.provider_settings.openrouter_api_key", None), patch.dict("os.environ", {"OPENROUTER_API_KEY": "env-or-123"}):
+            assert get_api_key("openrouter") == "env-or-123"
+
+        with patch("renai.settings.provider_settings.openai_api_key", None), patch.dict("os.environ", {"OPENAI_API_KEY": "env-oa-123"}):
+            assert get_api_key("openai") == "env-oa-123"
+
+        with patch("renai.settings.provider_settings.custom_api_key", None), patch.dict("os.environ", {"CUSTOM_API_KEY": "env-custom-123"}):
+            assert get_api_key("custom") == "env-custom-123"
+
+    def test_get_api_key_custom_default(self):
+        """Should return 'not-required' for custom if neither setting nor env var exists."""
+        with patch("renai.settings.provider_settings.custom_api_key", None), patch.dict("os.environ", {}, clear=True):
+            assert get_api_key("custom") == "not-required"
+
+    def test_get_api_key_invalid_provider(self):
+        """Should return None for unknown providers."""
+        assert get_api_key("unknown_provider") is None
 
 
 if __name__ == "__main__":
