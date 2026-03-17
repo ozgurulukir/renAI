@@ -15,6 +15,8 @@ sys.path.insert(0, "src")
 from pathlib import Path
 from unittest.mock import patch
 
+import builtins
+
 import pytest
 
 from renai.settings import (
@@ -23,6 +25,7 @@ from renai.settings import (
     get_allowed_categories,
     get_tesseract_path,
     initialize_directories,
+    load_eval_models,
 )
 
 
@@ -328,6 +331,50 @@ class TestLoadEvalModels:
         from renai.settings import load_eval_models
         result = load_eval_models("test_provider")
         assert result == []
+
+
+    def test_load_user_config_open_error(self, mock_dirs):
+        """Should fallback to package default if opening user config raises an exception."""
+        config_dir, pkg_dir = mock_dirs
+
+        user_file = config_dir / "eval_models.toml"
+        user_file.write_text('[test_provider]\nmodels = ["user_model_1"]')
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
+
+        original_open = builtins.open
+        def mock_open(file, *args, **kwargs):
+            if str(user_file) == str(file):
+                raise PermissionError("Permission denied")
+            return original_open(file, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=mock_open), \
+             patch("logging.warning") as mock_warn:
+            result = load_eval_models("test_provider")
+            assert result == ["pkg_model_1"]
+            mock_warn.assert_called_once()
+            assert "Could not load user eval models: Permission denied" in mock_warn.call_args[0][0]
+
+    def test_load_package_config_open_error(self, mock_dirs):
+        """Should return empty list and log warning if opening package config raises an exception."""
+        config_dir, pkg_dir = mock_dirs
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
+
+        original_open = builtins.open
+        def mock_open(file, *args, **kwargs):
+            if str(pkg_file) == str(file):
+                raise PermissionError("Permission denied")
+            return original_open(file, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=mock_open), \
+             patch("logging.warning") as mock_warn:
+            result = load_eval_models("test_provider")
+            assert result == []
+            mock_warn.assert_called_once()
+            assert "Could not load package eval models: Permission denied" in mock_warn.call_args[0][0]
 
     def test_load_package_fallback_on_error(self, mock_dirs):
         """Should return empty list and log warning if package config is invalid."""
