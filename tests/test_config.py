@@ -343,6 +343,23 @@ class TestLoadEvalModels:
             mock_warn.assert_called_once()
             assert "Could not load package eval models" in mock_warn.call_args[0][0]
 
+    def test_load_package_file_open_error(self, mock_dirs):
+        """Should handle errors when opening package config file."""
+        _, pkg_dir = mock_dirs
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
+
+        from renai.settings import load_eval_models
+
+        # Mock open to raise an exception
+        with patch("builtins.open", side_effect=OSError("Permission denied")):
+            with patch("logging.warning") as mock_warn:
+                result = load_eval_models("test_provider")
+                assert result == []
+                mock_warn.assert_called_once()
+                assert "Could not load package eval models" in mock_warn.call_args[0][0]
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
