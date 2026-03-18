@@ -301,6 +301,20 @@ class TestLoadEvalModels:
             mock_warn.assert_called_once()
             assert "Could not load user eval models" in mock_warn.call_args[0][0]
 
+    def test_load_user_missing_models_key(self, mock_dirs):
+        """Should fallback to package default if user config provider exists but lacks models key."""
+        config_dir, pkg_dir = mock_dirs
+
+        user_file = config_dir / "eval_models.toml"
+        user_file.write_text('[test_provider]\nother_key = "value"')
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
+
+        from renai.settings import load_eval_models
+        result = load_eval_models("test_provider")
+        assert result == ["pkg_model_1"]
+
     def test_load_package_config_success(self, mock_dirs):
         """Should load from package config if user config does not exist."""
         _, pkg_dir = mock_dirs
@@ -328,6 +342,17 @@ class TestLoadEvalModels:
 
     def test_load_no_files_found(self, mock_dirs):
         """Should return empty list if neither config file exists."""
+        from renai.settings import load_eval_models
+        result = load_eval_models("test_provider")
+        assert result == []
+
+    def test_load_package_missing_models_key(self, mock_dirs):
+        """Should return empty list if package config provider exists but lacks models key."""
+        _, pkg_dir = mock_dirs
+
+        pkg_file = pkg_dir / "eval_models.default.toml"
+        pkg_file.write_text('[test_provider]\nother_key = "value"')
+
         from renai.settings import load_eval_models
         result = load_eval_models("test_provider")
         assert result == []
