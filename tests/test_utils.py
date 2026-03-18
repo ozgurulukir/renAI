@@ -164,9 +164,12 @@ def test_get_text_cache_path(tmp_path):
         ("unicode_✨_rock.txt", "unicode_✨_rock.txt"),
         ("dokument_📄.pdf", "dokument_📄.pdf"),
         # Edge cases: strings that become empty
-        ("   .   ", ""),
-        ('<>:"/\\|?*', ""),
-        ("", ""),
+        ("   .   ", "unnamed"),
+        ('<>:"/\\|?*', "unnamed"),
+        ("", "unnamed"),
+        (".", "unnamed"),
+        ("..", "unnamed"),
+        ("...", "unnamed"),
         # Multiple spaces and dots mixed
         ("  my   file...name..txt  ", "my file.name.txt"),
     ],
