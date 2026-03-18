@@ -433,26 +433,26 @@ class TextExtractor:
 
     def benchmark_extractors(self, file_path: Path) -> None:
         """Run extraction benchmark for a single file."""
-        from ..extractors import (
-            PyMuPDFExtractor,
-            PDFPlumberExtractor,
-            PyPDFExtractor,
-            PyPdfium2Extractor,
-        )
+        if not hasattr(self, "_benchmark_extractors_list"):
+            from ..extractors import (
+                PyMuPDFExtractor,
+                PDFPlumberExtractor,
+                PyPDFExtractor,
+                PyPdfium2Extractor,
+            )
+            self._benchmark_extractors_list = [
+                PyMuPDFExtractor(),
+                PDFPlumberExtractor(),
+                PyPDFExtractor(),
+                PyPdfium2Extractor(),
+            ]
 
         if file_path.is_symlink():
             logging.warning(f"Skipping symlink for benchmark: {file_path.name}")
             return
 
-        extractors = [
-            PyMuPDFExtractor(),
-            PDFPlumberExtractor(),
-            PyPDFExtractor(),
-            PyPdfium2Extractor(),
-        ]
-
         logging.info(f"\n{'=' * 20} BENCHMARK: {file_path.name} {'=' * 20}")
-        for ext in extractors:
+        for ext in self._benchmark_extractors_list:
             try:
                 text = ext.extract_text(file_path) or ""
                 length = len(text.strip())
