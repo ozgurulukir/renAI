@@ -45,12 +45,12 @@ class OCREngine:
 
         # Validate mutool if requested
         if self.use_mutool:
-            resolved_path = shutil.which(self.mutool_path)
+            resolved_path = self._validate_mutool(self.mutool_path)
             if resolved_path:
                 self.mutool_path = resolved_path
             else:
                 logging.warning(
-                    f"mutool not found at {self.mutool_path}. "
+                    f"mutool not found or invalid at {self.mutool_path}. "
                     "Falling back to standard extraction."
                 )
                 self.use_mutool = False
@@ -82,6 +82,53 @@ class OCREngine:
                 logging.info("OCR Engine initialized in MINIMAL mode (150 DPI)")
 
         self.MAX_DIMENSION = 2000
+
+    def _get_subprocess_kwargs(self) -> dict:
+        """Consolidate Windows-specific subprocess flags."""
+        kwargs = {}
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            kwargs["startupinfo"] = startupinfo
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        return kwargs
+
+    def _validate_mutool(self, path: str) -> Optional[str]:
+        """
+        Verify that the provided path points to a valid mutool executable.
+        Returns the resolved path if valid, otherwise None.
+        """
+        resolved = shutil.which(path)
+        if not resolved:
+            return None
+
+        # 1. Basic filename check (case-insensitive)
+        name = Path(resolved).name.lower()
+        # On Windows it might be mutool.exe
+        if not name.startswith("mutool"):
+            logging.warning(f"Rejected non-mutool executable: {resolved}")
+            return None
+
+        # 2. Identity check via version command
+        try:
+            kwargs = self._get_subprocess_kwargs()
+            result = subprocess.run(
+                [resolved, "-v"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                **kwargs,
+            )
+            # mutool -v output typically contains "mutool" and "MuPDF"
+            output = (result.stdout + result.stderr).lower()
+            if "mutool" in output or "mupdf" in output:
+                return resolved
+            else:
+                logging.warning(f"Executable at {resolved} did not respond like mutool")
+                return None
+        except Exception as e:
+            logging.warning(f"Failed to verify mutool at {resolved}: {e}")
+            return None
 
     @staticmethod
     def get_page_source_dpi(page) -> int:
@@ -257,12 +304,7 @@ class OCREngine:
                 page_range,
             ]
 
-            kwargs = {}
-            if sys.platform == "win32":
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                kwargs["startupinfo"] = startupinfo
-                kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            kwargs = self._get_subprocess_kwargs()
 
             subprocess.run(
                 cmd,
@@ -323,12 +365,7 @@ class OCREngine:
                     str(file_path),
                     str(pno + 1),
                 ]
-                kwargs = {}
-                if sys.platform == "win32":
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    kwargs["startupinfo"] = startupinfo
-                    kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                kwargs = self._get_subprocess_kwargs()
 
                 subprocess.run(
                     cmd,
