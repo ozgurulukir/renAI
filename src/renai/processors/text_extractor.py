@@ -176,6 +176,7 @@ class TextExtractor:
         file_path: Path,
         target_length: Optional[int] = None,
         fallback: FallbackMode = FallbackMode.OCR,
+        file_hash: Optional[str] = None,
     ) -> str:
         """
         Extract text from a file with caching.
@@ -183,7 +184,8 @@ class TextExtractor:
         Args:
             file_path: Path to the file
             target_length: Target text length (defaults to self.target_length)
-            use_ocr_fallback: Whether to use OCR if text extraction fails
+            fallback: Fallback strategy for insufficient text
+            file_hash: Pre-computed MD5 hash of the file (optional)
 
         Returns:
             Extracted text or empty string on failure
@@ -199,7 +201,8 @@ class TextExtractor:
             return ""
 
         # Get file hash for caching
-        file_hash = get_file_hash(file_path)
+        if file_hash is None:
+            file_hash = get_file_hash(file_path)
 
         # Check cache
         cache_path = get_text_cache_path(
