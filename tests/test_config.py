@@ -456,5 +456,31 @@ class TestGetEffectiveModel:
                     mock_get_default.assert_called_once_with("deepinfra")
 
 
+class TestGetDefaultModel:
+    """Test get_default_model function."""
+
+    def test_known_provider(self):
+        """Should return default model for known providers."""
+        from renai.settings import get_default_model, PROVIDERS
+
+        assert get_default_model("openai") == PROVIDERS["openai"].default_model
+        assert get_default_model("deepinfra") == PROVIDERS["deepinfra"].default_model
+        assert get_default_model("openrouter") == PROVIDERS["openrouter"].default_model
+
+    def test_unknown_provider_default(self):
+        """Should return 'llama3' for unknown provider when CUSTOM_MODEL is not set."""
+        from renai.settings import get_default_model
+
+        with patch.dict("os.environ", {}, clear=True):
+            assert get_default_model("unknown_provider") == "llama3"
+
+    def test_unknown_provider_env_override(self):
+        """Should return CUSTOM_MODEL env var for unknown provider if set."""
+        from renai.settings import get_default_model
+
+        with patch.dict("os.environ", {"CUSTOM_MODEL": "custom-llama"}, clear=True):
+            assert get_default_model("unknown_provider") == "custom-llama"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
