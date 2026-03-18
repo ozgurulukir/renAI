@@ -314,6 +314,24 @@ def test_read_text_limited_nonexistent(tmp_path):
     result = read_text_limited(test_file, max_chars=100)
     assert result == ""
 
+def test_read_text_limited_directory(caplog, tmp_path):
+    """Test reading from a directory to trigger an actual OS error without mocking open."""
+    import logging
+
+    # tmp_path is a directory
+    test_dir = tmp_path / "test_dir"
+    test_dir.mkdir()
+
+    with caplog.at_level(logging.ERROR):
+        result = read_text_limited(test_dir, max_chars=100)
+
+    # Should return empty string on error
+    assert result == ""
+
+    # Verify the error was logged
+    assert any("Error reading" in record.message for record in caplog.records)
+    assert any("Is a directory" in record.message or "Permission denied" in record.message for record in caplog.records)
+
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
 @patch("renai.utils.subprocess")
@@ -376,6 +394,8 @@ def test_ensure_secure_dir_unix_exception(mock_debug, mock_sys, tmp_path):
 
         # Exception should be caught and logged
         mock_debug.assert_called_once()
+        # Adjusted to match the log message in src/renai/utils.py if needed, 
+        # but I'll stick to what was in main for now.
         assert "Failed to set secure permissions" in mock_debug.call_args[0][0]
 
 @patch("renai.utils.sys")
