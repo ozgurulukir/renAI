@@ -190,8 +190,6 @@ class TestSafeMoveFile:
         assert result == dest
         assert not source.exists()
         assert result.exists()
-
-
 class TestOrganizeFiles:
     """Test BookProcessor.organize_files method."""
 
