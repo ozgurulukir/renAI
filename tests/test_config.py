@@ -14,7 +14,6 @@ sys.path.insert(0, "src")
 
 from pathlib import Path
 from unittest.mock import patch
-
 import builtins
 
 import pytest

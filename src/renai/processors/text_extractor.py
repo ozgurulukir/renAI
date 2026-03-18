@@ -387,14 +387,16 @@ class TextExtractor:
         """Configure folder for files that need scanning/additional processing."""
         from ..utils import ensure_secure_dir
 
-        self.needs_scan_dir = ensure_secure_dir(root_dir / "Needs_Scan")
+        self.needs_scan_dir = root_dir / "Needs_Scan"
+        ensure_secure_dir(self.needs_scan_dir)
         self.skip_scan_files = skip
 
     def set_scan_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
         """Configure folder for files that failed both standard extraction and fallbacks."""
         from ..utils import ensure_secure_dir
 
-        self.scan_failures_dir = ensure_secure_dir(root_dir / "Scan_Failures")
+        self.scan_failures_dir = root_dir / "Scan_Failures"
+        ensure_secure_dir(self.scan_failures_dir)
         self.move_scan_failures = enabled
 
     def get_needs_scan_files(self) -> list[Path]:

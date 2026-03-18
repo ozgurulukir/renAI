@@ -1,9 +1,8 @@
+#!/usr/bin/env python3
+"""Test the improved text trimming functionality"""
 import sys
 
 sys.path.insert(0, "src")
-
-#!/usr/bin/env python3
-"""Test the improved text trimming functionality"""
 
 from renai.utils import proportional_chunk_trim  # noqa: E402
 

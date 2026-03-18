@@ -1,4 +1,13 @@
 import sys
+import json
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+
+from renai.file_ops import safe_move_file
+from renai.processors.book import BookProcessor
+from renai.processors.text_extractor import FallbackMode
 
 sys.path.insert(0, "src")
 
