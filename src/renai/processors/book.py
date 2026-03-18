@@ -196,7 +196,9 @@ class BookProcessor:
 
         # 1. Extract Text (Always Try First)
         # In OCR/SKIP/VISION mode, the TextExtractor handles the internal logic or marks for further fallback.
-        text = self.text_extractor.extract(file_path, fallback=fallback_mode)
+        text = self.text_extractor.extract(
+            file_path, fallback=fallback_mode, file_hash=file_hash
+        )
 
         if text.strip():
             return self.llm_engine.get_book_metadata(text)
@@ -254,7 +256,8 @@ class BookProcessor:
             logging.warning(f"Skipping symlink for evaluation: {file_path.name}")
             return
 
-        text = self.text_extractor.extract(file_path)
+        file_hash = get_file_hash(file_path)
+        text = self.text_extractor.extract(file_path, file_hash=file_hash)
         if not text:
             logging.error(f"FAILED: No text extracted for {file_path.name}")
             return
