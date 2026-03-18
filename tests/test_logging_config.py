@@ -1,12 +1,13 @@
 import sys
-
-sys.path.insert(0, "src")  # noqa: E402
-
 import logging
 import os
 from unittest.mock import patch
+import pytest
 
-from renai.logging_config import get_log_level
+# Ensure src is in the path for local testing
+sys.path.insert(0, "src")  # noqa: E402
+
+from renai.logging_config import get_log_level, is_development
 
 
 def test_get_log_level_default():
@@ -37,3 +38,24 @@ def test_get_log_level_invalid():
     """Test get_log_level returns INFO for invalid strings."""
     with patch.dict(os.environ, {"RENAI_LOG_LEVEL": "INVALID_LEVEL"}, clear=True):
         assert get_log_level() == logging.INFO
+
+
+class TestIsDevelopment:
+    """Test is_development function."""
+
+    @patch("renai.logging_config.sys.stdout.isatty")
+    def test_is_development_true(self, mock_isatty):
+        """Should return True when stdout is a tty."""
+        mock_isatty.return_value = True
+        assert is_development() is True
+
+    @patch("renai.logging_config.sys.stdout.isatty")
+    def test_is_development_false(self, mock_isatty):
+        """Should return False when stdout is not a tty."""
+        mock_isatty.return_value = False
+        assert is_development() is False
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
+
