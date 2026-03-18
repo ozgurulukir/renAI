@@ -7,6 +7,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 import sys
 
+sys.modules['pypdf'] = MagicMock()
+sys.modules['pypdfium2'] = MagicMock()
 from renai.extractors.pdf_extractors import (
     PDFPlumberExtractor,
     PyMuPDFExtractor,
