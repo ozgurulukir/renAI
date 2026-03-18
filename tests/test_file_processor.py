@@ -350,19 +350,22 @@ class TestBookProcessorFolders:
         """Test setting up scan failures folder."""
         processor = BookProcessor(Mock(), Mock())
 
-        processor.set_scan_failures_folder(tmp_path, enabled=True)
-        assert processor.text_extractor.move_scan_failures is True
-        assert processor.text_extractor.scan_failures_dir == tmp_path / "Scan_Failures"
-        assert processor.text_extractor.scan_failures_dir.exists()
+        # Test on posix (mac/linux) where ensure_secure_dir doesn't return None.
+        with patch("renai.utils.sys.platform", "linux"):
+            processor.set_scan_failures_folder(tmp_path, enabled=True)
+            assert processor.text_extractor.move_scan_failures is True
+            assert processor.text_extractor.scan_failures_dir == tmp_path / "Scan_Failures"
+            assert processor.text_extractor.scan_failures_dir.exists()
 
     def test_set_needs_scan_folder(self, tmp_path):
         """Test setting up Needs Scan folder."""
         processor = BookProcessor(Mock(), Mock())
 
-        processor.set_needs_scan_folder(tmp_path, skip=True)
-        assert processor.text_extractor.skip_scan_files is True
-        assert processor.text_extractor.needs_scan_dir == tmp_path / "Needs_Scan"
-        assert processor.text_extractor.needs_scan_dir.exists()
+        with patch("renai.utils.sys.platform", "linux"):
+            processor.set_needs_scan_folder(tmp_path, skip=True)
+            assert processor.text_extractor.skip_scan_files is True
+            assert processor.text_extractor.needs_scan_dir == tmp_path / "Needs_Scan"
+            assert processor.text_extractor.needs_scan_dir.exists()
 
 
 class TestExtractTextFromFile:
