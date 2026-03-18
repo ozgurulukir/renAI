@@ -12,6 +12,7 @@ Usage:
     logger = get_logger(__name__)
     logger.info("processing_file", file="book.pdf", size=1024)
 """
+
 import logging
 import sys
 from pathlib import Path
@@ -28,6 +29,7 @@ def is_development() -> bool:
 def get_log_level() -> int:
     """Get the logging level from settings or environment."""
     import os
+
     level_str = os.getenv("RENAI_LOG_LEVEL", "INFO")
     return getattr(logging, level_str.upper(), logging.INFO)
 
@@ -74,9 +76,7 @@ def configure_logging(
         processors.append(structlog.processors.JSONRenderer())
     else:
         # Colored console output for development
-        processors.append(
-            structlog.dev.ConsoleRenderer(colors=True)
-        )
+        processors.append(structlog.dev.ConsoleRenderer(colors=True))
 
     # Configure structlog
     structlog.configure(

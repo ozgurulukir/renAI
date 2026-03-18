@@ -1,7 +1,7 @@
 """
 Cache management module - handles all caching operations for text and metadata.
 
-This module was extracted from file_processor.py and utils.py as part of the 
+This module was extracted from file_processor.py and utils.py as part of the
 refactoring to improve code organization and testability.
 
 Cache Strategy Overview:
@@ -11,7 +11,7 @@ Cache Strategy Overview:
    - Location: CACHE_DIR/text/
    - Key: {file_hash}[_ocr][_mutool].txt
    - Invalidated when: OCR settings change
-   
+
 2. Metadata Cache (get_metadata_cache_path)
    - Location: CACHE_DIR/metadata/
    - Key: {file_hash}_{provider_model_hash}[_vision].json
@@ -43,7 +43,7 @@ renai "C:/Books" --provider deepinfra --update-metadata
 Module Functions:
 =================
 - get_text_cache_path(): Get path for text cache file
-- get_metadata_cache_path(): Get path for metadata cache file  
+- get_metadata_cache_path(): Get path for metadata cache file
 - read_text_cache(): Read cached text content
 - write_text_cache(): Write text content to cache
 - read_metadata_cache(): Read cached metadata with validation
@@ -58,13 +58,13 @@ Usage:
         read_text_cache,
         write_text_cache,
     )
-    
+
     # Get cache path
     cache_path = get_text_cache_path(file_hash, ocr_enabled=False)
-    
+
     # Read from cache
     cached_text = read_text_cache(cache_path)
-    
+
     # Write to cache
     write_text_cache(cache_path, extracted_text)
 """
@@ -93,7 +93,7 @@ def get_text_cache_path(
     OCR mode changes (e.g., switching from regular to enhanced OCR).
 
     Args:
-        file_hash: MD5 hash of the source file. This uniquely identifies
+        file_hash: SHA256 hash of the source file. This uniquely identifies
                    the file content for cache lookup.
         ocr_enabled: Whether OCR was enabled during extraction. If True,
                     cache key includes "_ocr" suffix.
@@ -109,7 +109,7 @@ def get_text_cache_path(
     Example:
         >>> path = get_text_cache_path("abc123def456")
         >>> # Returns: Path("C:/Users/user/AppData/Local/renAI/Cache/text/abc123def456.txt")
-        >>> 
+        >>>
         >>> path = get_text_cache_path("abc123", ocr_enabled=True)
         >>> # Returns: Path(".../text/abc123_ocr.txt")
 
@@ -144,7 +144,7 @@ def get_metadata_cache_path(
     without losing cached results.
 
     Args:
-        file_hash: MD5 hash of the source file.
+        file_hash: SHA256 hash of the source file.
         provider: LLM provider name (e.g., "deepinfra", "openrouter", "openai").
         model: LLM model name (e.g., "Qwen/Qwen2.5-72B-Instruct").
         cache_dir: Override the default cache directory.
@@ -245,7 +245,7 @@ def read_metadata_cache(
         Cached metadata as dictionary with keys like:
         - title, subtitle, author, year, category
         - _provider, _model (these are removed before return)
-        
+
         Returns None if:
         - Cache file doesn't exist
         - JSON parse error
@@ -358,6 +358,7 @@ def invalidate_cache_for_provider_model(
         >>> count = invalidate_cache_for_provider_model()
         >>> print(f"Cleared {count} cached entries")
     """
+
     if cache_dir is None:
         cache_dir = CACHE_DIR
 

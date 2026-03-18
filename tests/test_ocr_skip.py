@@ -29,7 +29,9 @@ def test_ocr_skip_functionality():
 
         # Mock OCR and LLM engines
         mock_ocr_engine = Mock()
-        mock_ocr_engine.extract_text.return_value = "" # Return string to avoid len() error
+        mock_ocr_engine.extract_text.return_value = (
+            ""  # Return string to avoid len() error
+        )
         mock_llm_engine = Mock()
 
         # Create a test PDF file
@@ -37,7 +39,9 @@ def test_ocr_skip_functionality():
         test_file.write_bytes(b"fake pdf content 1")
 
         # Mock internal extractor
-        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+        with patch(
+            "renai.processors.text_extractor.get_extractor"
+        ) as mock_get_extractor:
             mock_mu_instance = Mock()
             mock_mu_instance.extract_text.return_value = ""  # Insufficient
             mock_mu_instance.name = "pymupdf"
@@ -48,7 +52,9 @@ def test_ocr_skip_functionality():
             processor.set_needs_scan_folder(tmp_path, skip=True)
 
             # Extract text - should trigger OCR skipping via TextExtractor
-            result = processor.text_extractor.extract(test_file, fallback=FallbackMode.MOVE_TO_FOLDER)
+            result = processor.text_extractor.extract(
+                test_file, fallback=FallbackMode.MOVE_TO_FOLDER
+            )
 
         # Check that file was moved to Needs_Scan folder
         needs_ocr_dir = tmp_path / "Needs_Scan"
@@ -60,6 +66,7 @@ def test_ocr_skip_functionality():
 
         # Result should be empty since file was moved
         assert result == ""
+
 
 def test_ocr_skip_disabled():
     """Test that OCR is attempted when skip_ocr_files is disabled"""
@@ -76,7 +83,9 @@ def test_ocr_skip_disabled():
         test_file.write_bytes(b"fake pdf content 2")
 
         # Mock internal extractor
-        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+        with patch(
+            "renai.processors.text_extractor.get_extractor"
+        ) as mock_get_extractor:
             mock_mu_instance = Mock()
             mock_mu_instance.extract_text.return_value = ""  # Insufficient
             mock_mu_instance.name = "pymupdf"
@@ -90,7 +99,9 @@ def test_ocr_skip_disabled():
             mock_ocr_engine.extract_text.return_value = "OCR extracted text"
 
             # Extract text - should attempt OCR
-            result = processor.text_extractor.extract(test_file, fallback=FallbackMode.OCR)
+            result = processor.text_extractor.extract(
+                test_file, fallback=FallbackMode.OCR
+            )
 
         # Check that file was NOT moved to Needs_Scan folder
         needs_ocr_dir = tmp_path / "Needs_Scan"
@@ -100,6 +111,7 @@ def test_ocr_skip_disabled():
 
         # Result should contain OCR text
         assert result == "OCR extracted text"
+
 
 def test_sufficient_text_no_ocr_needed():
     """Test that files with sufficient text don't trigger OCR skipping"""
@@ -116,7 +128,9 @@ def test_sufficient_text_no_ocr_needed():
         test_file.write_bytes(b"fake pdf content 3")
 
         # Mock internal extractor
-        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+        with patch(
+            "renai.processors.text_extractor.get_extractor"
+        ) as mock_get_extractor:
             mock_mu_instance = Mock()
             mock_mu_instance.extract_text.return_value = "Sufficient text " * 20
             mock_mu_instance.name = "pymupdf"
@@ -127,7 +141,9 @@ def test_sufficient_text_no_ocr_needed():
             processor.set_needs_scan_folder(tmp_path, skip=True)
 
             # Extract text - should NOT trigger OCR
-            result = processor.text_extractor.extract(test_file, fallback=FallbackMode.OCR)
+            result = processor.text_extractor.extract(
+                test_file, fallback=FallbackMode.OCR
+            )
 
         # Check that file was NOT moved to Needs_Scan folder
         needs_ocr_dir = tmp_path / "Needs_Scan"
@@ -137,6 +153,7 @@ def test_sufficient_text_no_ocr_needed():
 
         # Result should contain extracted text
         assert "Sufficient text" in result
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
