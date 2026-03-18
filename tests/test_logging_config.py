@@ -2,10 +2,14 @@
 
 import logging
 import sys
+import os
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 import structlog
+
+# Ensure src is in the path for local testing
+sys.path.insert(0, "src")
 
 from renai.logging_config import configure_logging, get_log_level, is_development
 
@@ -21,18 +25,18 @@ def test_is_development():
 
 def test_get_log_level():
     """Test getting log level from environment."""
-    with patch.dict("os.environ", {"RENAI_LOG_LEVEL": "DEBUG"}):
+    with patch.dict(os.environ, {"RENAI_LOG_LEVEL": "DEBUG"}):
         assert get_log_level() == logging.DEBUG
 
-    with patch.dict("os.environ", {"RENAI_LOG_LEVEL": "WARNING"}):
+    with patch.dict(os.environ, {"RENAI_LOG_LEVEL": "WARNING"}):
         assert get_log_level() == logging.WARNING
 
     # Default fallback
-    with patch.dict("os.environ", {}, clear=True):
+    with patch.dict(os.environ, {}, clear=True):
         assert get_log_level() == logging.INFO
 
     # Invalid fallback
-    with patch.dict("os.environ", {"RENAI_LOG_LEVEL": "INVALID"}):
+    with patch.dict(os.environ, {"RENAI_LOG_LEVEL": "INVALID"}):
         assert get_log_level() == logging.INFO
 
 
@@ -141,3 +145,4 @@ def test_configure_logging_production_mode():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
