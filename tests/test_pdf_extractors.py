@@ -140,7 +140,7 @@ class TestPyPDFExtractor:
 
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
 
-        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
+        with patch.dict('sys.modules', {'pypdf': MagicMock(PdfReader=mock_pdf_reader_class)}):
             with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
@@ -160,7 +160,7 @@ class TestPyPDFExtractor:
         """Test handling of exceptions during extraction."""
         mock_pdf_reader_class = MagicMock(side_effect=Exception("Open failed"))
 
-        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
+        with patch.dict('sys.modules', {'pypdf': MagicMock(PdfReader=mock_pdf_reader_class)}):
             with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 with caplog.at_level(logging.ERROR):
@@ -181,7 +181,7 @@ class TestPyPDFExtractor:
 
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
 
-        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
+        with patch.dict('sys.modules', {'pypdf': MagicMock(PdfReader=mock_pdf_reader_class)}):
             with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
@@ -269,11 +269,7 @@ class TestPyPdfium2Extractor:
 
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
 
-<<<<<<< HEAD
         with patch.dict('sys.modules', {'pypdf': MagicMock(PdfReader=mock_pdf_reader_class)}):
-=======
-        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
->>>>>>> origin/main
             with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
