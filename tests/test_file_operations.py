@@ -1,17 +1,7 @@
 import sys
 
+# Ensure src is in the path for local testing
 sys.path.insert(0, "src")
-
-
-"""
-Unit tests for renai.file_ops.operations module.
-
-Tests cover:
-- ensure_unique_path function
-- safe_copy_file function
-- safe_move_file function
-- File operation safety and error handling
-"""
 
 from unittest.mock import patch  # noqa: E402
 
