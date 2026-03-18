@@ -2,12 +2,13 @@ import sys
 
 sys.path.insert(0, "src")
 
-import pytest
 import logging
-import numpy as np
-import cv2
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
+
+import cv2
+import numpy as np
+import pytest
 from PIL import Image, ImageDraw
 from renai.engines.ocr import OCREngine, OPENCV_AVAILABLE
 
@@ -425,6 +426,5 @@ class TestExtractText:
                     mock_extract.return_value = (Image.new("L", (100, 100)), None)
                     with patch.object(engine, "_perform_ocr", return_value="A" * 5000):
                         engine.extract_text(Path("test.pdf"))
-
                         # Should stop after getting enough text
                         assert mock_extract.call_count <= 3

@@ -13,9 +13,9 @@ RE_CONSECUTIVE_DOTS = re.compile(r"\.\.+")
 
 
 def get_file_hash(file_path: Path) -> str:
-    """Calculate the MD5 hash of a file to uniquely identify its content."""
+    """Calculate the SHA256 hash of a file to uniquely identify its content."""
     with open(file_path, "rb") as f:
-        return hashlib.file_digest(f, "md5").hexdigest()
+        return hashlib.file_digest(f, "sha256").hexdigest()
 
 
 def generate_cache_key(*args: str) -> str:
@@ -28,7 +28,7 @@ def generate_cache_key(*args: str) -> str:
         A hex string hash of the combined components
     """
     combined = "|".join(str(arg) for arg in args if arg)
-    return hashlib.md5(combined.encode("utf-8")).hexdigest()
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 
 def get_provider_model_key(provider: str, model: str) -> str:
@@ -54,7 +54,7 @@ def get_metadata_cache_path(
     incorrectly reused with a different provider/model.
 
     Args:
-        file_hash: MD5 hash of the file content
+        file_hash: SHA256 hash of the file content
         provider: LLM provider name
         model: Model name
         cache_dir: Directory for cache files
@@ -75,7 +75,7 @@ def get_text_cache_path(
     """Get the cache path for extracted text.
 
     Args:
-        file_hash: MD5 hash of the file content
+        file_hash: SHA256 hash of the file content
         ocr_enhanced: Whether enhanced OCR was used
         use_mutool: Whether mutool was used for extraction
         cache_dir: Directory for cache files
