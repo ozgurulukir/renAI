@@ -109,6 +109,10 @@ def sanitize_filename(filename: str, max_length: int = 150) -> str:
     # Trim leading/trailing spaces and dots
     sanitized = sanitized.strip(" .")
 
+    # Prevent empty or traversal paths
+    if not sanitized or sanitized in {".", ".."}:
+        sanitized = "unnamed"
+
     # Limit length (preserving extension if possible)
     if len(sanitized) > max_length:
         sanitized = sanitized[:max_length].strip()
@@ -166,6 +170,8 @@ def ensure_secure_dir(path: Path) -> Path:
         )
     except Exception as e:
         logging.debug(f"Failed to set secure permissions on {path}: {e}")
+
+    return path
 
 
 def read_text_limited(file_path: Path, max_chars: int) -> str:
