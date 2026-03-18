@@ -98,6 +98,52 @@ class TestLoadCategories:
                     mock_warn.assert_called_once()
                     assert "Could not load user categories" in mock_warn.call_args[0][0]
 
+    def test_user_read_error(self, tmp_path):
+        """Should fallback and log warning if user config cannot be read."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "categories.toml"
+        user_file.touch()
+
+        package_file = tmp_path / "categories.default.toml"
+        package_file.write_text(
+            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
+        )
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+                original_open = open
+
+                def mock_open(file, *args, **kwargs):
+                    if str(file) == str(user_file):
+                        raise OSError("Permission denied")
+                    return original_open(file, *args, **kwargs)
+
+                with patch("builtins.open", side_effect=mock_open):
+                    with patch("logging.warning") as mock_warn:
+                        result = load_categories_from_file()
+
+                        assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                        mock_warn.assert_called_once()
+                        assert "Could not load user categories" in mock_warn.call_args[0][0]
+
+    def test_user_missing_keys(self, tmp_path):
+        """Should fallback if user config lacks matching categories."""
+        from renai.settings import load_categories_from_file
+
+        user_file = tmp_path / "categories.toml"
+        user_file.write_text('[en]\nwrong_key = ["UserEn"]\n')
+
+        package_file = tmp_path / "categories.default.toml"
+        package_file.write_text(
+            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
+        )
+
+        with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
+            with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+                result = load_categories_from_file()
+                assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+
     def test_package_invalid(self, tmp_path):
         """Should return empty and log warning if both configs missing/invalid."""
         from renai.settings import load_categories_from_file
@@ -116,17 +162,25 @@ class TestLoadCategories:
                     mock_warn.assert_called_once()
                     assert "Could not load package categories" in mock_warn.call_args[0][0]
 
-    def test_package_error_path(self, tmp_path):
-        """Should return empty dict and log warning if package config read fails."""
+    def test_package_read_error(self, tmp_path):
+        """Should return empty and log warning if package config cannot be read."""
         from renai.settings import load_categories_from_file
 
         user_file = tmp_path / "nonexistent.toml"
+
         package_file = tmp_path / "categories.default.toml"
-        package_file.write_text('[en]\ncategories = ["PkgEn"]\n')
+        package_file.touch()
 
         with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
             with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
-                with patch("tomllib.load", side_effect=Exception("Read error")):
+                original_open = open
+
+                def mock_open(file, *args, **kwargs):
+                    if str(file) == str(package_file):
+                        raise OSError("Permission denied")
+                    return original_open(file, *args, **kwargs)
+
+                with patch("builtins.open", side_effect=mock_open):
                     with patch("logging.warning") as mock_warn:
                         result = load_categories_from_file()
 
