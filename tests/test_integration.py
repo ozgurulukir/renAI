@@ -152,7 +152,6 @@ def test_cache_functionality():
 
         assert success1
         assert success2
-
         # LLM should be called once for each file processing
         # (cache is based on file hash, but since file is renamed, it's treated as different)
         print(f"LLM call count: {mock_llm_engine.get_book_metadata.call_count}")

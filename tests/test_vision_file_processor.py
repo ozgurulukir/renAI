@@ -1,7 +1,3 @@
-import sys
-
-sys.path.insert(0, "src")
-
 """Tests for vision functionality in file_processor.py.
 
 Tests cover:
@@ -12,10 +8,13 @@ Tests cover:
 """
 
 import json  # noqa: E402
+import sys
 from pathlib import Path  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
+
+sys.path.insert(0, "src")
 
 from renai.processors.book import BookProcessor  # noqa: E402
 from renai.processors.text_extractor import FallbackMode  # noqa: E402

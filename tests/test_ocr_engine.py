@@ -425,6 +425,5 @@ class TestExtractText:
                     mock_extract.return_value = (Image.new("L", (100, 100)), None)
                     with patch.object(engine, "_perform_ocr", return_value="A" * 5000):
                         engine.extract_text(Path("test.pdf"))
-
                         # Should stop after getting enough text
                         assert mock_extract.call_count <= 3

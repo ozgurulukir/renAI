@@ -20,32 +20,32 @@ from renai.utils import (
 
 
 def test_get_file_hash_small(tmp_path):
-    """Test MD5 calculation for a small file."""
+    """Test SHA256 calculation for a small file."""
     test_file = tmp_path / "test.txt"
     content = b"test content"
     test_file.write_bytes(content)
 
-    expected_hash = hashlib.md5(content).hexdigest()
+    expected_hash = hashlib.sha256(content).hexdigest()
     assert get_file_hash(test_file) == expected_hash
 
 
 def test_get_file_hash_empty(tmp_path):
-    """Test MD5 calculation for an empty file."""
+    """Test SHA256 calculation for an empty file."""
     test_file = tmp_path / "empty.txt"
     test_file.write_bytes(b"")
 
-    expected_hash = hashlib.md5(b"").hexdigest()
+    expected_hash = hashlib.sha256(b"").hexdigest()
     assert get_file_hash(test_file) == expected_hash
 
 
 def test_get_file_hash_large(tmp_path):
-    """Test MD5 calculation for a file larger than the chunk size (4096)."""
+    """Test SHA256 calculation for a file larger than the chunk size (4096)."""
     test_file = tmp_path / "large.txt"
     # Create a 10KB file
     content = b"a" * 10240
     test_file.write_bytes(content)
 
-    expected_hash = hashlib.md5(content).hexdigest()
+    expected_hash = hashlib.sha256(content).hexdigest()
     assert get_file_hash(test_file) == expected_hash
 
 
@@ -70,7 +70,7 @@ def test_get_file_hash_mocked():
 
         # Mock file_digest to return an object with a hexdigest method
         mock_digest_obj = MagicMock()
-        expected_hash = hashlib.md5(mock_file_content).hexdigest()
+        expected_hash = hashlib.sha256(mock_file_content).hexdigest()
         mock_digest_obj.hexdigest.return_value = expected_hash
         mock_file_digest.return_value = mock_digest_obj
 
@@ -79,20 +79,20 @@ def test_get_file_hash_mocked():
         assert result_hash == expected_hash
 
         # Verify file_digest was called correctly
-        mock_file_digest.assert_called_once_with(mock_file, "md5")
+        mock_file_digest.assert_called_once_with(mock_file, "sha256")
         mock_digest_obj.hexdigest.assert_called_once()
 
 
 def test_generate_cache_key():
     """Test cache key generation from multiple strings."""
     # Basic combination
-    assert generate_cache_key("a", "b", "c") == hashlib.md5(b"a|b|c").hexdigest()
+    assert generate_cache_key("a", "b", "c") == hashlib.sha256(b"a|b|c").hexdigest()
 
     # Handle empty/None values
-    assert generate_cache_key("a", "", None, "b") == hashlib.md5(b"a|b").hexdigest()
+    assert generate_cache_key("a", "", None, "b") == hashlib.sha256(b"a|b").hexdigest()
 
     # Single value
-    assert generate_cache_key("only") == hashlib.md5(b"only").hexdigest()
+    assert generate_cache_key("only") == hashlib.sha256(b"only").hexdigest()
 
 
 def test_get_provider_model_key():
