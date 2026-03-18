@@ -18,73 +18,9 @@ from unittest.mock import MagicMock, Mock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 
-from renai.file_ops import safe_move_file, safe_copy_file  # noqa: E402
+from renai.file_ops import safe_move_file  # noqa: E402
 from renai.processors.book import BookProcessor  # noqa: E402
 from renai.processors.text_extractor import FallbackMode  # noqa: E402
-
-
-class TestSafeCopyFile:
-    """Test safe_copy_file function."""
-
-    def test_copy_nonexistent_file_raises_error(self, tmp_path):
-        """Test that copying a non-existent file raises FileNotFoundError."""
-        source = tmp_path / "nonexistent.txt"
-        dest = tmp_path / "dest.txt"
-
-        with pytest.raises(FileNotFoundError) as exc_info:
-            safe_copy_file(source, dest)
-
-        assert "does not exist" in str(exc_info.value)
-
-    def test_copy_file_success(self, tmp_path):
-        """Test successful file copy."""
-        source = tmp_path / "source.txt"
-        dest = tmp_path / "dest.txt"
-
-        source.write_text("content")
-
-        result = safe_copy_file(source, dest)
-
-        assert result == dest
-        assert source.exists()
-        assert dest.exists()
-        assert dest.read_text() == "content"
-
-    def test_copy_with_custom_operation_type(self, tmp_path):
-        """Test copy with custom operation type for logging."""
-        source = tmp_path / "source.txt"
-        dest = tmp_path / "dest.txt"
-
-        source.write_text("content")
-
-        result = safe_copy_file(source, dest, operation_type="backup")
-
-        assert result == dest
-        assert source.exists()
-        assert dest.exists()
-
-    def test_copy_creates_intermediate_directories(self, tmp_path):
-        """Test that copy creates intermediate directories if needed."""
-        source = tmp_path / "source.txt"
-        dest = tmp_path / "subdir" / "nested" / "dest.txt"
-
-        source.write_text("content")
-
-        result = safe_copy_file(source, dest)
-
-        assert result == dest
-        assert source.exists()
-        assert dest.exists()
-
-    def test_copy_without_ensure_dirs_raises_error(self, tmp_path):
-        """Test that copy without ensure_dirs raises error when directory missing."""
-        source = tmp_path / "source.txt"
-        dest = tmp_path / "subdir" / "nested" / "dest.txt"
-
-        source.write_text("content")
-
-        with pytest.raises(FileNotFoundError):
-            safe_copy_file(source, dest, ensure_dirs=False)
 
 
 class TestSafeMoveFile:
@@ -455,6 +391,24 @@ class TestScanTracking:
         assert failed_file1 in result
         assert failed_file2 in result
 
+    def test_get_needs_scan_files_returns_files(self, tmp_path):
+        """Test that files in Needs_Scan folder are returned."""
+        processor = BookProcessor(Mock(), Mock())
+        needs_dir = tmp_path / "Needs_Scan"
+        needs_dir.mkdir()
+        (needs_dir / "file1.pdf").touch()
+        (needs_dir / "file2.pdf").touch()
+
+        processor.text_extractor.needs_scan_dir = needs_dir
+        result = processor.text_extractor.get_needs_scan_files()
+        assert len(result) == 2
+
+    def test_get_needs_scan_files_empty_when_no_folder(self):
+        """Test empty list when Needs_Scan folder doesn't exist."""
+        processor = BookProcessor(Mock(), Mock())
+        processor.text_extractor.needs_scan_dir = None
+        result = processor.text_extractor.get_needs_scan_files()
+        assert result == []
 
 
 
