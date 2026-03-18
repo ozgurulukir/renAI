@@ -150,25 +150,49 @@ def test_configure_logging_production_mode():
         )
 
 
-def test_get_processing_logger():
-    """Test get_processing_logger binds the correct name and context."""
-    with patch("renai.logging_config.get_logger") as mock_get_logger:
-        get_processing_logger("test_file.pdf")
-        mock_get_logger.assert_called_once_with("renai.processor", file="test_file.pdf")
+@patch("renai.logging_config.get_logger")
+def test_get_ocr_logger(mock_get_logger):
+    """Test that get_ocr_logger calls get_logger with correct arguments."""
+    file_path = "test.pdf"
+
+    # Call the function
+    result = get_ocr_logger(file_path)
+
+    # Verify the mock was called correctly
+    mock_get_logger.assert_called_once_with("renai.ocr", file=file_path)
+
+    # Verify it returns what get_logger returns
+    assert result == mock_get_logger.return_value
 
 
-def test_get_api_logger():
-    """Test get_api_logger binds the correct name and context."""
-    with patch("renai.logging_config.get_logger") as mock_get_logger:
-        get_api_logger("openai")
-        mock_get_logger.assert_called_once_with("renai.api", provider="openai")
+@patch("renai.logging_config.get_logger")
+def test_get_processing_logger(mock_get_logger):
+    """Test that get_processing_logger calls get_logger with correct arguments."""
+    file_path = "test.pdf"
+
+    # Call the function
+    result = get_processing_logger(file_path)
+
+    # Verify the mock was called correctly
+    mock_get_logger.assert_called_once_with("renai.processor", file=file_path)
+
+    # Verify it returns what get_logger returns
+    assert result == mock_get_logger.return_value
 
 
-def test_get_ocr_logger():
-    """Test get_ocr_logger binds the correct name and context."""
-    with patch("renai.logging_config.get_logger") as mock_get_logger:
-        get_ocr_logger("test_image.png")
-        mock_get_logger.assert_called_once_with("renai.ocr", file="test_image.png")
+@patch("renai.logging_config.get_logger")
+def test_get_api_logger(mock_get_logger):
+    """Test that get_api_logger calls get_logger with correct arguments."""
+    provider = "openai"
+
+    # Call the function
+    result = get_api_logger(provider)
+
+    # Verify the mock was called correctly
+    mock_get_logger.assert_called_once_with("renai.api", provider=provider)
+
+    # Verify it returns what get_logger returns
+    assert result == mock_get_logger.return_value
 
 
 if __name__ == "__main__":
