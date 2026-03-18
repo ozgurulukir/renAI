@@ -6,7 +6,6 @@ Tests cover:
 - process_single_image method
 - is_image_file method
 """
-
 import json  # noqa: E402
 import sys
 from pathlib import Path  # noqa: E402
