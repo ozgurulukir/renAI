@@ -1,4 +1,5 @@
 import sys
+
 sys.path.insert(0, "src")
 
 import hashlib
@@ -14,7 +15,9 @@ from renai.utils import (
     sanitize_filename,
     proportional_chunk_trim,
     read_text_limited,
+    ensure_secure_dir,
 )
+
 
 def test_get_file_hash_small(tmp_path):
     """Test SHA256 calculation for a small file."""
@@ -25,6 +28,7 @@ def test_get_file_hash_small(tmp_path):
     expected_hash = hashlib.sha256(content).hexdigest()
     assert get_file_hash(test_file) == expected_hash
 
+
 def test_get_file_hash_empty(tmp_path):
     """Test SHA256 calculation for an empty file."""
     test_file = tmp_path / "empty.txt"
@@ -32,6 +36,7 @@ def test_get_file_hash_empty(tmp_path):
 
     expected_hash = hashlib.sha256(b"").hexdigest()
     assert get_file_hash(test_file) == expected_hash
+
 
 def test_get_file_hash_large(tmp_path):
     """Test SHA256 calculation for a file larger than the chunk size (4096)."""
@@ -43,10 +48,12 @@ def test_get_file_hash_large(tmp_path):
     expected_hash = hashlib.sha256(content).hexdigest()
     assert get_file_hash(test_file) == expected_hash
 
+
 def test_get_file_hash_nonexistent():
     """Test that get_file_hash raises FileNotFoundError for non-existent files."""
     with pytest.raises(FileNotFoundError):
         get_file_hash(Path("non_existent_file.txt"))
+
 
 def test_get_file_hash_mocked():
     """Test get_file_hash with mocking to verify file_digest usage."""
@@ -54,8 +61,10 @@ def test_get_file_hash_mocked():
 
     mock_path = Path("mocked_file.txt")
 
-    with patch("builtins.open") as mock_open, \
-         patch("hashlib.file_digest") as mock_file_digest:
+    with (
+        patch("builtins.open") as mock_open,
+        patch("hashlib.file_digest") as mock_file_digest,
+    ):
         mock_file = MagicMock()
         mock_open.return_value.__enter__.return_value = mock_file
 
@@ -73,6 +82,7 @@ def test_get_file_hash_mocked():
         mock_file_digest.assert_called_once_with(mock_file, "sha256")
         mock_digest_obj.hexdigest.assert_called_once()
 
+
 def test_generate_cache_key():
     """Test cache key generation from multiple strings."""
     # Basic combination
@@ -84,12 +94,14 @@ def test_generate_cache_key():
     # Single value
     assert generate_cache_key("only") == hashlib.sha256(b"only").hexdigest()
 
+
 def test_get_provider_model_key():
     """Test provider-model key generation."""
     provider = "openai"
     model = "gpt-4o"
     expected = generate_cache_key(provider, model)
     assert get_provider_model_key(provider, model) == expected
+
 
 def test_get_metadata_cache_path(tmp_path):
     """Test metadata cache path construction."""
@@ -102,6 +114,7 @@ def test_get_metadata_cache_path(tmp_path):
 
     path = get_metadata_cache_path(file_hash, provider, model, tmp_path)
     assert path == tmp_path / expected_name
+
 
 def test_get_text_cache_path(tmp_path):
     """Test text cache path construction with various options."""
@@ -122,6 +135,7 @@ def test_get_text_cache_path(tmp_path):
     # Basic + mutool
     path = get_text_cache_path(file_hash, False, True, tmp_path)
     assert path == tmp_path / f"{file_hash}_basic_mutool.txt"
+
 
 @pytest.mark.parametrize(
     "filename, expected",
@@ -180,6 +194,7 @@ def test_sanitize_filename_length():
     # 'a' * 150 + ' ' -> 'a' * 150 (strip) -> len is 150, not > 150
     assert sanitize_filename("a" * 50 + " .", max_length=50) == "a" * 50
 
+
 def test_proportional_chunk_trim_basic():
     """Test basic functionality of proportional_chunk_trim."""
     # Empty text
@@ -197,6 +212,7 @@ def test_proportional_chunk_trim_basic():
     # result: "12" + "56" = "1256"
     assert proportional_chunk_trim("12345678", 4, 2) == "1256"
 
+
 def test_proportional_chunk_trim_edge_cases():
     """Test edge cases for proportional_chunk_trim."""
     # num_chunks = 0 (defaults to 1 chunk)
@@ -213,6 +229,7 @@ def test_proportional_chunk_trim_edge_cases():
     # Actually if len(text) > 0 and num_chunks > len(text), chunk_size = 0
     # The code handles chunk_size == 0 by returning text[:target_length]
     assert proportional_chunk_trim("abc", 2, 10) == "ab"
+
 
 def test_proportional_chunk_trim_rounding_behavior():
     """
@@ -296,3 +313,123 @@ def test_read_text_limited_nonexistent(tmp_path):
 
     result = read_text_limited(test_file, max_chars=100)
     assert result == ""
+
+@patch("renai.utils.sys")
+def test_ensure_secure_dir_unix(mock_sys, tmp_path):
+    """Test directory creation with secure permissions on Unix."""
+    mock_sys.platform = "linux"
+    target_dir = tmp_path / "secure_unix_dir"
+
+    with patch.object(Path, "chmod") as mock_chmod:
+        ensure_secure_dir(target_dir)
+
+        # Directory should be created
+        assert target_dir.exists()
+
+        # chmod should be called with 0o700
+        mock_chmod.assert_called_once_with(0o700)
+
+@patch("renai.utils.sys")
+@patch("renai.utils.logging.debug")
+def test_ensure_secure_dir_unix_exception(mock_debug, mock_sys, tmp_path):
+    """Test exception handling during chmod on Unix."""
+    mock_sys.platform = "linux"
+    target_dir = tmp_path / "secure_unix_dir_fail"
+
+    with patch.object(Path, "chmod", side_effect=Exception("chmod failed")):
+        ensure_secure_dir(target_dir)
+
+        # Exception should be caught and logged
+        mock_debug.assert_called_once()
+        assert "Failed to set secure permissions" in mock_debug.call_args[0][0]
+
+@patch("renai.utils.sys")
+@patch("renai.utils.os")
+@patch("renai.utils.subprocess")
+def test_ensure_secure_dir_windows_valid_user(mock_subprocess, mock_os, mock_sys, tmp_path):
+    """Test icacls permission setting on Windows with a valid username."""
+    mock_sys.platform = "win32"
+    mock_os.environ.get.return_value = "TestUser"
+
+    # Mock startupinfo attributes
+    mock_startupinfo_instance = MagicMock()
+    mock_startupinfo_instance.dwFlags = 0
+    mock_subprocess.STARTUPINFO.return_value = mock_startupinfo_instance
+    mock_subprocess.STARTF_USESHOWWINDOW = 0
+    mock_subprocess.run = MagicMock()
+    mock_subprocess.CREATE_NO_WINDOW = 0x08000000
+
+    target_dir = tmp_path / "secure_win_dir"
+    ensure_secure_dir(target_dir)
+
+    # Directory should be created
+    assert target_dir.exists()
+
+    # icacls should be called
+    mock_subprocess.run.assert_called_once()
+    args = mock_subprocess.run.call_args[0][0]
+    assert args[0] == "icacls"
+    assert args[1] == str(target_dir)
+    assert "/inheritance:r" in args
+    assert "/grant:r" in args
+    assert "TestUser:(OI)(CI)F" in args
+
+@patch("renai.utils.sys")
+@patch("renai.utils.os")
+@patch("renai.utils.logging.warning")
+@patch("renai.utils.subprocess")
+def test_ensure_secure_dir_windows_invalid_user(mock_subprocess, mock_warning, mock_os, mock_sys, tmp_path):
+    """Test Windows permission setting skips and logs warning on invalid username."""
+    mock_sys.platform = "win32"
+    # Invalid username with command injection attempt
+    mock_os.environ.get.return_value = "User&rmdir /s /q C:\\"
+    mock_subprocess.run = MagicMock()
+
+    target_dir = tmp_path / "secure_win_dir_invalid"
+    ensure_secure_dir(target_dir)
+
+    # Warning should be logged
+    mock_warning.assert_called_once()
+    assert "Invalid username" in mock_warning.call_args[0][0]
+
+    # icacls should NOT be called
+    mock_subprocess.run.assert_not_called()
+
+@patch("renai.utils.sys")
+@patch("renai.utils.os")
+@patch("renai.utils.subprocess")
+def test_ensure_secure_dir_windows_no_user(mock_subprocess, mock_os, mock_sys, tmp_path):
+    """Test Windows permission setting skips if USERNAME is not set."""
+    mock_sys.platform = "win32"
+    mock_os.environ.get.return_value = None
+    mock_subprocess.run = MagicMock()
+
+    target_dir = tmp_path / "secure_win_dir_no_user"
+    ensure_secure_dir(target_dir)
+
+    # icacls should NOT be called
+    mock_subprocess.run.assert_not_called()
+
+@patch("renai.utils.sys")
+@patch("renai.utils.os")
+@patch("renai.utils.subprocess")
+@patch("renai.utils.logging.debug")
+def test_ensure_secure_dir_windows_exception(mock_debug, mock_subprocess, mock_os, mock_sys, tmp_path):
+    """Test exception handling during icacls on Windows."""
+    mock_sys.platform = "win32"
+    mock_os.environ.get.return_value = "TestUser"
+
+    # Mock startupinfo
+    mock_startupinfo_instance = MagicMock()
+    mock_startupinfo_instance.dwFlags = 0
+    mock_subprocess.STARTUPINFO.return_value = mock_startupinfo_instance
+    mock_subprocess.STARTF_USESHOWWINDOW = 0
+    mock_subprocess.run = MagicMock(side_effect=Exception("icacls failed"))
+    mock_subprocess.CREATE_NO_WINDOW = 0x08000000
+
+    target_dir = tmp_path / "secure_win_dir_fail"
+    ensure_secure_dir(target_dir)
+
+    # Exception should be caught and logged as debug
+    mock_debug.assert_called_once()
+    assert "Failed to set secure permissions" in mock_debug.call_args[0][0]

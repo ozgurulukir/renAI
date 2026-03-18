@@ -1,9 +1,10 @@
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
-import logging
 
 sys.path.insert(0, "src")
+
+import logging
+from pathlib import Path
+from unittest.mock import MagicMock, patch, mock_open
+import sys
 
 from renai.extractors.pdf_extractors import (
     PDFPlumberExtractor,
@@ -12,6 +13,7 @@ from renai.extractors.pdf_extractors import (
     PyPdfium2Extractor,
     get_extractor,
 )
+
 
 class TestPyMuPDFExtractor:
     def test_pymupdf_extract_text_success(self):
@@ -37,7 +39,10 @@ class TestPyMuPDFExtractor:
                 result = extractor.extract_text(Path("test.pdf"))
 
             assert result is None
-            assert "PyMuPDF extraction failed for test.pdf: PyMuPDF failed" in caplog.text
+            assert (
+                "PyMuPDF extraction failed for test.pdf: PyMuPDF failed" in caplog.text
+            )
+
 
 class TestPDFPlumberExtractor:
     def test_pdfplumber_extract_text_success(self):
@@ -50,7 +55,7 @@ class TestPDFPlumberExtractor:
         mock_pdfplumber = MagicMock()
         mock_pdfplumber.open.return_value.__enter__.return_value = mock_pdf
 
-        with patch.dict('sys.modules', {'pdfplumber': mock_pdfplumber}):
+        with patch.dict("sys.modules", {"pdfplumber": mock_pdfplumber}):
             extractor = PDFPlumberExtractor()
             result = extractor.extract_text(Path("test.pdf"))
             assert result == "Extracted text"
@@ -59,7 +64,7 @@ class TestPDFPlumberExtractor:
     def test_pdfplumber_extract_text_import_error(self, caplog):
         """Test handling of ImportError when pdfplumber is not installed."""
         # In Python 3, setting a module to None in sys.modules causes an ImportError when trying to import it.
-        with patch.dict('sys.modules', {'pdfplumber': None}):
+        with patch.dict("sys.modules", {"pdfplumber": None}):
             extractor = PDFPlumberExtractor()
             with caplog.at_level(logging.ERROR):
                 result = extractor.extract_text(Path("test.pdf"))
@@ -72,13 +77,16 @@ class TestPDFPlumberExtractor:
         mock_pdfplumber = MagicMock()
         mock_pdfplumber.open.side_effect = Exception("Open failed")
 
-        with patch.dict('sys.modules', {'pdfplumber': mock_pdfplumber}):
+        with patch.dict("sys.modules", {"pdfplumber": mock_pdfplumber}):
             extractor = PDFPlumberExtractor()
             with caplog.at_level(logging.ERROR):
                 result = extractor.extract_text(Path("test.pdf"))
 
             assert result is None
-            assert "pdfplumber extraction failed for test.pdf: Open failed" in caplog.text
+            assert (
+                "pdfplumber extraction failed for test.pdf: Open failed" in caplog.text
+            )
+
 
 class TestGetExtractor:
     def test_get_extractor_pymupdf(self):
@@ -125,53 +133,55 @@ class TestPyPDFExtractor:
         """Test successful text extraction with pypdf."""
         mock_page = MagicMock()
         mock_page.extract_text.return_value = "PyPDF text"
-        
+
         mock_reader = MagicMock()
         mock_reader.pages = [mock_page]
-        
+
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
-        
-        with patch('pypdf.PdfReader', mock_pdf_reader_class):
-            with patch('builtins.open', mock_open(read_data=b"fake pdf content")):
+
+        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
+            with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
                 assert result == "PyPDF text"
 
     def test_pypdf_extract_text_import_error(self, caplog):
         """Test handling of ImportError when pypdf is not installed."""
-        with patch.dict('sys.modules', {'pypdf': None}):
+        with patch.dict("sys.modules", {"pypdf": None}):
             extractor = PyPDFExtractor()
             with caplog.at_level(logging.ERROR):
                 result = extractor.extract_text(Path("test.pdf"))
-            
+
             assert result is None
             assert "pypdf is not installed" in caplog.text
 
     def test_pypdf_extract_text_exception(self, caplog):
         """Test handling of exceptions during extraction."""
         mock_pdf_reader_class = MagicMock(side_effect=Exception("Open failed"))
-        
-        with patch('pypdf.PdfReader', mock_pdf_reader_class):
-            with patch('builtins.open', mock_open(read_data=b"fake pdf content")):
+
+        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
+            with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 with caplog.at_level(logging.ERROR):
                     result = extractor.extract_text(Path("test.pdf"))
-                
+
                 assert result is None
-                assert "pypdf extraction failed for test.pdf: Open failed" in caplog.text
+                assert (
+                    "pypdf extraction failed for test.pdf: Open failed" in caplog.text
+                )
 
     def test_pypdf_extract_text_page_returns_none(self):
         """Test handling when page.extract_text returns None."""
         mock_page = MagicMock()
         mock_page.extract_text.return_value = None
-        
+
         mock_reader = MagicMock()
         mock_reader.pages = [mock_page]
-        
+
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
-        
-        with patch('pypdf.PdfReader', mock_pdf_reader_class):
-            with patch('builtins.open', mock_open(read_data=b"fake pdf content")):
+
+        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
+            with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
                 assert result == ""
@@ -182,29 +192,32 @@ class TestPyPdfium2Extractor:
         """Test successful text extraction with pypdfium2."""
         mock_textpage = MagicMock()
         mock_textpage.get_text_bounded.return_value = "PyPdfium2 text"
-        
+
         mock_page = MagicMock()
         mock_page.get_textpage.return_value = mock_textpage
-        
+
         mock_document = MagicMock()
         mock_document.__len__.return_value = 1
         mock_document.__getitem__.return_value = mock_page
-        
+
         mock_pdfium = MagicMock()
         mock_pdfium.PdfDocument.return_value.__enter__.return_value = mock_document
-        
-        with patch.dict('sys.modules', {'pypdfium2': mock_pdfium, 'pypdfium2 as pdfium': mock_pdfium}):
+
+        with patch.dict(
+            "sys.modules",
+            {"pypdfium2": mock_pdfium, "pypdfium2 as pdfium": mock_pdfium},
+        ):
             extractor = PyPdfium2Extractor()
             result = extractor.extract_text(Path("test.pdf"))
             assert result == "PyPdfium2 text"
 
     def test_pypdfium2_extract_text_import_error(self, caplog):
         """Test handling of ImportError when pypdfium2 is not installed."""
-        with patch.dict('sys.modules', {'pypdfium2': None}):
+        with patch.dict("sys.modules", {"pypdfium2": None}):
             extractor = PyPdfium2Extractor()
             with caplog.at_level(logging.ERROR):
                 result = extractor.extract_text(Path("test.pdf"))
-            
+
             assert result is None
             assert "pypdfium2 is not installed" in caplog.text
 
@@ -212,31 +225,33 @@ class TestPyPdfium2Extractor:
         """Test handling of exceptions during extraction."""
         mock_pdfium = MagicMock()
         mock_pdfium.PdfDocument.side_effect = Exception("Open failed")
-        
-        with patch.dict('sys.modules', {'pypdfium2': mock_pdfium}):
+
+        with patch.dict("sys.modules", {"pypdfium2": mock_pdfium}):
             extractor = PyPdfium2Extractor()
             with caplog.at_level(logging.ERROR):
                 result = extractor.extract_text(Path("test.pdf"))
-            
+
             assert result is None
-            assert "pypdfium2 extraction failed for test.pdf: Open failed" in caplog.text
+            assert (
+                "pypdfium2 extraction failed for test.pdf: Open failed" in caplog.text
+            )
 
     def test_pypdfium2_extract_text_page_returns_none(self):
         """Test handling when get_text_bounded returns None."""
         mock_textpage = MagicMock()
         mock_textpage.get_text_bounded.return_value = None
-        
+
         mock_page = MagicMock()
         mock_page.get_textpage.return_value = mock_textpage
-        
+
         mock_document = MagicMock()
         mock_document.__len__.return_value = 1
         mock_document.__getitem__.return_value = mock_page
-        
+
         mock_pdfium = MagicMock()
         mock_pdfium.PdfDocument.return_value.__enter__.return_value = mock_document
-        
-        with patch.dict('sys.modules', {'pypdfium2': mock_pdfium}):
+
+        with patch.dict("sys.modules", {"pypdfium2": mock_pdfium}):
             extractor = PyPdfium2Extractor()
             result = extractor.extract_text(Path("test.pdf"))
             assert result == ""
@@ -247,14 +262,14 @@ class TestPyPdfium2Extractor:
         mock_page1.extract_text.return_value = "Page 1 "
         mock_page2 = MagicMock()
         mock_page2.extract_text.return_value = "Page 2"
-        
+
         mock_reader = MagicMock()
         mock_reader.pages = [mock_page1, mock_page2]
-        
+
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
-        
-        with patch('pypdf.PdfReader', mock_pdf_reader_class):
-            with patch('builtins.open', mock_open(read_data=b"fake pdf content")):
+
+        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
+            with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
                 assert result == "Page 1 Page 2"

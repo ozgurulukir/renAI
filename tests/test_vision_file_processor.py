@@ -7,17 +7,17 @@ Tests cover:
 - is_image_file method
 """
 
-import json
+import json  # noqa: E402
 import sys
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from pathlib import Path  # noqa: E402
+from unittest.mock import MagicMock, patch  # noqa: E402
 
-import pytest
-
-from renai.processors.book import BookProcessor
-from renai.processors.text_extractor import FallbackMode
+import pytest  # noqa: E402
 
 sys.path.insert(0, "src")
+
+from renai.processors.book import BookProcessor  # noqa: E402
+from renai.processors.text_extractor import FallbackMode  # noqa: E402
 
 
 @pytest.fixture
@@ -115,7 +115,9 @@ class TestProcessSingleBookVision:
 
         # With new behavior, non-PDF files go through normal processing
         # (which will fail for txt without meaningful content, but that's expected)
-        book_processor.process_file(test_file, mode="rename", fallback_mode=FallbackMode.VISION)
+        book_processor.process_file(
+            test_file, mode="rename", fallback_mode=FallbackMode.VISION
+        )
 
     def test_skips_symlinks(self, book_processor, tmp_path):
         """Test that symlinks are skipped."""
@@ -128,7 +130,9 @@ class TestProcessSingleBookVision:
             symlink_file = tmp_path / "link.pdf"
             symlink_file.symlink_to(real_file)
 
-            result = book_processor.process_file(symlink_file, mode="rename", fallback_mode=FallbackMode.VISION)
+            result = book_processor.process_file(
+                symlink_file, mode="rename", fallback_mode=FallbackMode.VISION
+            )
             assert result[0] is False  # Should fail due to PDF parsing
         except (OSError, NotImplementedError):
             pytest.skip("Symlink creation not supported")
@@ -161,7 +165,9 @@ class TestProcessSingleBookVision:
             mock_path.write_text(json.dumps(cache_data))
             mock_cache_path.return_value = mock_path
 
-            result = book_processor.process_file(pdf_file, mode="rename", fallback_mode=FallbackMode.VISION)
+            result = book_processor.process_file(
+                pdf_file, mode="rename", fallback_mode=FallbackMode.VISION
+            )
 
             # Should succeed using cached data
             assert result[0] is True

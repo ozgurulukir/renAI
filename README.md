@@ -68,7 +68,7 @@ Description -- Category -- (Language).ext
 
 ### Prerequisites
 
-1. **Python 3.10+**
+1. **Python 3.12+**
 2. **Tesseract OCR** - [Download for Windows](https://github.com/UB-Mannheim/tesseract/wiki/Tesseract-at-UB-Mannheim) or install via package manager:
    ```bash
    # Ubuntu/Debian

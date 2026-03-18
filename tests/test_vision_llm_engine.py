@@ -251,7 +251,8 @@ class TestVisionLLMCall:
     def test_openrouter_headers(self, mock_allowed_categories):
         """Test that OpenRouter includes required headers."""
         with patch(
-            "renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories
+            "renai.engines.llm.get_allowed_categories",
+            return_value=mock_allowed_categories,
         ):
             engine = LLMEngine(
                 provider="openrouter",

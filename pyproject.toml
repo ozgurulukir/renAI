@@ -7,7 +7,7 @@ name = "renai"
 version = "1.2.0"
 description = "AI-Powered Book Renamer and Organizer"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Ozgur Ulukir", email = "ozgur.ulukir@gmail.com"},
@@ -58,6 +58,8 @@ dev = [
     "mypy",
     "pypdf",
     "tomli",
+    "pdfplumber",
+    "pypdfium2",
 ]
 
 [project.scripts]
