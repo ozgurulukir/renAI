@@ -139,10 +139,7 @@ class TestPyPDFExtractor:
         mock_reader.pages = [mock_page]
 
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
-        mock_pypdf = MagicMock()
-        mock_pypdf.PdfReader = mock_pdf_reader_class
-
-        with patch.dict("sys.modules", {"pypdf": mock_pypdf}):
+        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
             with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
@@ -161,10 +158,7 @@ class TestPyPDFExtractor:
     def test_pypdf_extract_text_exception(self, caplog):
         """Test handling of exceptions during extraction."""
         mock_pdf_reader_class = MagicMock(side_effect=Exception("Open failed"))
-        mock_pypdf = MagicMock()
-        mock_pypdf.PdfReader = mock_pdf_reader_class
-
-        with patch.dict("sys.modules", {"pypdf": mock_pypdf}):
+        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
             with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 with caplog.at_level(logging.ERROR):
@@ -184,10 +178,7 @@ class TestPyPDFExtractor:
         mock_reader.pages = [mock_page]
 
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
-        mock_pypdf = MagicMock()
-        mock_pypdf.PdfReader = mock_pdf_reader_class
-
-        with patch.dict("sys.modules", {"pypdf": mock_pypdf}):
+        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
             with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
@@ -274,10 +265,7 @@ class TestPyPdfium2Extractor:
         mock_reader.pages = [mock_page1, mock_page2]
 
         mock_pdf_reader_class = MagicMock(return_value=mock_reader)
-        mock_pypdf = MagicMock()
-        mock_pypdf.PdfReader = mock_pdf_reader_class
-
-        with patch.dict("sys.modules", {"pypdf": mock_pypdf}):
+        with patch.dict("sys.modules", {"pypdf": MagicMock(PdfReader=mock_pdf_reader_class)}):
             with patch("builtins.open", mock_open(read_data=b"fake pdf content")):
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
