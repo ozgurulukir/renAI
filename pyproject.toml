@@ -55,8 +55,8 @@ dev = [
     "pytest-cov",
     "ruff",
     "mypy",
-    "pdfplumber",
     "pypdf",
+    "pdfplumber",
     "pypdfium2",
 ]
 
