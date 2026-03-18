@@ -1,12 +1,11 @@
 import sys
 from unittest.mock import patch
-
 import pytest
 
 # Ensure src is in the path for local testing
 sys.path.insert(0, "src")
 
-from renai.logging_config import get_logger  # noqa: E402
+from renai.logging_config import get_logger, is_development  # noqa: E402
 
 
 class TestGetLogger:
@@ -42,5 +41,22 @@ class TestGetLogger:
         assert result == mock_bound_logger
 
 
+class TestIsDevelopment:
+    """Test is_development function."""
+
+    @patch("renai.logging_config.sys.stdout.isatty")
+    def test_is_development_true(self, mock_isatty):
+        """Should return True when stdout is a tty."""
+        mock_isatty.return_value = True
+        assert is_development() is True
+
+    @patch("renai.logging_config.sys.stdout.isatty")
+    def test_is_development_false(self, mock_isatty):
+        """Should return False when stdout is not a tty."""
+        mock_isatty.return_value = False
+        assert is_development() is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
