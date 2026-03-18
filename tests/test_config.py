@@ -347,5 +347,37 @@ class TestLoadEvalModels:
             assert "Could not load package eval models" in mock_warn.call_args[0][0]
 
 
+class TestGetEffectiveModel:
+    """Test get_effective_model function."""
+
+    def test_explicit_model_override(self):
+        """Should return explicit model if set in app_settings."""
+        from renai.settings import get_effective_model
+
+        with patch("renai.settings.app_settings.model", "explicit-model"):
+            result = get_effective_model("deepinfra")
+            assert result == "explicit-model"
+
+    def test_provider_specific_model(self):
+        """Should return provider specific model if app_settings.model is not set."""
+        from renai.settings import get_effective_model
+
+        with patch("renai.settings.app_settings.model", None):
+            with patch("renai.settings.provider_settings.deepinfra_model", "deepinfra-specific"):
+                result = get_effective_model("deepinfra")
+                assert result == "deepinfra-specific"
+
+    def test_fallback_to_default_model(self):
+        """Should fallback to default model if no explicit or provider models are set."""
+        from renai.settings import get_effective_model
+
+        with patch("renai.settings.app_settings.model", None):
+            with patch("renai.settings.provider_settings.deepinfra_model", None):
+                with patch("renai.settings.get_default_model", return_value="default-model") as mock_get_default:
+                    result = get_effective_model("deepinfra")
+                    assert result == "default-model"
+                    mock_get_default.assert_called_once_with("deepinfra")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
