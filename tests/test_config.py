@@ -255,6 +255,30 @@ class TestTesseractPath:
                 result = get_tesseract_path()
                 assert Path(result).as_posix() == "/usr/bin/tesseract"
 
+    def test_platform_win32(self):
+        """Should default to Windows path if not in env or PATH."""
+        with patch.dict("os.environ", {}, clear=True):
+            with patch("shutil.which", return_value=None):
+                with patch("sys.platform", "win32"):
+                    result = get_tesseract_path()
+                    assert Path(result) == Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+
+    def test_platform_darwin(self):
+        """Should default to macOS path if not in env or PATH."""
+        with patch.dict("os.environ", {}, clear=True):
+            with patch("shutil.which", return_value=None):
+                with patch("sys.platform", "darwin"):
+                    result = get_tesseract_path()
+                    assert Path(result).as_posix() == "/usr/local/bin/tesseract"
+
+    def test_platform_linux(self):
+        """Should default to Linux path if not in env or PATH."""
+        with patch.dict("os.environ", {}, clear=True):
+            with patch("shutil.which", return_value=None):
+                with patch("sys.platform", "linux"):
+                    result = get_tesseract_path()
+                    assert Path(result).as_posix() == "/usr/bin/tesseract"
+
 
 class TestDisplayWarnings:
     """Test display_warnings function."""

@@ -168,10 +168,10 @@ class TestPyPDFExtractor:
                 with caplog.at_level(logging.ERROR):
                     result = extractor.extract_text(Path("test.pdf"))
 
-                assert result is None
-                assert (
-                    "pypdf extraction failed for test.pdf: Open failed" in caplog.text
-                )
+                    assert result is None
+                    assert (
+                        "pypdf extraction failed for test.pdf: Open failed" in caplog.text
+                    )
 
     def test_pypdf_extract_text_page_returns_none(self):
         """Test handling when page.extract_text returns None."""
