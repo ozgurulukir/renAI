@@ -229,12 +229,15 @@ class TestDirectories:
 
     def test_directories_created(self):
         """Required directories should be created on init."""
+        from renai.settings import CACHE_DIR, DEBUG_DIR
+
         with patch("renai.utils.ensure_secure_dir") as mock_ensure:
             initialize_directories()
-            # Should call ensure for CACHE_DIR and DEBUG_DIR
-            call_args = [str(c) for c in mock_ensure.call_args_list]
-            assert any("cache" in c.lower() for c in call_args)
-            assert any("debug" in c.lower() for c in call_args)
+
+            # Should call ensure for exactly CACHE_DIR and DEBUG_DIR
+            assert mock_ensure.call_count == 2
+            mock_ensure.assert_any_call(CACHE_DIR)
+            mock_ensure.assert_any_call(DEBUG_DIR)
 
 
 class TestEnvironmentIntegration:
