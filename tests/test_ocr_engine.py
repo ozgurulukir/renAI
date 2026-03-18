@@ -184,9 +184,15 @@ class TestOCREngineInit:
     def test_init_with_mutool_found(self):
         """Test OCREngine initialization when mutool is found."""
         with patch("shutil.which", return_value="/usr/bin/mutool"):
-            engine = OCREngine(use_mutool=True, mutool_path="mutool")
-            assert engine.use_mutool is True
-            assert engine.mutool_path == "/usr/bin/mutool"
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    stdout="mutool version 1.23.0\n",
+                    stderr="",
+                    returncode=0
+                )
+                engine = OCREngine(use_mutool=True, mutool_path="mutool")
+                assert engine.use_mutool is True
+                assert engine.mutool_path == "/usr/bin/mutool"
 
 
 class TestGetPagesToExtract:
