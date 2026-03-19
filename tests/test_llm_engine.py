@@ -1,7 +1,3 @@
-import sys
-
-sys.path.insert(0, "src")
-
 import pytest
 from unittest.mock import MagicMock, patch
 from openai import OpenAIError

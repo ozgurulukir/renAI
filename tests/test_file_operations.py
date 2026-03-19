@@ -1,14 +1,8 @@
-import sys
+from unittest.mock import patch
+import pytest
 
-# Ensure src is in the path for local testing
-sys.path.insert(0, "src")
-
-from unittest.mock import patch  # noqa: E402
-
-import pytest  # noqa: E402
-
-from renai.file_ops import safe_copy_file, safe_move_file  # noqa: E402
-from renai.file_ops.operations import ensure_unique_path  # noqa: E402
+from renai.file_ops import safe_copy_file, safe_move_file
+from renai.file_ops.operations import ensure_unique_path
 
 
 class TestEnsureUniquePath:

@@ -1,7 +1,3 @@
-import sys
-
-sys.path.insert(0, "src")
-
 import pytest
 from pathlib import Path
 from renai.extractors.base import BaseExtractor

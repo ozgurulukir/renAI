@@ -1,8 +1,3 @@
-import sys
-
-sys.path.insert(0, "src")
-
-
 """
 Unit tests for renai.processors.book module.
 
@@ -12,15 +7,15 @@ Tests cover:
 - File operation safety and error handling
 """
 
-import json  # noqa: E402
-from pathlib import Path  # noqa: E402
-from unittest.mock import MagicMock, Mock, patch  # noqa: E402
+import json
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
 
-import pytest  # noqa: E402
+import pytest
 
-from renai.file_ops import safe_move_file, safe_copy_file  # noqa: E402
-from renai.processors.book import BookProcessor  # noqa: E402
-from renai.processors.text_extractor import FallbackMode  # noqa: E402
+from renai.file_ops import safe_move_file, safe_copy_file
+from renai.processors.book import BookProcessor
+from renai.processors.text_extractor import FallbackMode
 
 
 class TestSafeCopyFile:

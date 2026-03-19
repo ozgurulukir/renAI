@@ -1,7 +1,3 @@
-import sys
-
-sys.path.insert(0, "src")
-
 import logging
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch

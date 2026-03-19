@@ -1,10 +1,6 @@
 from unittest.mock import MagicMock, Mock, patch
 
-import sys
-
 import pytest
-
-sys.path.insert(0, "src")
 
 from renai.processors.visual import VisualProcessor
 

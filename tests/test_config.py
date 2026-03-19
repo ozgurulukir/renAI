@@ -9,9 +9,6 @@ Tests the TOML-based configuration system:
 """
 
 import sys
-
-sys.path.insert(0, "src")
-
 from pathlib import Path
 from unittest.mock import patch
 import builtins

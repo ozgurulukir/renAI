@@ -4,22 +4,9 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 import tempfile
 
-sys.path.insert(0, "src")
 
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
-
-# Pre-mock to ensure tests don't fail during collection in restricted envs
-if 'platformdirs' not in sys.modules:
-    sys.modules['platformdirs'] = Mock()
-if 'pydantic' not in sys.modules:
-    sys.modules['pydantic'] = Mock()
-    sys.modules['pydantic'].BaseModel = Mock
-    sys.modules['pydantic'].Field = Mock
-if 'pydantic_settings' not in sys.modules:
-    sys.modules['pydantic_settings'] = Mock()
-    sys.modules['pydantic_settings'].BaseSettings = Mock
-    sys.modules['pydantic_settings'].SettingsConfigDict = Mock
 
 def test_ocr_skip_functionality():
     """Test that files requiring scan are moved to Needs_Scan folder when skip_ocr_files is enabled"""

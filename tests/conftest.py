@@ -1,39 +1,67 @@
-
 import sys
 from unittest.mock import MagicMock
 
+def mock_if_missing(module_name):
+    """
+    Conditionally mock a module if it's not available in the environment.
+    This allows tests to run without all dependencies in minimal environments (like CI),
+    while ensuring that local environments with full dependencies use the real packages.
+    """
+    try:
+        if module_name in sys.modules:
+            return
+        __import__(module_name)
+    except ImportError:
+        # Create a mock that behaves like a package if it has submodules
+        mock = MagicMock()
+        # Some code checks for __path__ to determine if it's a package
+        mock.__path__ = []
+        sys.modules[module_name] = mock
+        return mock
+    return None
+
 # Global mocks for environment-restricted dependencies
-mock_platformdirs = MagicMock()
-mock_platformdirs.user_cache_dir.return_value = "/tmp/cache"
-mock_platformdirs.user_config_dir.return_value = "/tmp/config"
-mock_platformdirs.user_data_dir.return_value = "/tmp/data"
-sys.modules["platformdirs"] = mock_platformdirs
+mock_if_missing("platformdirs")
+if "platformdirs" in sys.modules and isinstance(sys.modules["platformdirs"], MagicMock):
+    sys.modules["platformdirs"].user_cache_dir.return_value = "/tmp/cache"
+    sys.modules["platformdirs"].user_config_dir.return_value = "/tmp/config"
+    sys.modules["platformdirs"].user_data_dir.return_value = "/tmp/data"
 
-mock_pydantic = MagicMock()
-mock_pydantic.BaseModel = MagicMock
-mock_pydantic.Field = MagicMock
-sys.modules["pydantic"] = mock_pydantic
+mock_if_missing("pydantic")
+if "pydantic" in sys.modules and isinstance(sys.modules["pydantic"], MagicMock):
+    sys.modules["pydantic"].BaseModel = MagicMock
+    sys.modules["pydantic"].Field = MagicMock
 
-mock_pydantic_settings = MagicMock()
-mock_pydantic_settings.BaseSettings = MagicMock
-mock_pydantic_settings.SettingsConfigDict = MagicMock
-sys.modules["pydantic_settings"] = mock_pydantic_settings
+mock_if_missing("pydantic_settings")
+if "pydantic_settings" in sys.modules and isinstance(sys.modules["pydantic_settings"], MagicMock):
+    sys.modules["pydantic_settings"].BaseSettings = MagicMock
+    sys.modules["pydantic_settings"].SettingsConfigDict = MagicMock
 
-sys.modules["markitdown"] = MagicMock()
-sys.modules["openai"] = MagicMock()
-sys.modules["openai.types"] = MagicMock()
-sys.modules["openai.types.chat"] = MagicMock()
-sys.modules["numpy"] = MagicMock()
-sys.modules["cv2"] = MagicMock()
-sys.modules["fitz"] = MagicMock()
-sys.modules["rich"] = MagicMock()
-sys.modules["rich.progress"] = MagicMock()
-sys.modules["rich.console"] = MagicMock()
-sys.modules["rich.logging"] = MagicMock()
-sys.modules["typer"] = MagicMock()
-sys.modules["pymupdf"] = MagicMock()
-sys.modules["structlog"] = MagicMock()
-sys.modules["pytesseract"] = MagicMock()
-sys.modules["PIL"] = MagicMock()
-sys.modules["PIL.Image"] = MagicMock()
-sys.modules["PIL.ExifTags"] = MagicMock()
+# List of other dependencies to conditionally mock
+dependencies = [
+    "markitdown",
+    "openai",
+    "openai.types",
+    "openai.types.chat",
+    "numpy",
+    "cv2",
+    "fitz",
+    "rich",
+    "rich.progress",
+    "rich.console",
+    "rich.table",
+    "rich.logging",
+    "typer",
+    "pymupdf",
+    "pypdf",
+    "pypdfium2",
+    "pdfplumber",
+    "structlog",
+    "pytesseract",
+    "PIL",
+    "PIL.Image",
+    "PIL.ExifTags",
+]
+
+for dep in dependencies:
+    mock_if_missing(dep)

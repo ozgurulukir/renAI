@@ -1,9 +1,9 @@
-import sys
+"""Tests for FallbackMode detection and handling in text_extractor.py."""
+import pytest
 from unittest.mock import MagicMock
 
-sys.path.insert(0, "src")
-
 from renai.processors.text_extractor import TextExtractor
+from renai.processors.text_extractor import FallbackMode
 
 class TestTextExtractor:
     def test_get_needs_scan_files_returns_files(self, tmp_path):

@@ -1,16 +1,11 @@
-import sys
-
-# Ensure src is in the path for local testing
-sys.path.insert(0, "src")
-
 """Tests for structured logging configuration."""
 
-import logging  # noqa: E402
-import os  # noqa: E402
-from unittest.mock import MagicMock, call, patch  # noqa: E402
-
-import pytest  # noqa: E402
-import structlog  # noqa: E402
+import sys
+import logging
+import os
+from unittest.mock import MagicMock, call, patch
+import pytest
+import structlog
 
 from renai.logging_config import (
     configure_logging,

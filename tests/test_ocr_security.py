@@ -1,8 +1,4 @@
-import sys
 from pathlib import Path
-
-sys.path.insert(0, "src")
-
 import pytest
 import subprocess
 from unittest.mock import MagicMock, patch

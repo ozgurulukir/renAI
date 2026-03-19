@@ -2,10 +2,6 @@
 Tests for CLI progress bar functionality.
 """
 
-import sys
-
-sys.path.insert(0, "src")
-
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 

@@ -1,8 +1,3 @@
-import sys
-
-# Ensure src is in the path for local testing
-sys.path.insert(0, "src")
-
 """Tests for vision functionality in file_processor.py.
 
 Tests cover:
@@ -12,14 +7,14 @@ Tests cover:
 - is_image_file method
 """
 
-import json  # noqa: E402
-from pathlib import Path  # noqa: E402
-from unittest.mock import MagicMock, patch  # noqa: E402
+import json
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-import pytest  # noqa: E402
+import pytest
 
-from renai.processors.book import BookProcessor  # noqa: E402
-from renai.processors.text_extractor import FallbackMode  # noqa: E402
+from renai.processors.book import BookProcessor
+from renai.processors.text_extractor import FallbackMode
 
 
 @pytest.fixture
