@@ -549,7 +549,7 @@ renAI/
 ├── tests/                       # Unit tests
 ├── scripts/                     # Benchmark & Utility scripts
 ├── pyproject.toml               # Package metadata & dependencies
-└── requirements.txt             # Dependency list
+└── tests/                       # Unit tests (moved up for tree clarity)
 ```
 
 ---

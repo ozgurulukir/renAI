@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Removed
+- **Redundant Dependency File**: Removed `requirements.txt` in favor of `pyproject.toml` as the single source of truth for dependencies.
+
+### Changed
+- **Documentation Synchronization**: Synchronized Turkish documentation (`okubeni.md`) with English version (`README.md`), including architecture tree updates and migration of category configuration examples from `.txt` to `.toml`.
 
 ## [1.2.0] - 2026-03-14
 
