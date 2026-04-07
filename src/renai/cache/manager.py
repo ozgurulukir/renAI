@@ -340,23 +340,27 @@ def write_metadata_cache(
 
 
 def invalidate_cache_for_provider_model(
+    provider: str,
+    model: str,
     cache_dir: Optional[Path] = None,
 ) -> int:
     """
-    Clear metadata cache when switching providers/models.
+    Clear metadata cache for a specific provider and model.
 
-    This can be used when you want to force regeneration of all
-    metadata by clearing the metadata cache entirely.
+    This is used to force regeneration of metadata for a particular
+    LLM configuration while preserving cache for others.
 
     Args:
+        provider: LLM provider name.
+        model: LLM model name.
         cache_dir: Override the default cache directory.
 
     Returns:
         Number of cache files removed. 0 if no cache exists or error.
 
     Example:
-        >>> count = invalidate_cache_for_provider_model()
-        >>> print(f"Cleared {count} cached entries")
+        >>> count = invalidate_cache_for_provider_model("deepinfra", "llama-3-70b")
+        >>> print(f"Cleared {count} cached entries for llama-3-70b")
     """
     if cache_dir is None:
         cache_dir = CACHE_DIR
@@ -365,13 +369,26 @@ def invalidate_cache_for_provider_model(
     if not metadata_dir.exists():
         return 0
 
+    provider_model_key = get_provider_model_key(provider, model)
     count = 0
     try:
+        # Match both regular and vision-mode cache files for this provider/model
+        # Pattern: {file_hash}_{provider_model_key}[_vision].json
+        # We check the part after the first underscore (which separates file hash from provider-model key)
         for cache_file in metadata_dir.glob("*.json"):
-            cache_file.unlink()
-            count += 1
+            name = cache_file.name
+            # Split once at the first underscore to separate hash from key
+            parts = name.split('_', 1)
+            if len(parts) < 2:
+                continue
+
+            rest = parts[1]
+            if rest == f"{provider_model_key}.json" or \
+               rest == f"{provider_model_key}_vision.json":
+                cache_file.unlink()
+                count += 1
     except Exception as e:
-        logging.warning(f"Failed to clear metadata cache: {e}")
+        logging.warning(f"Failed to clear metadata cache for {provider}/{model}: {e}")
 
     return count
 
