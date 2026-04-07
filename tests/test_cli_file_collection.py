@@ -1,9 +1,7 @@
 
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock
 from renai.cli import collect_all_files
-from renai.settings import IMAGE_EXTENSIONS
 
 @pytest.fixture
 def mock_processor():
