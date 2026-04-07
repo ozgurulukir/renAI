@@ -18,6 +18,15 @@ def mock_if_missing(module_name):
         mock.__path__ = []
         # Ensure the mock has __spec__ to avoid pytest issues
         mock.__spec__ = None
+        if module_name == "typer.testing":
+            mock.CliRunner = MagicMock
+        if module_name == "typer":
+            class Exit(Exception):
+                pass
+            mock.Exit = Exit
+            mock.Option = MagicMock()
+            mock.Argument = MagicMock()
+            mock.Typer = MagicMock
         sys.modules[module_name] = mock
         return mock
     return None
@@ -54,6 +63,7 @@ dependencies = [
     "rich.table",
     "rich.logging",
     "typer",
+    "typer.testing",
     "pymupdf",
     "pypdf",
     "pypdfium2",
