@@ -20,12 +20,8 @@ from ..settings import (
 )
 from ..utils import ensure_secure_dir, sanitize_filename
 
-# Try to detect OpenCV at module level for test collection support
-try:
-    import cv2
-    OPENCV_AVAILABLE = True
-except ImportError:
-    OPENCV_AVAILABLE = False
+# OpenCV is imported locally in _deskew() to handle optional skew correction
+OPENCV_AVAILABLE = None  # Will be determined on first use
 
 # Configure Tesseract
 if TESSERACT_PATH.exists():
@@ -155,6 +151,20 @@ class OCREngine:
 
     def _deskew(self, image: Image.Image) -> Image.Image:
         """Estimate skew angle and rotate image to straighten it."""
+        global OPENCV_AVAILABLE
+
+        # Lazy import OpenCV on first use
+        if OPENCV_AVAILABLE is None:
+            try:
+                import cv2
+
+                OPENCV_AVAILABLE = True
+            except ImportError:
+                OPENCV_AVAILABLE = False
+                logging.warning(
+                    "OpenCV not installed. Skew correction will be disabled. Install with: pip install opencv-python"
+                )
+
         if not OPENCV_AVAILABLE:
             return image
 

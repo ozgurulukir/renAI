@@ -8,6 +8,8 @@ original main.py has been migrated here.
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Tuple
+
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -119,7 +121,7 @@ def setup_engines(
     mutool_path: str,
     extractor: str,
     text_length: int,
-) -> tuple[OCREngine, LLMEngine, BookProcessor]:
+) -> Tuple[OCREngine, LLMEngine, BookProcessor]:
     """Initialize OCR, LLM, and book processor engines."""
     # Initialize OCR engine
     ocr_engine = OCREngine(
@@ -167,25 +169,36 @@ def setup_engines(
     return ocr_engine, llm_engine, processor
 
 
-def collect_all_files(
+def collect_files(
     root_dir: Path, processor: BookProcessor, recursive: bool
-) -> tuple[list[Path], list[Path]]:
-    """Collect supported documents and image files in a single pass."""
-    doc_paths = []
-    image_paths = []
+) -> list[Path]:
+    """Collect supported files from directory."""
+    file_paths = []
     iterator = root_dir.rglob("*") if recursive else root_dir.iterdir()
-
     for entry in iterator:
-        if not entry.is_file() or entry.is_symlink():
-            continue
+        if (
+            entry.is_file()
+            and not entry.is_symlink()
+            and entry.suffix.lower() in processor.supported_extensions
+        ):
+            file_paths.append(entry)
+    return file_paths
 
-        suffix = entry.suffix.lower()
-        if suffix in processor.supported_extensions:
-            doc_paths.append(entry)
-        elif suffix in IMAGE_EXTENSIONS:
-            image_paths.append(entry)
 
-    return doc_paths, image_paths
+def collect_image_files(
+    root_dir: Path, processor: BookProcessor, recursive: bool
+) -> list[Path]:
+    """Collect image files for --rename-images mode."""
+    file_paths = []
+    iterator = root_dir.rglob("*") if recursive else root_dir.iterdir()
+    for entry in iterator:
+        if (
+            entry.is_file()
+            and not entry.is_symlink()
+            and entry.suffix.lower() in IMAGE_EXTENSIONS
+        ):
+            file_paths.append(entry)
+    return file_paths
 
 
 def run_benchmark(processor: BookProcessor, file_paths: list[Path]) -> None:
@@ -478,17 +491,19 @@ def process(
     display_warnings(mode, recursive)
 
     # Collect files
-    doc_paths, image_paths = collect_all_files(root_dir, processor, recursive)
-
     if (fallback_mode == FallbackMode.VISION) and rename_images:
-        file_paths = doc_paths + image_paths
+        pdf_files = collect_files(root_dir, processor, recursive)
+        image_files = collect_image_files(root_dir, processor, recursive)
+        file_paths = pdf_files + image_files
         console.print(
-            f"[cyan]Found {len(doc_paths)} documents and {len(image_paths)} images[/cyan]\n"
+            f"[cyan]Found {len(pdf_files)} PDFs and {len(image_files)} images[/cyan]\n"
         )
     elif rename_images:
-        file_paths = doc_paths + image_paths
+        pdf_files = collect_files(root_dir, processor, recursive)
+        image_files = collect_image_files(root_dir, processor, recursive)
+        file_paths = pdf_files + image_files
     else:
-        file_paths = doc_paths
+        file_paths = collect_files(root_dir, processor, recursive)
 
     if not file_paths:
         console.print("[yellow]No supported files found.[/yellow]")

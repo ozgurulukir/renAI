@@ -95,7 +95,7 @@ source .venv/bin/activate  # Linux/Mac
 # Bağımlılıkları yükle ('renai' komutunu oluşturur)
 pip install -e .
 
-# İsteğe bağlı: Ekstra PDF çıkarıcılarla yükle (pdfplumber, pypdf, pypdfium2)
+# İsteğe bağlı: Ekstra PDF çıkarıcılarla yükle
 pip install -e ".[pdf-extra]"
 ```
 
@@ -479,28 +479,63 @@ renAI artık `platformdirs` kütüphanesi aracılığıyla modern ve işletim si
 
 - **Önbellek Verileri:** İşletim sisteminin önbellek dizininde yönetilir.
 - **Log ve Hata Ayıklama (Debug) Verileri:** İşletim sisteminin kullanıcı veri dizininde yönetilir.
-- **Yapılandırma (`categories.toml` gibi):** İşletim sisteminin yapılandırma dizininde yönetilir.
+- **Yapılandırma (`categories.txt` gibi):** İşletim sisteminin yapılandırma dizininde yönetilir.
 
 ### Özel Kategoriler
 
-Kendi işletim sisteminizin `renAI` için ayrılmış yapılandırma dizininde (örneğin Linux'ta `~/.config/renAI/categories.toml`, Windows'ta `%APPDATA%\renAI\categories.toml`) bir `categories.toml` dosyası oluşturun:
+Kendi işletim sisteminizin `renAI` için ayrılmış yapılandırma dizininde (örneğin Linux'ta `~/.config/renAI/categories.txt`, Windows'ta `%APPDATA%\renAI\categories.txt`) bir `categories.txt` dosyası oluşturun:
 
-```toml
-[en]
-categories = [
-    "Article", "Fiction", "Non-Fiction", "Textbook", "Report",
-    "Gov", "Presentation", "Manual", "Thesis", "Research",
-    "Other", "Dictionary", "Magazine"
-]
+```txt
+# İngilizce Kategoriler
+LANG: en
+Article
+Fiction
+Non-Fiction
+Textbook
+Report
+Gov
+Presentation
+Manual
+Thesis
+Research
+Other
+Dictionary
 
-[tr]
-categories = [
-    "Makale", "Kurgu", "Kurgu Dışı", "Ders Kitabı", "Rapor",
-    "Devlet", "Sunum", "Kılavuz", "Tez", "Araştırma",
-    "Diğer", "Sözlük", "Dergi"
-]
-```
+# Türkçe Kategoriler
+LANG: tr
+Makale
+Kurgu
+Kurgu Dışı
+Ders Kitabı
+Rapor
+Devlet
+Sunum
+Kılavuz
+Tez
+Araştırma
+Diğer
+Sözlük
 
+# Görüntü Kategoriler (--rename-images için)
+LANG: en
+Photo
+Screenshot
+Design
+Art
+Diagram
+Chart
+Document
+Other
+
+LANG: tr
+Fotoğraf
+Ekran Görüntüsü
+Tasarım
+Sanat
+Diyagram
+Grafik
+Belge
+Diğer
 
 ### Komut Seçenekleri
 
@@ -538,7 +573,7 @@ renAI/
 ├── tests/                       # Birim testleri
 ├── scripts/                     # Benchmark ve yardımcı scriptler
 ├── pyproject.toml               # Paket meta verileri
-└── tests/                       # Birim testleri (tree temizliği için taşındı)
+└── requirements.txt             # Bağımlılıklar
 ```
 
 ---

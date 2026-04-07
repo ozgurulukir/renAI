@@ -74,6 +74,3 @@ dist/
 build/
 developer/
 nul
-.letta/.lettaignore
-AGENTS.md
-QWEN.md
