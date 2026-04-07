@@ -82,6 +82,7 @@ from ..utils import (
 
 def get_text_cache_path(
     file_hash: str,
+    *,
     ocr_enabled: bool = False,
     use_mutool: bool = False,
     cache_dir: Optional[Path] = None,
@@ -133,6 +134,7 @@ def get_metadata_cache_path(
     file_hash: str,
     provider: str,
     model: str,
+    *,
     cache_dir: Optional[Path] = None,
     use_vision: bool = False,
 ) -> Path:

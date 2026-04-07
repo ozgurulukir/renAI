@@ -45,7 +45,7 @@ def get_provider_model_key(provider: str, model: str) -> str:
 
 
 def get_metadata_cache_path(
-    file_hash: str, provider: str, model: str, cache_dir: Path, use_vision: bool = False
+    file_hash: str, provider: str, model: str, cache_dir: Path, *, use_vision: bool = False
 ) -> Path:
     """Get the cache path for metadata with provider-model awareness.
 
@@ -70,7 +70,7 @@ def get_metadata_cache_path(
 
 
 def get_text_cache_path(
-    file_hash: str, ocr_enhanced: bool, use_mutool: bool, cache_dir: Path
+    file_hash: str, *, ocr_enhanced: bool, use_mutool: bool, cache_dir: Path
 ) -> Path:
     """Get the cache path for extracted text.
 
