@@ -8,7 +8,6 @@ Tests the TOML-based configuration system:
 - Default fallbacks
 """
 
-import sys
 from pathlib import Path
 from unittest.mock import patch
 import builtins
@@ -783,5 +782,3 @@ class TestGetBaseUrl:
                 assert get_base_url("unknown_provider") == "http://localhost:8000/v1"
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
