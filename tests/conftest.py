@@ -16,6 +16,8 @@ def mock_if_missing(module_name):
         mock = MagicMock()
         # Some code checks for __path__ to determine if it's a package
         mock.__path__ = []
+        # Ensure the mock has __spec__ to avoid pytest issues
+        mock.__spec__ = None
         sys.modules[module_name] = mock
         return mock
     return None
