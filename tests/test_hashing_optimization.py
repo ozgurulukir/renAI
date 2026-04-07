@@ -1,10 +1,6 @@
-import sys
 from unittest.mock import MagicMock, patch
-import pytest
 from pathlib import Path
-from renai.processors.text_extractor import TextExtractor, FallbackMode
-from pathlib import Path
-from renai.processors.text_extractor import TextExtractor, FallbackMode
+from renai.processors.text_extractor import TextExtractor
 
 class TestHashingOptimization:
     def test_extract_uses_provided_hash(self):

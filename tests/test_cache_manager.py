@@ -2,15 +2,14 @@ import unittest
 import tempfile
 import shutil
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Note: We don't need to mock everything globally here if we run with pytest
 # But to be safe and allow running with python3, we can use patches in tests.
 
 from renai.cache.manager import (
     invalidate_cache_for_provider_model,
-    get_metadata_cache_path,
-    get_provider_model_key
+    get_metadata_cache_path
 )
 
 class TestCacheManager(unittest.TestCase):
