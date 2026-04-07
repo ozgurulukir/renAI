@@ -1,5 +1,3 @@
-from pathlib import Path
-import pytest
 import subprocess
 from unittest.mock import MagicMock, patch
 from renai.engines.ocr import OCREngine
