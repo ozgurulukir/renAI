@@ -207,16 +207,16 @@ def proportional_chunk_trim(text: str, target_length: int, num_chunks: int) -> s
     reduction_factor = min(1.0, target_length / total_length) if total_length > 0 else 0
 
     # Apply the reduction factor to each chunk
-    trimmed_text = ""
+    trimmed_chunks = []
     current_length = 0
     for chunk in chunks:
         allowed_length = int(len(chunk) * reduction_factor)
         trimmed_chunk = chunk[:allowed_length]
-        trimmed_text += trimmed_chunk
+        trimmed_chunks.append(trimmed_chunk)
         current_length += len(trimmed_chunk)
 
         # Stop if we've reached the target length
         if current_length >= target_length:
             break
 
-    return trimmed_text
+    return "".join(trimmed_chunks)
