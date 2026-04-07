@@ -6,7 +6,7 @@ original main.py has been migrated here.
 """
 
 import sys
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import typer
 from rich.console import Console
@@ -255,7 +255,7 @@ def process_files(
                 )
                 futures[future] = p
 
-            for future in futures:
+            for future in as_completed(futures):
                 try:
                     results.append(future.result())
                 except Exception as e:
