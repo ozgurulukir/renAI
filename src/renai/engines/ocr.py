@@ -1,4 +1,5 @@
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -96,20 +97,30 @@ class OCREngine:
     def _validate_mutool(self, path: str) -> Optional[str]:
         """
         Verify that the provided path points to a valid mutool executable.
-        Returns the resolved path if valid, otherwise None.
+        Returns the resolved absolute path if valid, otherwise None.
         """
-        resolved = shutil.which(path)
-        if not resolved:
+        found = shutil.which(path)
+        if not found:
             return None
 
-        # 1. Basic filename check (case-insensitive)
-        name = Path(resolved).name.lower()
+        # Resolve to absolute path to prevent relative path bypasses
+        resolved_path = Path(found).resolve().absolute()
+        resolved = str(resolved_path)
+
+        # 1. Strict character whitelist check for the path
+        # Allows alphanumeric, dots, underscores, hyphens, spaces, parentheses, and path separators
+        if not re.match(r"^[a-zA-Z0-9._/\\:\- ()]+$", resolved):
+            logging.warning(f"Rejected mutool path with suspicious characters: {resolved}")
+            return None
+
+        # 2. Basic filename check (case-insensitive)
+        name = resolved_path.name.lower()
         # On Windows it might be mutool.exe
         if not name.startswith("mutool"):
             logging.warning(f"Rejected non-mutool executable: {resolved}")
             return None
 
-        # 2. Identity check via version command
+        # 3. Identity check via version command
         try:
             kwargs = self._get_subprocess_kwargs()
             result = subprocess.run(
