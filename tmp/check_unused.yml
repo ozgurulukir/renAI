@@ -1,0 +1,12 @@
+id: check-unused-imports
+language: Python
+rule:
+  any:
+    - pattern: from typing import $$$BEFORE, Tuple, $$$AFTER
+    - pattern: from rich.progress import $$$BEFORE, Progress, $$$AFTER
+    - pattern: from rich.progress import $$$BEFORE, SpinnerColumn, $$$AFTER
+    - pattern: from rich.progress import $$$BEFORE, TextColumn, $$$AFTER
+    - pattern: from renai.processors.orchestrator import $$$BEFORE, run_benchmark, $$$AFTER
+    - pattern: from renai.processors.orchestrator import $$$BEFORE, run_model_eval, $$$AFTER
+    - pattern: from renai.settings import $$$BEFORE, display_warnings, $$$AFTER
+message: "Unused component found in import statement: $MATCH"

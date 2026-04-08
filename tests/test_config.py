@@ -16,12 +16,12 @@ import pytest
 
 from renai.settings import (
     DEFAULT_CATEGORIES,
-    display_warnings,
     get_allowed_categories,
     get_tesseract_path,
     initialize_directories,
     load_eval_models,
 )
+from renai.cli import display_warnings
 
 
 class TestLoadCategories:

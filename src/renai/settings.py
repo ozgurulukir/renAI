@@ -412,58 +412,7 @@ def initialize_directories() -> None:
     ensure_secure_dir(DEBUG_DIR)
 
 
-def display_warnings(mode: str, recursive: bool) -> None:
-    """Display important warnings to the user before processing."""
-    if not app_settings.show_warnings:
-        return
 
-    msg = ["\n" + "=" * 70, "⚠️  IMPORTANT WARNINGS", "=" * 70]
-
-    if mode == "organize":
-        msg.extend(
-            [
-                "\n📁 DIRECTORY LAYOUT WARNING:",
-                "   When using --mode organize, files will be moved into category",
-                "   folders at the target directory root.",
-            ]
-        )
-
-    msg.extend(
-        [
-            "\n💾 DATA LOSS PREVENTION:",
-            "   - Always backup your files before running renAI",
-            "   - Test with a small directory first",
-        ]
-    )
-
-    msg.extend(
-        [
-            "\n📊 TOKEN USAGE:",
-            "   - LLM API costs apply for each file processed",
-            "   - Caching helps reduce costs",
-        ]
-    )
-
-    if recursive:
-        msg.extend(
-            ["\n🔄 RECURSIVE MODE:", "   - Processing subdirectories recursively"]
-        )
-
-    msg.extend(
-        [
-            "\n" + "=" * 70,
-            "Press Enter to proceed or Ctrl+C to cancel...",
-            "=" * 70 + "\n",
-        ]
-    )
-
-    logging.warning("\n".join(msg))
-
-    try:
-        input("Press Enter to continue...")
-    except (KeyboardInterrupt, EOFError):
-        logging.info("\nOperation cancelled by user.")
-        sys.exit(0)
 
 
 # =============================================================================
@@ -519,8 +468,9 @@ def get_effective_model(provider: str) -> str:
         "openrouter": provider_settings.openrouter_model,
         "openai": provider_settings.openai_model,
     }
-    if provider in provider_model_map and provider_model_map[provider]:
-        return provider_model_map[provider]
+    selected_model = provider_model_map.get(provider)
+    if selected_model:
+        return selected_model
 
     # Default model
     return get_default_model(provider) or ""

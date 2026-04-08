@@ -5,22 +5,21 @@ This is the main CLI entry point for renAI. All functionality from the
 original main.py has been migrated here.
 """
 
+import logging
 import sys
 from pathlib import Path
-from typing import Tuple, Annotated, Optional
+from typing import Annotated, Optional
 
 import typer
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from renai.logging_config import configure_logging
-from renai.processors.orchestrator import run_pipeline, run_benchmark, run_model_eval
+from renai.processors.orchestrator import run_pipeline
 from renai.processors.text_extractor import FallbackMode
 from renai.settings import (
     PROVIDERS,
     app_settings,
-    display_warnings,
     initialize_directories,
 )
 from renai.utils import ensure_secure_dir
@@ -88,6 +87,60 @@ def handle_clear_cache() -> None:
         console.print(f"[green]Cache cleared: {len(cache_files)} files removed[/green]")
     else:
         console.print("[green]Cache directory is empty. Nothing to clear.[/green]")
+
+
+def display_warnings(mode: str, recursive: bool) -> None:
+    """Display important warnings to the user before processing."""
+    if not app_settings.show_warnings:
+        return
+
+    msg = ["\n" + "=" * 70, "⚠️  IMPORTANT WARNINGS", "=" * 70]
+
+    if mode == "organize":
+        msg.extend(
+            [
+                "\n📁 DIRECTORY LAYOUT WARNING:",
+                "   When using --mode organize, files will be moved into category",
+                "   folders at the target directory root.",
+            ]
+        )
+
+    msg.extend(
+        [
+            "\n💾 DATA LOSS PREVENTION:",
+            "   - Always backup your files before running renAI",
+            "   - Test with a small directory first",
+        ]
+    )
+
+    msg.extend(
+        [
+            "\n📊 TOKEN USAGE:",
+            "   - LLM API costs apply for each file processed",
+            "   - Caching helps reduce costs",
+        ]
+    )
+
+    if recursive:
+        msg.extend(
+            ["\n🔄 RECURSIVE MODE:", "   - Processing subdirectories recursively"]
+        )
+
+    msg.extend(
+        [
+            "\n" + "=" * 70,
+            "Press Enter to proceed or Ctrl+C to cancel...",
+            "=" * 70 + "\n",
+        ]
+    )
+
+    logging.warning("\n".join(msg))
+
+    try:
+        input("Press Enter to continue...")
+    except (KeyboardInterrupt, EOFError):
+        logging.info("\nOperation cancelled by user.")
+        sys.exit(0)
 
 
 
@@ -222,6 +275,9 @@ def process(
         console.print(
             "[yellow]Note: vision fallback and --rename-images require a vision-capable model. Please ensure your model supports vision.[/yellow]\n"
         )
+
+    # Display warnings
+    display_warnings(mode, recursive)
 
     # Setup engines and run pipeline
     run_pipeline(
