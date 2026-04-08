@@ -782,3 +782,5 @@ class TestGetBaseUrl:
                 assert get_base_url("unknown_provider") == "http://localhost:8000/v1"
 
 
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

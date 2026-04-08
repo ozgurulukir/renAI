@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from renai.engines.ocr import OCREngine
 
@@ -18,9 +19,11 @@ class TestOCREngineSecurity:
         engine = OCREngine(use_mutool=False) # Don't trigger validation in init yet
         result = engine._validate_mutool("mutool")
 
-        assert result == "/usr/bin/mutool"
+        # Use Path for platform-agnostic comparison
+        expected = str(Path("/usr/bin/mutool").resolve().absolute())
+        assert result == expected
         mock_run.assert_called_once()
-        assert mock_run.call_args[0][0] == ["/usr/bin/mutool", "-v"]
+        assert mock_run.call_args[0][0] == [expected, "-v"]
 
     @patch("shutil.which")
     def test_validate_mutool_not_found(self, mock_which):
@@ -90,3 +93,41 @@ class TestOCREngineSecurity:
 
         assert engine.use_mutool is False
         mock_validate.assert_called_with("malicious_path")
+
+    @patch("shutil.which")
+    def test_validate_mutool_suspicious_characters(self, mock_which):
+        """Test validation with a path containing suspicious characters."""
+        suspicious_paths = [
+            "/usr/bin/mutool; ls",
+            "/usr/bin/mutool&",
+            "/usr/bin/mutool$(whoami)",
+            "/usr/bin/mutool|",
+            "/usr/bin/mutool>",
+        ]
+
+        engine = OCREngine(use_mutool=False)
+        for path in suspicious_paths:
+            mock_which.return_value = path
+            result = engine._validate_mutool(path)
+            assert result is None
+
+    @patch("shutil.which")
+    @patch("subprocess.run")
+    def test_validate_mutool_safe_characters(self, mock_run, mock_which):
+        """Test validation with a path containing safe but unusual characters (e.g. spaces, parentheses)."""
+        import os
+        safe_path = os.path.abspath("/usr/bin/mutool (x86) for pdf")
+        mock_which.return_value = safe_path
+        mock_run.return_value = MagicMock(
+            stdout="mutool version 1.23.0\n",
+            stderr="",
+            returncode=0
+        )
+
+        engine = OCREngine(use_mutool=False)
+        result = engine._validate_mutool(safe_path)
+
+        # result should be the resolved absolute path
+        # Normalize both paths to ensure comparison is robust across OSes
+        assert Path(result) == Path(safe_path)
+        mock_run.assert_called_once()
