@@ -110,7 +110,7 @@ def test_get_metadata_cache_path(tmp_path):
     pm_key = get_provider_model_key(provider, model)
     expected_name = f"{file_hash}_{pm_key}_metadata.json"
 
-    path = get_metadata_cache_path(file_hash, provider, model, tmp_path)
+    path = get_metadata_cache_path(file_hash, provider, model, cache_dir=tmp_path)
     assert path == tmp_path / expected_name
 
 
@@ -119,19 +119,19 @@ def test_get_text_cache_path(tmp_path):
     file_hash = "texthash"
 
     # Basic extraction
-    path = get_text_cache_path(file_hash, False, False, tmp_path)
+    path = get_text_cache_path(file_hash, ocr_enhanced=False, use_mutool=False, cache_dir=tmp_path)
     assert path == tmp_path / f"{file_hash}_basic.txt"
 
     # Enhanced OCR
-    path = get_text_cache_path(file_hash, True, False, tmp_path)
+    path = get_text_cache_path(file_hash, ocr_enhanced=True, use_mutool=False, cache_dir=tmp_path)
     assert path == tmp_path / f"{file_hash}_enhanced.txt"
 
     # Enhanced OCR + mutool
-    path = get_text_cache_path(file_hash, True, True, tmp_path)
+    path = get_text_cache_path(file_hash, ocr_enhanced=True, use_mutool=True, cache_dir=tmp_path)
     assert path == tmp_path / f"{file_hash}_enhanced_mutool.txt"
 
     # Basic + mutool
-    path = get_text_cache_path(file_hash, False, True, tmp_path)
+    path = get_text_cache_path(file_hash, ocr_enhanced=False, use_mutool=True, cache_dir=tmp_path)
     assert path == tmp_path / f"{file_hash}_basic_mutool.txt"
 
 

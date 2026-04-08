@@ -117,7 +117,7 @@ class BookProcessor:
                 file_hash,
                 self.provider,
                 self.model,
-                CACHE_DIR,
+                cache_dir=CACHE_DIR,
                 use_vision=use_vision_cache,
             )
 

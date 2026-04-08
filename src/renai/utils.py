@@ -45,7 +45,7 @@ def get_provider_model_key(provider: str, model: str) -> str:
 
 
 def get_metadata_cache_path(
-    file_hash: str, provider: str, model: str, cache_dir: Path, use_vision: bool = False
+    file_hash: str, provider: str, model: str, cache_dir: Path, *, use_vision: bool = False
 ) -> Path:
     """Get the cache path for metadata with provider-model awareness.
 
@@ -70,7 +70,7 @@ def get_metadata_cache_path(
 
 
 def get_text_cache_path(
-    file_hash: str, ocr_enhanced: bool, use_mutool: bool, cache_dir: Path
+    file_hash: str, *, ocr_enhanced: bool, use_mutool: bool, cache_dir: Path
 ) -> Path:
     """Get the cache path for extracted text.
 
@@ -207,16 +207,16 @@ def proportional_chunk_trim(text: str, target_length: int, num_chunks: int) -> s
     reduction_factor = min(1.0, target_length / total_length) if total_length > 0 else 0
 
     # Apply the reduction factor to each chunk
-    trimmed_chunks = []
+    trimmed_text = ""
     current_length = 0
     for chunk in chunks:
         allowed_length = int(len(chunk) * reduction_factor)
         trimmed_chunk = chunk[:allowed_length]
-        trimmed_chunks.append(trimmed_chunk)
+        trimmed_text += trimmed_chunk
         current_length += len(trimmed_chunk)
 
         # Stop if we've reached the target length
         if current_length >= target_length:
             break
 
-    return "".join(trimmed_chunks)
+    return trimmed_text
