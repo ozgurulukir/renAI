@@ -21,17 +21,18 @@ Both cache layers use content-based addressing combined with configuration-aware
 
 The text cache key is generated using:
 
-```
+```text
 {file_hash}_{quality}_{method}.txt
 ```
 
 | Component | Description | Example |
-|-----------|-------------|---------|
+| :--- | :--- | :--- |
 | `file_hash` | MD5 hash of file content | `abc123def456` |
 | `quality` | OCR quality (`basic` or `enhanced`) | `enhanced` |
 | `method` | Extraction method (`_mutool` or empty) | `_mutool` |
 
 **Examples:**
+
 - `abc123def456_basic.txt` - Basic extraction
 - `abc123def456_enhanced.txt` - Enhanced OCR
 - `abc123def456_enhanced_mutool.txt` - Enhanced OCR with mutool
@@ -40,17 +41,18 @@ The text cache key is generated using:
 
 The metadata cache key is generated using:
 
-```
+```text
 {file_hash}_{provider_model_hash}[_vision]_metadata.json
 ```
 
 | Component | Description | Example |
-|-----------|-------------|---------|
+| :--- | :--- | :--- |
 | `file_hash` | MD5 hash of file content | `abc123def456` |
 | `provider_model_hash` | Hash of provider:model pair | `a1b2c3d4` |
 | `_vision` | Optional suffix for Vision mode results | `_vision` |
 
 **Examples:**
+
 - `abc123def456_deepinfra_metadata.json` - Standard metadata cache
 - `abc123def456_openai_vision_metadata.json` - Vision-based metadata cache
 - `abc123def456_custom_metadata.json` - Custom provider cache
@@ -99,7 +101,7 @@ else:
 Cache entries are automatically invalidated when:
 
 | Cache Type | Invalidated When |
-|------------|------------------|
+| :--- | :--- |
 | Text Cache | File content changes, OCR mode changes (enhanced/basic), mutool usage changes |
 | Metadata Cache | File content changes, provider changes, model changes, processing mode changes (Text vs Vision) |
 
@@ -140,7 +142,7 @@ renAI utilizes modern OS-agnostic path management via the `platformdirs` library
 
 The internal structure within the cache directory is organized as follows:
 
-```
+```text
 Cache/
 ├── text/        # Extracted text files (*.txt)
 └── metadata/    # LLM-generated metadata (*.json)
@@ -149,7 +151,7 @@ Cache/
 ### Cache Contents
 
 | File Type | Contents | Sensitive? |
-|-----------|----------|------------|
+| :--- | :--- | :---: |
 | `*_enhanced.txt` | Extracted text (up to 10000 chars) | ⚠️ Yes |
 | `*_basic.txt` | Extracted text (up to 10000 chars) | ⚠️ Yes |
 | `*_metadata.json` | Title, author, year, category + provider/model info | ⚠️ Yes |
@@ -286,7 +288,7 @@ class BookProcessor:
 Expected cache hit rates:
 
 | Scenario | Expected Hit Rate |
-|----------|-------------------|
+| :--- | :---: |
 | Same files, same provider/model | ~100% |
 | Same files, different provider | ~0% (new entries created) |
 | Files with minor changes | ~0% (new hashes) |
@@ -325,7 +327,7 @@ renai process --clear-cache
 ## Changelog
 
 | Date | Change |
-|------|--------|
+| :--- | :--- |
 | 2025-01-26 | Initial caching strategy implementation |
 | 2025-01-26 | Added provider-model awareness to cache keys |
 | 2025-01-26 | Implemented cache validation on read |
@@ -334,6 +336,6 @@ renai process --clear-cache
 | 2026-03-14 | Unified Vision/Image cache with `_vision` suffix for PDFs |
 | 2026-04-08 | Transitioned to Typer CLI with centralized Orchestration pattern |
 
----
+## Status
 
 *Last updated: 2026-04-08*
