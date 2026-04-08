@@ -30,6 +30,8 @@ from unittest.mock import patch  # noqa: E402
 from renai.cache.manager import (  # noqa: E402
     read_metadata_cache,
     write_metadata_cache,
+    invalidate_cache_for_provider_model,
+    get_metadata_cache_path,
 )
 
 def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
@@ -101,3 +103,48 @@ def test_read_metadata_cache_exception(tmp_path, caplog):
             assert result is None
             assert "Failed to read metadata cache" in caplog.text
             assert "Read error" in caplog.text
+
+def test_get_metadata_cache_path():
+    """Test generating metadata cache path."""
+    file_hash = "abc123"
+    provider = "openai"
+    model = "gpt-4"
+    cache_dir = Path("/tmp/cache")
+    
+    path = get_metadata_cache_path(file_hash, provider, model, cache_dir=cache_dir)
+    assert "abc123_" in path.name
+    assert ".json" in path.name
+    assert path.parent.name == "metadata"
+
+def test_invalidate_cache_for_provider_model_basic(tmp_path):
+    """Test basic clearing of metadata cache files for provider/model."""
+    metadata_dir = tmp_path / "metadata"
+    metadata_dir.mkdir()
+    
+    # Files for provider/model won't exist because invalidate_cache_for_provider_model 
+    # clears EVERYTHING in the metadata folder currently (simpler implementation in main).
+    # Wait, let's check the implementation in src/renai/cache/manager.py again.
+    # Ah! In main, invalidate_cache_for_provider_model() clears ALL .json files in metadata dir.
+    
+    (metadata_dir / "test1.json").write_text("{}")
+    (metadata_dir / "test2.json").write_text("{}")
+    (metadata_dir / "not_json.txt").write_text("")
+    
+    count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
+    assert count == 2
+    assert not (metadata_dir / "test1.json").exists()
+    assert not (metadata_dir / "test2.json").exists()
+    assert (metadata_dir / "not_json.txt").exists()
+
+def test_invalidate_cache_for_provider_model_nonexistent(tmp_path):
+    """Test clearing metadata cache when directory doesn't exist."""
+    non_existent = tmp_path / "nonexistent"
+    count = invalidate_cache_for_provider_model(cache_dir=non_existent)
+    assert count == 0
+
+def test_invalidate_cache_for_provider_model_empty(tmp_path):
+    """Test clearing metadata cache when directory is empty."""
+    metadata_dir = tmp_path / "metadata"
+    metadata_dir.mkdir()
+    count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
+    assert count == 0
