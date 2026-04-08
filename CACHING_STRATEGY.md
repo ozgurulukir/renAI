@@ -41,7 +41,7 @@ The text cache key is generated using:
 The metadata cache key is generated using:
 
 ```
-{file_hash}_{provider_model_hash}[_vision].json
+{file_hash}_{provider_model_hash}[_vision]_metadata.json
 ```
 
 | Component | Description | Example |
@@ -332,7 +332,8 @@ renai process --clear-cache
 | 2025-01-27 | Added vision mode and image renaming cache scenarios |
 | 2026-03-11 | Removed unused `_cached_at` field from metadata cache |
 | 2026-03-14 | Unified Vision/Image cache with `_vision` suffix for PDFs |
+| 2026-04-08 | Transitioned to Typer CLI with centralized Orchestration pattern |
 
 ---
 
-*Last updated: 2026-03-14*
+*Last updated: 2026-04-08*

@@ -2,7 +2,7 @@
 
 `renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı meta veriler (metadata) çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
 
-*Son güncelleme: 2026-03-14*
+*Son güncelleme: 2026-04-08*
 
 ---
 
@@ -568,6 +568,10 @@ renAI/
 │       ├── engines/             # Görüş ve OCR motorları
 │       ├── extractors/          # Belge ayrıştırıcıları
 │       ├── processors/          # Çekirdek işleme mantığı
+│       │   ├── book.py
+│       │   ├── orchestrator.py  # Pipeline orkestrasyonu
+│       │   ├── text_extractor.py
+│       │   └── visual.py
 │       ├── file_ops/            # Dosya işlem mantığı
 │       └── filename/            # İsimlendirme kuralları
 ├── tests/                       # Birim testleri
@@ -677,6 +681,6 @@ pytest tests/test_file_processor.py --cov=src/renai/processors/book
 
 ---
 
-*Son güncelleme: 2026-03-14*
+*Son güncelleme: 2026-04-08*
 
 *renAI - Dijital kütüphanenizi yapay zeka ile düzenleyin*

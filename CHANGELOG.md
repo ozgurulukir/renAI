@@ -5,28 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-04-08
+
+### Added
+
+- **Architectural Refactoring**: Massive cleanup of `cli.py` and introduction of the `Orchestrator` pattern for better vertical slicing.
+- **Improved Error UX**: New empathetic error handling that replaces silent `pass` blocks with descriptive logging and provides guidance instead of raw tracebacks.
+- **Typer Modernization**: Upgraded all CLI parameters to use `Annotated` types and implemented global `@app.callback()` for initialization.
+
+### Changed
+
+- **Logic Extraction**: Heavy processing logic moved from `cli.py` to `src/renai/processors/orchestrator.py`.
+- **Dependency Strategy**: Removed manual `check_requirements` in favor of standard virtual environment management.
+- **Test Suite Alignment**: Updated test mocks and fixed broken imports in `tests/test_progress_bar.py` to support the new modular architecture.
 
 ## [1.2.0] - 2026-03-14
 
 ### Added
+
 - **Unified Scan Failure Handling**: Introduced `--move-scan-failures` which unifies failure handling for both OCR and Vision fallbacks.
 - **Improved Fallback Flexibility**: Replaced `--skip-needs-ocr` with a more flexible `--fallback-mode move` option (strategies: `none`, `ocr`, `vision`, `move`).
 - **Standardized Terminology**: Consistently renamed "OCR Failure" to "Scan Failure" throughout the codebase and documentation to reflect the independent nature of fallback strategies.
 - **Needs_Scan vs Scan_Failures**: Clarified directory structure with `Needs_Scan/` (for manual scanning) and `Scan_Failures/` (for failed processing).
 
 ### Changed
+
 - **Centralized Logic**: Moved file-moving logic from `TextExtractor` to `BookProcessor` to prevent premature movement and ensure all fallback paths are exhausted.
 - **Directory Naming**: Renamed `Needs_OCR` to `Needs_Scan` and `OCR_Failures` to `Scan_Failures`.
 - **CLI Refinement**: Deprecated `--move-ocr-failures` in favor of `--move-scan-failures`.
 
 ### Fixed
+
 - **Vision Fallback Block**: Fixed a bug where files were moved to failure folders prematurely, preventing Vision fallback from being attempted.
 - **Terminology Inconsistencies**: Resolved mixed terminology (`ocr_failed` vs `vision_failed`) across multiple modules.
 
 ## [1.1.0] - 2026-03-13
 
 ### Added
+
 - **Modern Python CLI** - Complete migration from argparse to Typer framework.
 - **Pydantic Configuration** - Type-safe settings with `settings.py` using pydantic-settings.
 - **Structured Logging** - Implemented using structlog with JSON output for production and colored console for development.
@@ -37,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation Refinement**: Clarified Vision Mode flow (Text extraction first, then Vision fallback) in `README.md` and `okubeni.md`.
 
 ### Changed
+
 - **CLI Entry Point**: Migrated from `main.py` to `cli.py` using Typer.
 - **Configuration**: Migrated from `config.py` to `settings.py` using Pydantic.
 - **Package Structure**: Now uses modern `src/renai` layout.
@@ -45,11 +62,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Extraction Libraries**: Moved heavy PDF extractors (`pdfplumber`, etc.) to optional extras.
 
 ### Fixed
+
 - **Broken Benchmark Scripts**: Fixed legacy imports and pathing in `scripts/benchmark_script.py` and `scripts/benchmark_organize.py`.
 - **Dead Code Cleanup**: Removed unreferenced legacy files and obsolete imports.
 - **Missing Dependencies**: Resolved runtime errors by adding `pydantic`, `structlog`, and `platformdirs`.
 
 ### Removed
+
 - **Legacy Files**: `main.py`, `config.py` removed (replaced by `cli.py` and `settings.py`).
 
 ## [1.0.1] - 2026-03-11

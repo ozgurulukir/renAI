@@ -154,8 +154,21 @@ class AppSettings(BaseSettings):
         default=True, description="Process subdirectories recursively"
     )
 
-    # Vision mode settings
-    vision: bool = Field(default=False, description="Use vision-capable LLM")
+    # Vision and Image settings
+    rename_images: bool = Field(
+        default=False, description="Rename image files using vision model"
+    )
+    exif: bool = Field(
+        default=False, description="Add EXIF date to image filenames"
+    )
+
+    # Fallback settings
+    fallback_mode: str = Field(
+        default="none", description="Strategy when extraction fails (none/ocr/vision/move)"
+    )
+    move_scan_failures: bool = Field(
+        default=False, description="Move files that fail all attempts to Scan_Failures"
+    )
 
     # OCR settings
     ocr_enhanced: bool = Field(
@@ -168,6 +181,14 @@ class AppSettings(BaseSettings):
         default=False, description="Move OCR failures to folder"
     )
 
+    # Tool settings
+    use_mutool: bool = Field(
+        default=False, description="Use mutool for PDF-to-image conversion"
+    )
+    mutool_path: str = Field(
+        default="mutool", description="Path to mutool executable"
+    )
+
     # Debug settings
     debug_ocr: bool = Field(default=False, description="Save OCR debug images")
 
@@ -175,10 +196,6 @@ class AppSettings(BaseSettings):
         env_prefix="RENAI_",
         env_file=".env",
         env_file_encoding="utf-8",
-        env_file_search_locations=[
-            str(CONFIG_DIR),  # platformdirs: ~/.config/renAI/
-            ".",  # proje kökü
-        ],
         extra="ignore",
     )
 
@@ -506,7 +523,7 @@ def get_effective_model(provider: str) -> str:
         return provider_model_map[provider]
 
     # Default model
-    return get_default_model(provider)
+    return get_default_model(provider) or ""
 
 
 # =============================================================================

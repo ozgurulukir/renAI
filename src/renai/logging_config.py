@@ -144,6 +144,58 @@ def get_ocr_logger(file_path: str) -> structlog.BoundLogger:
 configure_logging()
 
 
+def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
+    """
+    Empathetic exception handler for the CLI.
+    Focuses on 'What happened', 'Why', and 'How to fix it'.
+    """
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+
+    from rich.console import Console
+    from rich.panel import Panel
+
+    console = Console()
+
+    # Determine why it might have happened and how to fix
+    # This is a simple mapping for common issues
+    why = "Beklenmedik bir sistem hatası oluştu."
+    how = "Lütfen hata mesajını inceleyin veya GitHub üzerinden bir issue açın."
+
+    if "API Key" in str(exc_value):
+        why = "API Anahtarı (API Key) bulunamadı veya geçersiz."
+        how = "RENAI_PROVIDER_API_KEY ortam değişkenini kontrol edin veya .env dosyasını güncelleyin."
+    elif "Tesseract" in str(exc_value) or "mutool" in str(exc_value):
+        why = "Bağımlı bir dış araç (OCR veya MuTool) bulunamadı."
+        how = "Tesseract veya MuTool'un sisteminizde kurulu ve PATH üzerinde olduğundan emin olun."
+    elif isinstance(exc_value, FileNotFoundError):
+        why = f"Belirtilen dosya veya dizin bulunamadı: {exc_value.filename}"
+        how = "Dosya yolunun doğruluğunu kontrol edin."
+
+    error_msg = f"[bold red]HATA:[/bold red] {exc_value}\n\n"
+    error_msg += f"[bold yellow]NEDEN:[/bold yellow] {why}\n"
+    error_msg += f"[bold green]NASIL ÇÖZÜLÜR:[/bold green] {how}"
+
+    console.print()
+    console.print(
+        Panel(
+            error_msg,
+            title="[bold red]renAI Sistem Hatası[/bold red]",
+            border_style="red",
+            expand=False,
+        )
+    )
+
+    # Log the full traceback to file/structlog for debugging
+    logger = get_logger("renai.system")
+    logger.error("unhandled_exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+
+# Set the global exception hook
+sys.excepthook = handle_unhandled_exception
+
+
 if __name__ == "__main__":
     # Test logging configuration
     logger = get_logger(__name__)

@@ -94,8 +94,8 @@ class VisualProcessor:
                     if tag == "DateTime" and value:
                         if isinstance(value, str) and len(value) >= 10:
                             return value.split()[0].replace(":", "-")
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug(f"Failed to extract EXIF data from {file_path.name}: {e}")
         return None
 
     def _select_pages(self, total_pages: int) -> List[int]:

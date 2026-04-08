@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from renai.cli import process_files
+from renai.processors.orchestrator import process_files, Progress, SpinnerColumn, TextColumn
 from renai.processors.text_extractor import FallbackMode
 
 
@@ -16,8 +16,6 @@ class TestProgressBar:
 
     def test_progress_bar_imports(self):
         """Test that Rich progress is imported."""
-        from renai.cli import Progress, SpinnerColumn, TextColumn
-
         assert Progress is not None
         assert SpinnerColumn is not None
         assert TextColumn is not None
@@ -50,8 +48,8 @@ class TestProgressBar:
         root_dir = Path("test_dir")
 
         # Mock ThreadPoolExecutor and as_completed to avoid actual threading
-        with patch("renai.cli.ThreadPoolExecutor") as mock_executor, \
-             patch("renai.cli.as_completed") as mock_as_completed:
+        with patch("renai.processors.orchestrator.ThreadPoolExecutor") as mock_executor, \
+             patch("renai.processors.orchestrator.as_completed") as mock_as_completed:
             mock_as_completed.side_effect = lambda f: f.keys()
             mock_executor.return_value.__enter__ = MagicMock()
             mock_executor.return_value.__exit__ = MagicMock()

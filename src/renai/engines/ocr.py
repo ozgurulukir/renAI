@@ -161,7 +161,8 @@ class OCREngine:
                     dpi_y = (img["height"] / display_height) * 72
                     max_dpi = max(max_dpi, dpi_x, dpi_y)
             return max_dpi
-        except Exception:
+        except Exception as e:
+            logging.debug(f"Failed to calculate source DPI: {e}")
             return 72
 
     def _deskew(self, image: Image.Image) -> Image.Image:
@@ -501,8 +502,8 @@ class OCREngine:
                         try:
                             image.close()
                             temp_img.unlink()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logging.debug(f"Cleanup of temp_img failed: {e}")
 
                 if total_chars > 10000:
                     break
@@ -514,8 +515,8 @@ class OCREngine:
                 if img_path.exists():
                     try:
                         img_path.unlink()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.debug(f"Cleanup of bulk_img failed: {e}")
 
             logging.info(
                 f"OCR extracted text from {len(pages_to_extract)} pages of {file_path.name}"
