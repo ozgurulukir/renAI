@@ -116,10 +116,11 @@ def test_get_metadata_cache_path():
     assert ".json" in path.name
     assert path.parent.name == "metadata"
 
-def test_invalidate_cache_for_provider_model(tmp_path):
-    """Test clearing all metadata cache files."""
+def test_invalidate_cache_for_provider_model_basic(tmp_path):
+    """Test basic clearing of metadata cache files for provider/model."""
     metadata_dir = tmp_path / "metadata"
     metadata_dir.mkdir()
+    
     (metadata_dir / "test1.json").write_text("{}")
     (metadata_dir / "test2.json").write_text("{}")
     (metadata_dir / "not_json.txt").write_text("")
@@ -129,3 +130,16 @@ def test_invalidate_cache_for_provider_model(tmp_path):
     assert not (metadata_dir / "test1.json").exists()
     assert not (metadata_dir / "test2.json").exists()
     assert (metadata_dir / "not_json.txt").exists()
+
+def test_invalidate_cache_for_provider_model_nonexistent(tmp_path):
+    """Test clearing metadata cache when directory doesn't exist."""
+    non_existent = tmp_path / "nonexistent"
+    count = invalidate_cache_for_provider_model(cache_dir=non_existent)
+    assert count == 0
+
+def test_invalidate_cache_for_provider_model_empty(tmp_path):
+    """Test clearing metadata cache when directory is empty."""
+    metadata_dir = tmp_path / "metadata"
+    metadata_dir.mkdir()
+    count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
+    assert count == 0

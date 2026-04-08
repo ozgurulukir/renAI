@@ -49,8 +49,10 @@ class TestProgressBar:
         file_paths = [Path(f"test_{i}.pdf") for i in range(3)]
         root_dir = Path("test_dir")
 
-        # Mock ThreadPoolExecutor to avoid actual threading
-        with patch("renai.cli.ThreadPoolExecutor") as mock_executor:
+        # Mock ThreadPoolExecutor and as_completed to avoid actual threading
+        with patch("renai.cli.ThreadPoolExecutor") as mock_executor, \
+             patch("renai.cli.as_completed") as mock_as_completed:
+            mock_as_completed.side_effect = lambda f: f.keys()
             mock_executor.return_value.__enter__ = MagicMock()
             mock_executor.return_value.__exit__ = MagicMock()
             mock_executor.return_value.submit = MagicMock(
