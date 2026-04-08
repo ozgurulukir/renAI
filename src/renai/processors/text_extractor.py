@@ -207,9 +207,9 @@ class TextExtractor:
         # Check cache
         cache_path = get_text_cache_path(
             file_hash,
-            self.ocr_engine.enhanced if fallback == FallbackMode.OCR else False,
-            self.ocr_engine.use_mutool if fallback == FallbackMode.OCR else False,
-            CACHE_DIR,
+            ocr_enabled=self.ocr_engine.enhanced if fallback == FallbackMode.OCR else False,
+            use_mutool=self.ocr_engine.use_mutool if fallback == FallbackMode.OCR else False,
+            cache_dir=CACHE_DIR,
         )
 
         cached_text = read_text_cache(cache_path)
