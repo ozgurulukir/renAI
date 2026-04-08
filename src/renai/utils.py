@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Pre-compiled regular expressions for filename sanitization
 RE_INVALID_CHARS = re.compile(r'[<>:"/\\|?*]')
@@ -18,7 +19,7 @@ def get_file_hash(file_path: Path) -> str:
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
-def generate_cache_key(*args: str) -> str:
+def generate_cache_key(*args: Optional[str]) -> str:
     """Generate a unique cache key from multiple string components.
 
     Args:

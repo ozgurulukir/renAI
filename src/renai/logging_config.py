@@ -52,7 +52,7 @@ def configure_logging(
     if json_output is None:
         json_output = not is_development()
 
-    processors = [
+    processors: list[Any] = [
         # Add timestamp in ISO format
         structlog.processors.TimeStamper(fmt="iso"),
         # Add log level

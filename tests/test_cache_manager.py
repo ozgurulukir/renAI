@@ -71,6 +71,7 @@ def test_read_metadata_cache_success(tmp_path):
     write_metadata_cache(cache_path, metadata, provider, model)
 
     result = read_metadata_cache(cache_path, provider, model)
+    assert result is not None
     assert result == metadata
     # Internal fields should be removed
     assert "_provider" not in result

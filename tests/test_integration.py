@@ -1,6 +1,4 @@
-
 #!/usr/bin/env python3
-import pytest
 
 """Integration test for the main functionality"""
 
@@ -11,7 +9,6 @@ from unittest.mock import Mock  # noqa: E402
 from renai.processors.book import BookProcessor  # noqa: E402
 
 
-@pytest.mark.skip(reason="Integration test mock issues - refactor needed")
 def test_file_processing_integration():
     """Test the complete file processing pipeline"""
 
@@ -32,10 +29,10 @@ def test_file_processing_integration():
 
         # Mock extractor to return sufficient text
         mock_extractor = Mock()
-        mock_extractor.extract_text.return_value = (
+        mock_extractor.extract.return_value = (
             "This is a book about artificial intelligence and machine learning" * 50
         )
-        processor.extractor = mock_extractor
+        processor.text_extractor = mock_extractor
 
         # Mock LLM to return metadata
         mock_llm_engine.get_book_metadata.return_value = {
@@ -47,7 +44,7 @@ def test_file_processing_integration():
 
         # Process the book
         success, new_path, new_name, category, file_hash = (
-            processor.process_single_book(test_file, "rename")
+            processor.process_file(test_file, mode="rename")
         )
 
         # Check results
@@ -106,7 +103,6 @@ def test_organize_files_integration():
         print("PASS: File organization integration test passed")
 
 
-@pytest.mark.skip(reason="Integration test mock issues - refactor needed")
 def test_cache_functionality():
     """Test metadata caching functionality"""
 
@@ -127,8 +123,8 @@ def test_cache_functionality():
 
         # Mock extractor
         mock_extractor = Mock()
-        mock_extractor.extract_text.return_value = "Book content" * 100
-        processor.extractor = mock_extractor
+        mock_extractor.extract.return_value = "Book content" * 100
+        processor.text_extractor = mock_extractor
 
         # Mock LLM to return metadata
         metadata = {
@@ -140,14 +136,15 @@ def test_cache_functionality():
         mock_llm_engine.get_book_metadata.return_value = metadata
 
         # Process file with update_metadata=False (should use cache if exists)
-        success1, new_path1, _, _, _ = processor.process_single_book(
-            test_file, "rename", update_metadata=False
+        success1, new_path1, _, _, _ = processor.process_file(
+            test_file, mode="rename", update_metadata=False
         )
 
         # Process same file again with update_metadata=False (should use cache)
         # Use new_path1 because the file was renamed
-        success2, _, _, _, _ = processor.process_single_book(
-            new_path1, "rename", update_metadata=False
+        assert new_path1 is not None
+        success2, _, _, _, _ = processor.process_file(
+            new_path1, mode="rename", update_metadata=False
         )
 
         assert success1

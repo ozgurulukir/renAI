@@ -129,5 +129,6 @@ class TestOCREngineSecurity:
 
         # result should be the resolved absolute path
         # Normalize both paths to ensure comparison is robust across OSes
+        assert result is not None
         assert Path(result) == Path(safe_path)
         mock_run.assert_called_once()

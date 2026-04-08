@@ -216,7 +216,7 @@ class TestOrganizeFiles:
         processor = BookProcessor(Mock(), Mock())
 
         # Failed processing (success=False)
-        result = processor.organize_files([(False, None, None, None, None)], tmp_path)
+        result = processor.organize_files([(False, None, "", "", "")], tmp_path)
 
         assert result is None
 
@@ -341,7 +341,8 @@ class TestBookProcessorFolders:
             processor.set_scan_failures_folder(tmp_path, enabled=True)
             assert processor.text_extractor.move_scan_failures is True
             assert processor.text_extractor.scan_failures_dir == tmp_path / "Scan_Failures"
-            assert processor.text_extractor.scan_failures_dir.exists()
+            path = processor.text_extractor.scan_failures_dir
+            assert path is not None and path.exists()
 
     def test_set_needs_scan_folder(self, tmp_path):
         """Test setting up Needs Scan folder."""
@@ -351,7 +352,8 @@ class TestBookProcessorFolders:
             processor.set_needs_scan_folder(tmp_path, skip=True)
             assert processor.text_extractor.skip_scan_files is True
             assert processor.text_extractor.needs_scan_dir == tmp_path / "Needs_Scan"
-            assert processor.text_extractor.needs_scan_dir.exists()
+            path = processor.text_extractor.needs_scan_dir
+            assert path is not None and path.exists()
 
 
 class TestExtractTextFromFile:
