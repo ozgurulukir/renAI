@@ -188,8 +188,7 @@ class TestOCREngineInit:
                 )
                 engine = OCREngine(use_mutool=True, mutool_path="mutool")
                 assert engine.use_mutool is True
-                # Use Path for platform-agnostic comparison
-                assert Path(engine.mutool_path) == Path("/usr/bin/mutool").resolve().absolute()
+                assert engine.mutool_path == "/usr/bin/mutool"
 
 
 class TestGetPagesToExtract:
