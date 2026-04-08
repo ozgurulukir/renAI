@@ -143,4 +143,5 @@ def test_sufficient_text_no_ocr_needed():
 
 
 if __name__ == "__main__":
+    import pytest
     pytest.main([__file__])

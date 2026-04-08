@@ -121,11 +121,6 @@ def test_invalidate_cache_for_provider_model_basic(tmp_path):
     metadata_dir = tmp_path / "metadata"
     metadata_dir.mkdir()
     
-    # Files for provider/model won't exist because invalidate_cache_for_provider_model 
-    # clears EVERYTHING in the metadata folder currently (simpler implementation in main).
-    # Wait, let's check the implementation in src/renai/cache/manager.py again.
-    # Ah! In main, invalidate_cache_for_provider_model() clears ALL .json files in metadata dir.
-    
     (metadata_dir / "test1.json").write_text("{}")
     (metadata_dir / "test2.json").write_text("{}")
     (metadata_dir / "not_json.txt").write_text("")
