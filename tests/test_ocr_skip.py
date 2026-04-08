@@ -1,4 +1,3 @@
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
 import tempfile
@@ -143,4 +142,5 @@ def test_sufficient_text_no_ocr_needed():
 
 
 if __name__ == "__main__":
+    import pytest
     pytest.main([__file__])
