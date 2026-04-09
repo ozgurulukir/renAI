@@ -487,7 +487,7 @@ uv run renai process "C:/Kitaplar/Yolu" --clear-cache
 | Hassas iş belgeleri | Yerel LLM ile `custom` sağlayıcısı |
 | Test/deneme | Kolaylık için bulut sağlayıcıları |
 
-Detaylı gizlilik rehberi, veri saklama politikaları ve uyumluluk konuları için bkz. [PRIVACY.md](PRIVACY.md).
+Detaylı gizlilik rehberi, veri saklama politikaları ve uyumluluk konuları için bkz. [PRIVACY.md](docs/PRIVACY.md).
 
 ### Maliyet Tahmini
 

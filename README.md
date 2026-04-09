@@ -486,7 +486,7 @@ renai process --clear-cache
 | Sensitive business documents | `custom` provider with local LLM |
 | Testing/experimentation | Cloud providers for convenience |
 
-For detailed privacy guidance, data retention policies, and compliance considerations, see [PRIVACY.md](PRIVACY.md).
+For detailed privacy guidance, data retention policies, and compliance considerations, see [PRIVACY.md](docs/PRIVACY.md).
 
 ### Cost Estimation
 
