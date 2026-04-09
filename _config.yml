@@ -1,0 +1,9 @@
+title: renAI
+description: AI-Powered Document and Image Organizer using LLMs and OCR.
+theme: jekyll-theme-cayman
+
+# Cayman Theme Specific Settings
+show_downloads: true
+
+# GitHub Pages Configuration
+# Note: Since we use the /docs folder, this config in root applies to it.
