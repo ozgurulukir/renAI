@@ -1239,6 +1239,13 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+pdf-extra = [
+    { name = "pdfplumber" },
+    { name = "pypdf" },
+    { name = "pypdfium2" },
+]
+
+[package.dev-dependencies]
 dev = [
     { name = "mypy" },
     { name = "pdfplumber" },
@@ -1249,43 +1256,42 @@ dev = [
     { name = "ruff" },
     { name = "tomli" },
 ]
-pdf-extra = [
-    { name = "pdfplumber" },
-    { name = "pypdf" },
-    { name = "pypdfium2" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "colorama" },
     { name = "markitdown" },
-    { name = "mypy", marker = "extra == 'dev'" },
     { name = "numpy" },
     { name = "openai" },
     { name = "opencv-python" },
-    { name = "pdfplumber", marker = "extra == 'dev'" },
     { name = "pdfplumber", marker = "extra == 'pdf-extra'" },
     { name = "pillow" },
     { name = "platformdirs" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pymupdf" },
-    { name = "pypdf", marker = "extra == 'dev'" },
     { name = "pypdf", marker = "extra == 'pdf-extra'" },
-    { name = "pypdfium2", marker = "extra == 'dev'" },
     { name = "pypdfium2", marker = "extra == 'pdf-extra'" },
     { name = "pytesseract" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "requests" },
     { name = "rich" },
-    { name = "ruff", marker = "extra == 'dev'" },
     { name = "structlog" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
-    { name = "tomli", marker = "extra == 'dev'" },
     { name = "typer" },
 ]
-provides-extras = ["pdf-extra", "dev"]
+provides-extras = ["pdf-extra"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy" },
+    { name = "pdfplumber" },
+    { name = "pypdf" },
+    { name = "pypdfium2" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "tomli" },
+]
 
 [[package]]
 name = "requests"

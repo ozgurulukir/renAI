@@ -11,16 +11,17 @@ renAI processes documents locally and sends text content to Large Language Model
 
 ### Data Flow
 
-```
+```text
 Local Document → Text Extraction → LLM API → Metadata Response
                     ↓
               Local Cache Storage
 ```
 
-1. **Text Extraction**: Document content is extracted locally using PDF parsers or OCR
-2. **API Transmission**: Text is sent to LLM providers (cloud or local)
-3. **Processing**: LLM analyzes content and returns metadata
-4. **Caching**: Extracted text and metadata are stored locally for efficiency
+1. **Text Extraction**: Document content is extracted locally using PDF parsers or OCR.
+2. **Vision Processing (Optional)**: If Vision Mode is enabled and text extraction fails (or if renaming images), pages/images are sampled and converted to Base64.
+3. **API Transmission**: Text or sampled images are sent to LLM providers (cloud or local).
+4. **Processing**: LLM analyzes content and returns metadata.
+5. **Caching**: Extracted text, sampled vision data, and final metadata are stored locally for efficiency.
 
 ---
 
@@ -29,22 +30,28 @@ Local Document → Text Extraction → LLM API → Metadata Response
 When using cloud LLM providers (DeepInfra, OpenRouter, OpenAI), the following data is transmitted:
 
 | Data Type | Description | Sent to LLM |
-|-----------|-------------|-------------|
-| **Document Text** | Extracted text content (up to 8000 chars) | ✅ Yes |
+| :--- | :---: | :---: |
+| **Document Text** | Extracted text content (up to 10000 chars) | ✅ Yes |
+| **Sampled Images** | Base64 encoded page samples (**Vision Mode only**) | ✅ Yes |
+| **Original Images** | Full image files when using `--rename-images` | ✅ Yes |
 | **File Metadata** | Filename, file size, page count | ❌ No |
-| **File Content** | Full document binary | ❌ No |
-| **Category Preferences** | Your custom categories from `categories.txt` | ✅ Yes (in prompt) |
+| **File Content** | Full document binary/source | ❌ No |
+| **Category List** | Your custom categories from `categories.toml` | ✅ Yes (in prompt) |
 
 ### What is NOT Sent
-- Original document files
-- Images or embedded media
-- File paths (only extracted text)
+
+- Original document binary files (except when sampled for Vision)
+- Embedded files/attachments inside PDFs
+- File paths (unless they appear in extracted text)
+- Metadata not relevant to the renaming task
 - Any personally identifiable information from filenames
 
 ### What IS Sent
-- Extracted text content (truncated to 8000 characters)
-- System prompt with category definitions
-- Conversation history during retries
+
+- Extracted text content (truncated to `RENAI_TEXT_LENGTH`, default 10000 characters)
+- **Base64 encoded images** of document pages or image files (**Vision Mode only**)
+- System prompt with category definitions and naming instructions
+- Intermittent conversation history during extraction refinement
 
 ---
 
@@ -53,12 +60,13 @@ When using cloud LLM providers (DeepInfra, OpenRouter, OpenAI), the following da
 ### Cloud Providers (Default)
 
 | Provider | Data Location | Privacy Level |
-|----------|---------------|---------------|
+| :------- | :------------ | :------------ |
 | DeepInfra | US-based servers | Standard |
 | OpenRouter | Various providers | Standard |
 | OpenAI | US-based servers | Standard |
 
 **Characteristics:**
+
 - Text content leaves your machine
 - Subject to provider's data retention policies
 - Typically 30-day retention for API logs
@@ -67,13 +75,14 @@ When using cloud LLM providers (DeepInfra, OpenRouter, OpenAI), the following da
 ### Local Providers (Recommended for Privacy)
 
 | Tool | Setup Required | Model Options |
-|------|----------------|---------------|
+| :------- | :------------- | :------------ |
 | Ollama | Install Ollama, run `ollama serve` | Llama 3, Mistral, Gemma, etc. |
 | LM Studio | Install LM Studio, enable API | Any GGUF model |
 | LocalAI | Docker or binary installation | Many options |
 | vLLM | Server installation | High-performance |
 
 **Characteristics:**
+
 - All processing happens on your machine
 - No data leaves your network
 - You control data retention entirely
@@ -93,7 +102,7 @@ renAI utilizes modern OS-agnostic path management via the `platformdirs` library
 
 The directory structure is organized as follows:
 
-```
+```text
 Cache/
 ├── text/        # Extracted text files
 └── metadata/    # metadata files
@@ -103,10 +112,10 @@ Cache/
 
 ```bash
 # Clear all cache
-renai process --clear-cache
+uv run renai process --clear-cache
 
 # Clear cache for specific directory
-renai process "C:/Path/To/Books" --clear-cache
+uv run renai process "C:/Path/To/Books" --clear-cache
 ```
 
 ### Cache Security Recommendations
@@ -127,6 +136,7 @@ renai process "C:/Path/To/Books" --clear-cache
 **Recommendation**: Any provider is suitable
 
 **Considerations:**
+
 - Content is already public domain
 - No personal or sensitive information
 - Cloud processing is convenient and cost-effective
@@ -143,15 +153,18 @@ renai process "C:/Public/Books" --mode rename --provider openrouter
 **Recommendation**: Use local LLM or trusted cloud provider
 
 **Considerations:**
+
 - May contain personal information
 - Consider using local processing for sensitive content
 - Review provider's data handling policies
 
 ```bash
 # Example: Using local Ollama for personal documents
-$env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"
-$env:CUSTOM_MODEL = "llama3"
-renai process "C:/Personal/Documents" --mode rename --provider custom
+# Set these in your OS-specific .env file or environment
+RENAI_PROVIDER=custom
+CUSTOM_API_BASE_URL=http://localhost:11434/v1
+CUSTOM_MODEL=llama3
+uv run renai process "C:/Personal/Documents" --mode rename
 ```
 
 ### Scenario 3: Business/Professional Documents
@@ -161,6 +174,7 @@ renai process "C:/Personal/Documents" --mode rename --provider custom
 **Recommendation**: Use local LLM only
 
 **Considerations:**
+
 - May contain trade secrets, client information
 - Subject to confidentiality obligations
 - Compliance requirements (GDPR, HIPAA, etc.)
@@ -180,6 +194,7 @@ renai process "C:/Work/Documents" --mode rename --provider custom
 **Recommendation**: Local LLM with additional safeguards
 
 **Considerations:**
+
 - Subject to strict regulations (HIPAA, etc.)
 - May require audit trails
 - Consider air-gapped systems
@@ -208,6 +223,7 @@ renai process "C:/Sensitive/Files" --clear-cache
 ### 3. Review Provider Terms of Service
 
 Before using any cloud provider, review their:
+
 - Data retention policies
 - Data usage for model training
 - Privacy policy
@@ -228,12 +244,12 @@ For local inference servers:
 
 ```bash
 # Instead of command-line arguments (which may be logged)
-# Use environment variables for API keys
+# Use the .env file in your OS configuration directory
 
-export OPENAI_API_KEY="sk-..."
-export DEEPINFRA_API_KEY="..."
+RENAI_PROVIDER=deepinfra
+DEEPINFRA_API_KEY=your-api-key-here
 
-renai process "C:/Books" --mode rename
+uv run renai process "C:/Books" --mode rename
 ```
 
 ### 6. Audit Log Review
@@ -252,7 +268,7 @@ cat evaluation.log
 ## 📊 Provider Comparison
 
 | Provider | Data Retention | Training Data | Privacy Rating |
-|----------|---------------|---------------|----------------|
+| :------- | :------------- | :------------ | :------------- |
 | **Local (Ollama/LM Studio)** | You control | N/A | ⭐⭐⭐⭐⭐ |
 | DeepInfra | 30 days | Check policy | ⭐⭐⭐ |
 | OpenRouter | Varies by provider | Check policy | ⭐⭐⭐ |
@@ -308,6 +324,7 @@ After processing sensitive documents:
 ### Q: How long does the cloud provider keep my data?
 
 **A**: This varies by provider. Check their terms of service:
+
 - OpenAI: 30 days for API data
 - DeepInfra: Check provider policy
 - OpenRouter: Varies by underlying provider
@@ -328,19 +345,20 @@ After processing sensitive documents:
 
 ## 📞 Additional Resources
 
-- **Ollama Privacy**: https://ollama.com/privacy
-- **OpenAI Data Usage**: https://platform.openai.com/docs/data-usage
-- **DeepInfra Privacy**: https://deepinfra.com/privacy
-- **LocalAI Security**: https://localai.io/security/
+- **Ollama Privacy**: <https://ollama.com/privacy>
+- **OpenAI Data Usage**: <https://platform.openai.com/docs/data-usage>
+- **DeepInfra Privacy**: <https://deepinfra.com/privacy>
+- **LocalAI Security**: <https://localai.io/security/>
 
 ---
 
 ## 📝 Changelog
 
 | Date | Change |
-|------|--------|
+| :--------- | :----- |
 | 2025-01-26 | Initial privacy guide |
 
 ---
 
 | 2026-03-14 | Updated to include platformdirs and new CLI commands |
+| 2026-04-09 | Updated for Vision Mode data sharing transparency, uv integration, and .env security |

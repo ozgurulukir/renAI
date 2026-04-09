@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "renai"
@@ -51,6 +51,8 @@ pdf-extra = [
     "pypdf",
     "pypdfium2",
 ]
+
+[dependency-groups]
 dev = [
     "pytest",
     "pytest-cov",
@@ -65,5 +67,4 @@ dev = [
 [project.scripts]
 renai = "renai.cli:app"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+

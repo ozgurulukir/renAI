@@ -2,7 +2,7 @@
 
 `renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı meta veriler (metadata) çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
 
-*Son güncelleme: 2026-04-08*
+Son güncelleme: 2026-04-09
 
 ---
 
@@ -22,26 +22,29 @@ Araç hem bulut tabanlı LLM'leri (DeepInfra, OpenRouter, OpenAI) hem de yerel �
 ### İsimlendirme Standardı
 
 **Belgeler (Metin Çıkarma Modu):**
-```
+
+```text
 Başlık -- Alt Başlık -- Baskı -- Yazar -- (Yıl).uzantı
 ```
+
 *Örnek: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
 
 **Belge ve Görseller (Multimodal Görüş Modu):**
-```
+
+```text
 Açıklama -- Kategori -- (Dil).uzantı
 ```
+
 *Örnek: `Deep Learning Research Paper -- Academic -- (en).pdf`*
 
 *Örnel: `Sunset at Beach -- Photo -- (en).jpg`*
 
 ---
 
-
 ## ✨ Özellikler
 
 | Özellik | Açıklama |
-|---------|----------|
+| :--- | :--- |
 | **Çoklu Format Desteği** | PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD ve görüntü dosyalarını (JPG, PNG, HEIC vb.) işler |
 | **Çoklu PDF Çıkarıcıları** | PyMuPDF, pdfplumber, pypdf veya pypdfium2 arasından seçim yapın |
 | **Yapay Zeka Destekli Meta Veri** | Başlıkları, yazarları, yılları ve kategorileri çıkarmak için LLM'leri kullanır |
@@ -71,13 +74,15 @@ Açıklama -- Kategori -- (Dil).uzantı
 
 1. **Python 3.12+**
 2. **Tesseract OCR** - [Windows için indirin](https://github.com/UB-Mannheim/tesseract/wiki/Tesseract-at-UB-Mannheim) veya paket yöneticisi ile yükleyin:
+
    ```bash
    # Ubuntu/Debian
    sudo apt-get install tesseract-ocr
-   
+
    # macOS
    brew install tesseract
    ```
+
 3. **mutool (İsteğe bağlı)** - [MuPDF](https://mupdf.com/releases/index.html) sürümlerinin bir parçasıdır
 
 ### Kurulum
@@ -87,35 +92,41 @@ Açıklama -- Kategori -- (Dil).uzantı
 git clone https://github.com/ozgurulukir/renAI.git
 cd renAI
 
-# Sanal ortam oluştur (önerilen)
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# veya: .venv\Scripts\activate  # Windows
-
-# Bağımlılıkları yükle ('renai' komutunu oluşturur)
-pip install -e .
-
-# İsteğe bağlı: Ekstra PDF çıkarıcılarla yükle
-pip install -e ".[pdf-extra]"
+# uv kullanarak yükle ('renai' komutunu oluşturur)
+uv sync --all-extras
 ```
 
 ### API Anahtarları
 
-API anahtarlarınızı ortam değişkenleri olarak ayarlayın:
+API anahtarlarınızı `.env` dosyasında ayarlayın:
 
 ```bash
-# Windows (PowerShell)
-$env:DEEPINFRA_API_KEY = "your_key_here"
-$env:OPENROUTER_API_KEY = "your_key_here"
-$env:OPENAI_API_KEY = "your_key_here"
-
-# Linux/Mac
-export DEEPINFRA_API_KEY="your_key_here"
-export OPENROUTER_API_KEY="your_key_here"
-export OPENAI_API_KEY="your_key_here"
+# Windows: %APPDATA%\renAI\renAI\.env
+# Linux/Mac: ~/.config/renAI/.env
+# Veya proje kök dizininden kopyalayın:
+cp .env.example .env
 ```
 
+Ardından `.env` dosyasını API anahtarlarınızla düzenleyin:
+
+- `DEEPINFRA_API_KEY`
+- `OPENROUTER_API_KEY`
+- `OPENAI_API_KEY`
+
 Anahtarları şuradan alın: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrouter.ai) | [OpenAI](https://platform.openai.com/api-keys)
+
+### Yapılandırma
+
+`.env` dosyasındaki yapılandırma seçenekleri:
+
+- `RENAI_PROVIDER` - LLM sağlayıcısı (deepinfra, openrouter, openai, custom)
+- `RENAI_WORKERS` - Eşzamanlı çalışan sayısı (varsayılan: 4)
+- `RENAI_TEXT_LENGTH` - LLM için maksimum metin uzunluğu (varsayılan: 10000)
+- `RENAI_EXTRACTOR` - PDF çıkarıcı (pymupdf, pdfplumber, pypdf, pypdfium2)
+
+### Özel Kategoriler
+
+Özel kategoriler artık `categories.toml` üzerinden yönetilmektedir. Detaylar için [Yapılandırma](#-yapılandırma) bölümüne bakın.
 
 ---
 
@@ -125,7 +136,7 @@ Anahtarları şuradan alın: [DeepInfra](https://deepinfra.com) | [OpenRouter](h
 
 ```bash
 # Dizindeki tüm dosyaları yeniden adlandır
-renai "C:/Kitaplar/Yolu" --mode rename
+uv run renai process "C:/Kitaplar/Yolu" --mode rename
 ```
 
 ### Klasörlere Düzenleme
@@ -180,7 +191,7 @@ renai process "C:/Görüntüler" --fallback-mode vision --rename-images --provid
 Aynı klasördeki PDF ve görüntü dosyalarını işleyin:
 
 | Parametre | PDF/Desteklenen | Resim |
-|-----------|-----------------|-------|
+| :--- | :--- | :--- |
 | `--fallback-mode vision` | Normal → Vision fallback | ⏭️ Atlanır |
 | `--fallback-mode vision --rename-images` | Normal → Vision fallback | 🔄 Vision ile yeniden adlandır |
 | `--rename-images` | Normal → OCR fallback | 🔄 Vision ile yeniden adlandır |
@@ -195,7 +206,6 @@ renai process "C:/Karışık" --rename-images --provider openai --model gpt-4o
 # Sadece PDF'leri vision ile işle (görüntüler atlanır)
 renai process "C:/PDFler" --fallback-mode vision --provider openai --model gpt-4o
 ```
-
 
 ### Farklı LLM Sağlayıcıları Kullanma
 
@@ -215,19 +225,19 @@ renai process "C:/Kitaplar/Yolu" --mode rename --provider openai
 `custom` sağlayıcısını kullanarak [Ollama](https://ollama.com/) veya [LM Studio](https://lmstudio.ai/) gibi yerel çıkarım sunucularına bağlanabilirsiniz. Bu araçlar OpenAI uyumlu API sağlar.
 
 > **⚠️ Önemli: Tüm modeller yapılandırılmış çıktı üretemez, özellikle 7B parametrenin altındaki LLM'ler. Modelin yapılandırılmış çıktıyı destekleyip desteklemediğinden emin değilseniz model kartı README'sini kontrol edin.**
-> 
+>
 > renAI güvenilir meta veri çıkarma için LLM'den JSON çıktısı gerektirir. 7B'den daha az parametreye sahip modeller yapılandırılmış çıktı formatlamada zorlanabilir.
 
 ```bash
-# Ortam değişkenlerini ayarla (Windows PowerShell)
+# Ortam değişkenlerini ayarla (Windows PowerShell veya .env dosyası)
 $env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"  # Ollama varsayılanı
 $env:CUSTOM_MODEL = "llama3"  # Model adınız
 
 # Özel sağlayıcı ile çalıştır
-renai process "C:/Kitaplar/Yolu" --mode rename --provider custom
+uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom
 
 # Veya modeli doğrudan geçersiz kıl
-renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
+uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
 ```
 
 #### Yerel Modeller için Metin Uzunluğunu Kontrol Etme
@@ -236,20 +246,20 @@ Tüketici donanımlarında yerel modeller çalıştırırken, bellek kullanımı
 
 ```bash
 # Metin uzunluğunu 5000 karaktere azalt (varsayılan: 10000)
-renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 5000
+uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 5000
 
 # Modeliniz kaldırabiliyorsa daha iyi bağlam için artırın
-renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
+uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
 ```
 
 | Seçenek | Açıklama | Varsayılan |
-|--------|-------------|-----------|
+| :--- | :--- | :--- |
 | `--text-length` | LLM'e gönderilen hedef metin uzunluğu | 10000 |
 
 #### Özel Sağlayıcı için Ortam Değişkenleri
 
 | Değişken | Açıklama | Varsayılan |
-|----------|-------------|-----------|
+| :--- | :--- | :--- |
 | `CUSTOM_API_BASE_URL` | Yerel API sunucunuzun temel URL'si | `http://localhost:8000/v1` |
 | `CUSTOM_MODEL` | Kullanılacak model adı | `llama3` |
 | `CUSTOM_API_KEY` | API anahtarı (yerel sunucular için genellikle gerekmez) | `not-required` |
@@ -257,7 +267,7 @@ renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 2
 #### Yaygın Yerel Sunucu URL'leri
 
 | Araç | URL |
-|------|-----|
+| :--- | :--- |
 | Ollama | `http://localhost:11434/v1` |
 | LM Studio | `http://localhost:1234/v1` |
 | LocalAI | `http://localhost:8080/v1` |
@@ -267,41 +277,46 @@ renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 2
 
 ```bash
 # DeepInfra ile özel model
-renai process "C:/Kitaplar/Yolu" --mode rename --model Qwen/Qwen2.5-72B-Instruct
+uv run renai process "C:/Kitaplar/Yolu" --mode rename --model Qwen/Qwen2.5-72B-Instruct
 
 # OpenRouter ile Gemini
-renai process "C:/Kitaplar/Yolu" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
+uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider openrouter --model google/gemini-2.0-flash-exp:free
 ```
 
 ### Daha Hızlı İşleme
 
 ```bash
 # Eşzamanlı çalışanları artır
-renai process "C:/Kitaplar/Yolu" --mode rename --workers 8
+uv run renai process "C:/Kitaplar/Yolu" --mode rename --workers 8
 ```
 
 ### Meta Verileri Zorla Yenileme
 
 ```bash
 # Önbelleği atla ve yeniden çıkar
-renai process "C:/Kitaplar/Yolu" --mode rename --update-metadata
+uv run renai process "C:/Kitaplar/Yolu" --mode rename --update-metadata
 ```
 
 ### Kıyaslama ve Model Değerlendirme
 
 #### PDF Çıkarıcı Kıyaslaması
+
 Farklı PDF çıkarma kütüphanelerinin belgeleriniz üzerindeki performansını ve doğruluğunu karşılaştırın.
+
 ```bash
-renai process "C:/Kitaplar/Yolu" --benchmark
+uv run renai process "C:/Kitaplar/Yolu" --benchmark
 ```
 
 #### LLM Model Değerlendirmesi
+
 Özel belge koleksiyonunuz için maliyet ve doğruluk arasındaki en iyi dengeyi bulmak amacıyla bir sağlayıcıdan birden fazla modeli test edin.
+
 ```bash
-renai process "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
+uv run renai process "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
 ```
 
 **Nasıl çalışır:**
+
 - Modeller sağlayıcıya özel yapılandırma dosyalarından yüklenir: `eval_models_deepinfra.txt`, `eval_models_openai.txt` veya `eval_models_openrouter.txt`.
 - Her dosya, her satırda bir model adı olacak şekilde bir model listesi içermelidir.
 - Araç, dizininizdeki ilk 2 dosyayı listedeki **tüm** modelleri kullanarak işler.
@@ -311,10 +326,13 @@ renai process "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
 
 ```bash
 # Tüm önbelleği temizle
-renai process --clear-cache
+uv run renai cache
+
+# Veya process komutu ile temizle
+uv run renai process --clear-cache
 
 # Belirli dizin için önbelleği temizle
-renai process "C:/Kitaplar/Yolu" --clear-cache
+uv run renai process "C:/Kitaplar/Yolu" --clear-cache
 ```
 
 ---
@@ -333,6 +351,7 @@ renai process "C:/Kitaplar/Yolu" --clear-cache
 ### Dizin Yapısı Uyarısı (Organize Modu)
 
 `--mode organize` kullanırken:
+
 - Alt dizinlerdeki tüm dosyalar kök seviyedeki kategori klasörlerine taşınır
 - Dosyalar taşındıktan sonra boş alt dizinler kalabilir
 - Kategori klasörleri kök seviyede oluşturulur, alt dizinlerin içinde değil
@@ -341,7 +360,7 @@ renai process "C:/Kitaplar/Yolu" --clear-cache
 ### Teknik Sınırlamalar
 
 | Sınırlama | Açıklama |
-|------------|-------------|
+| :--- | :--- |
 | **Metin Uzunluğu** | Dosya başına LLM'e en fazla 8000 karakter gönderilir |
 | **API Maliyetleri** | İşlenen her dosya metni bir LLM API'ye gönderir |
 | **Oran Sınırları** | Sağlayıcılar oran sınırları uygulayabilir |
@@ -362,7 +381,7 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 ### Önerilen Görüntü Modelleri
 
 | Sağlayıcı | Model | En İyi İçin |
-|------------|-------|----------|
+| :--- | :--- | :--- |
 | **OpenAI** | `gpt-4o` | En iyi doğruluk, güvenilir |
 | **OpenAI** | `gpt-4o-mini` | Hızlı, uygun maliyetli |
 | **OpenRouter** | `openai/gpt-4o` | Esnek fiyatlandırma |
@@ -374,7 +393,7 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 ### Vision Modu vs OCR
 
 | Özellik | Vision Modu (`--fallback-mode vision`) | OCR Modu (varsayılan) |
-|---------|--------------------------|-------------------|
+| :--- | :--- | :--- |
 | **Metin Çıkarma** | Önce dener, başarısız olursa vision fallback | Önce dener, başarısız olursa OCR fallback |
 | **Hız** | Metin PDF'leri için daha hızlı | OCR daha yavaş |
 | **Doğruluk** | Temiz metin için daha yüksek | Tarama kalitesine bağlı |
@@ -383,12 +402,14 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 | **API Maliyeti** | Görüntü tokenleri | Metin tokenleri |
 
 **Görüntü Modu ne zaman kullanılır:**
+
 - Metin tabanlı PDF'ler (kitaplar, makaleler)
 - Tesseract kurulu olmadığında
 - OCR çok yavaş olduğunda
 - Temiz belgelerde daha iyi doğruluk istendiğinde
 
 **OCR ne zaman kullanılır:**
+
 - Taranmış belgeler
 - Düşük kaliteli görüntüler
 - Çok dilli belgeler
@@ -412,46 +433,49 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 renAI, sağlayıcı-model farkındalığına sahip akıllı bir önbellek sistemi kullanır:
 
 | Önbellek Türü | Anahtar Bileşenleri | Geçersiz Kılma |
-|---------------|---------------------|----------------|
+| :--- | :--- | :--- |
 | **Metin Önbelleği** | Dosya hash + OCR ayarları | Dosya içeriği veya OCR modu değiştiğinde |
 | **Meta Veri Önbelleği** | Dosya hash + sağlayıcı + model | Dosya içeriği, sağlayıcı veya model değiştiğinde |
 
 **Nasıl çalışır:**
+
 - Her dosya MD5 hash'i ile tanımlanır
 - Meta veri önbellek anahtarları sağlayıcı-model çiftinin hash'ini içerir
 - Sağlayıcı veya model değiştirmek eski önbelleği otomatik olarak geçersiz kılar
 - `--update-metadata` gerektiğinde taze çıkarma zorlar
 
 **Örnek:**
+
 ```bash
 # DeepInfra ile ilk çalıştırma - meta verileri önbelleğe alır
-renai process "C:/Kitaplar" --provider deepinfra
+uv run renai process "C:/Kitaplar" --provider deepinfra
 
 # OpenRouter ile aynı dosyalar - YENİ önbellek girişi (eski korunur)
-renai process "C:/Kitaplar" --provider openrouter
+uv run renai process "C:/Kitaplar" --provider openrouter
 
 # Aynı sağlayıcı/model - önbelleğe alınmış meta verileri kullanır
-renai process "C:/Kitaplar" --provider deepinfra
+uv run renai process "C:/Kitaplar" --provider deepinfra
 
 # Zorla yenileme - önbelleği atlar
-renai process "C:/Kitaplar" --provider deepinfra --update-metadata
+uv run renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 ```
 
 **Önbellek Konumu:** `platformdirs` kullanılarak işletim sistemi tarafından otomatik yönetilir (ör. Linux'ta `~/.cache/renAI`, macOS'te `~/Library/Caches/renAI`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`).
 
 **Önbelleği Temizle:**
+
 ```bash
 # Tüm önbelleği temizle
-renai process --clear-cache
+uv run renai cache
 
 # Belirli dizin için önbelleği temizle
-renai process "C:/Kitaplar" --clear-cache
+uv run renai process "C:/Kitaplar/Yolu" --clear-cache
 ```
 
 ### Gizlilik Değerlendirmeleri
 
 | Senaryo | Önerilen Sağlayıcı |
-|---------|-------------------|
+| :------- | :----------------- |
 | Genel belgeler | Herhangi bir bulut sağlayıcısı (DeepInfra, OpenRouter, OpenAI) |
 | Özel/kişisel dosyalar | Yerel LLM ile `custom` sağlayıcısı |
 | Hassas iş belgeleri | Yerel LLM ile `custom` sağlayıcısı |
@@ -462,7 +486,7 @@ Detaylı gizlilik rehberi, veri saklama politikaları ve uyumluluk konuları iç
 ### Maliyet Tahmini
 
 | Dosya | Tahmini Maliyet (~$0.001/dosya) |
-|-------|--------------------------|
+| :--- | :--- |
 | 100 | 0,10$ |
 | 1.000 | 1,00$ |
 | 10.000 | 10,00$ |
@@ -479,68 +503,32 @@ renAI artık `platformdirs` kütüphanesi aracılığıyla modern ve işletim si
 
 - **Önbellek Verileri:** İşletim sisteminin önbellek dizininde yönetilir.
 - **Log ve Hata Ayıklama (Debug) Verileri:** İşletim sisteminin kullanıcı veri dizininde yönetilir.
-- **Yapılandırma (`categories.txt` gibi):** İşletim sisteminin yapılandırma dizininde yönetilir.
+- **Yapılandırma (`categories.toml` gibi):** İşletim sisteminin yapılandırma dizininde yönetilir.
 
-### Özel Kategoriler
+### Özel Kategori Tanımlama
 
-Kendi işletim sisteminizin `renAI` için ayrılmış yapılandırma dizininde (örneğin Linux'ta `~/.config/renAI/categories.txt`, Windows'ta `%APPDATA%\renAI\categories.txt`) bir `categories.txt` dosyası oluşturun:
+Kendi işletim sisteminizin `renAI` için ayrılmış yapılandırma dizininde (örneğin Linux'ta `~/.config/renAI/categories.toml`, Windows'ta `%APPDATA%\renAI\categories.toml`) bir `categories.toml` dosyası oluşturun:
 
-```txt
-# İngilizce Kategoriler
-LANG: en
-Article
-Fiction
-Non-Fiction
-Textbook
-Report
-Gov
-Presentation
-Manual
-Thesis
-Research
-Other
-Dictionary
+```toml
+[en]
+categories = [
+    "Article", "Fiction", "Non-Fiction", "Textbook", "Report",
+    "Gov", "Presentation", "Manual", "Thesis", "Research",
+    "Other", "Dictionary", "Magazine"
+]
 
-# Türkçe Kategoriler
-LANG: tr
-Makale
-Kurgu
-Kurgu Dışı
-Ders Kitabı
-Rapor
-Devlet
-Sunum
-Kılavuz
-Tez
-Araştırma
-Diğer
-Sözlük
-
-# Görüntü Kategoriler (--rename-images için)
-LANG: en
-Photo
-Screenshot
-Design
-Art
-Diagram
-Chart
-Document
-Other
-
-LANG: tr
-Fotoğraf
-Ekran Görüntüsü
-Tasarım
-Sanat
-Diyagram
-Grafik
-Belge
-Diğer
+[tr]
+categories = [
+    "Makale", "Kurgu", "Kurgu Dışı", "Ders Kitabı", "Rapor",
+    "Devlet", "Sunum", "Kılavuz", "Tez", "Araştırma",
+    "Diğer", "Sözlük", "Dergi"
+]
+```
 
 ### Komut Seçenekleri
 
 | Seçenek | Açıklama |
-|--------|-------------|
+| :--- | :--- |
 | `--provider` | `deepinfra`, `openrouter`, `openai` veya `custom` |
 | `--model` | Metin işleme veya vision modunda kullanılacak model adı |
 | `--workers` | Eşzamanlı çalışanlar (varsayılan: 4) |
@@ -557,12 +545,13 @@ Diğer
 
 ## 🏗️ Mimari
 
-```
+```text
+
 renAI/
 ├── src/
 │   └── renai/
-│       ├── cli.py               # Giriş noktası (Typer)
-│       ├── settings.py          # Yapılandırma (Pydantic)
+│       ├── cli.py               # CLI giriş noktası (Typer)
+│       ├── settings.py          # Yapılandırma ve Pydantic ayarları
 │       ├── utils.py             # Yardımcı fonksiyonlar
 │       ├── logging_config.py    # Yapılandırılmış günlükleme
 │       ├── engines/             # Görüş ve OCR motorları
@@ -576,9 +565,10 @@ renAI/
 │       └── filename/            # İsimlendirme kuralları
 ├── tests/                       # Birim testleri
 ├── scripts/                     # Benchmark ve yardımcı scriptler
-├── pyproject.toml               # Paket meta verileri
-└── requirements.txt             # Bağımlılıklar
-```
+├── pyproject.toml               # Paket meta verileri ve bağımlılıklar
+└── requirements.txt             # Bağımlılık listesi
+
+```text
 
 ---
 
@@ -600,11 +590,11 @@ MIT Lisansı - Ayrıntılar için [LICENSE](LICENSE) dosyasına bakın.
 
 ---
 
-## 🤖 Görüntü Modelleri
+## 🖼️ Gelişmiş Görüş İş Akışları
 
 Görüntü modu, renAI'nin metin çıkarmadan multimodal yapay zeka modelleri kullanarak belge içeriğini "görmesini" sağlar.
 
-### Resim Yeniden Adlandırma
+### Doğrudan Resim Yeniden Adlandırma
 
 Yapay zeka kullanarak resim dosyalarını (fotoğraflar, ekran görüntüleri) yeniden adlandırın:
 
@@ -614,7 +604,7 @@ renai process "C:/Fotograflar" --mode rename --fallback-mode vision --provider d
 
 Bu komut her resmi analiz edecek ve görsel içeriğine göre yeniden adlandıracaktır.
 
-### Karışık Klasörler (PDF + Resim)
+### Karışık Klasörleri İşleme Stratejisi
 
 Hem PDF hem de resim içeren klasörleri işleyin:
 
@@ -623,6 +613,7 @@ renai process "C:/Belgeler" --mode rename --fallback-mode vision --provider deep
 ```
 
 Bu komut şunları işler:
+
 - PDF'leri görüntü modeli ile (OCR gerekmez)
 - Resimleri görüntü modeli ile
 
@@ -636,19 +627,19 @@ renai process "C:/Fotograflar" --mode rename --fallback-mode vision --provider d
 
 Bu komut, mevcutsa fotoğrafın EXIF meta verilerinden tarihi dosya adına ekler.
 
-### Önerilen Görüntü Modelleri
+### Tavsiye Edilen Görüş Modelleri
 
 | Model | Sağlayıcı | Notlar |
-|-------|----------|--------|
+| :--- | :--- | :--- |
 | `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra | Kalite ve hız arasında en iyi denge |
 | `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra | Daha hızlı, büyük partiler için iyi |
 | `openai/gpt-4o` | OpenAI | En yüksek kalite, daha pahalı |
 | `google/gemini-1.5-pro` | OpenRouter | İyi alternatif |
 
-### Görüntü Modu vs OCR
+### Görüş Modu ve OCR Karşılaştırması
 
 | Özellik | Görüntü Modu | OCR Modu |
-|---------|-------------|----------|
+| :--- | :--- | :--- |
 | Hız | Daha hızlı (metin çıkarma yok) | Daha yavaş |
 | Doğruluk | Modele bağlı | Temiz metin için iyi |
 | Maliyet | Dosya başına API çağrısı | Dosya başına API çağrısı |
@@ -670,17 +661,15 @@ Test paketini çalıştırın:
 
 ```bash
 # Tüm testleri çalıştır
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Görüntü modu testlerini çalıştır
-pytest tests/test_vision_*.py -v
+uv run pytest tests/test_vision_*.py -v
 
 # Kapsam ile çalıştır
-pytest tests/test_file_processor.py --cov=src/renai/processors/book
+uv run pytest tests/test_file_processor.py --cov=src/renai/processors/book
 ```
 
 ---
 
-*Son güncelleme: 2026-04-08*
-
-*renAI - Dijital kütüphanenizi yapay zeka ile düzenleyin*
+renAI - Dijital kütüphanenizi yapay zeka ile düzenleyin

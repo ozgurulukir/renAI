@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-*Last updated: 2026-04-08*
+Last updated: 2026-04-09
 
 ---
 
@@ -22,15 +22,19 @@ The tool supports both cloud-based LLMs (DeepInfra, OpenRouter, OpenAI) and loca
 ### Naming Convention
 
 **Documents (Text Extraction Mode):**
-```
+
+```text
 Title -- Subtitle -- Edition -- Author -- (Year).ext
 ```
+
 *Example: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
 
 **Documents & Images (Vision Mode):**
-```
+
+```text
 Description -- Category -- (Language).ext
 ```
+
 *Example: `Deep Learning Research Paper -- Academic.pdf`*
 
 *Example: `Sunset at Beach -- Photo -- (en).jpg`*
@@ -40,7 +44,7 @@ Description -- Category -- (Language).ext
 ## ✨ Features
 
 | Feature | Description |
-|---------|-------------|
+| :--- | :--- |
 | **Multi-Format Support** | Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD, and image files (JPG, PNG, HEIC, etc.) |
 | **Multiple PDF Extractors** | Choose from PyMuPDF, pdfplumber, pypdf, or pypdfium2 |
 | **AI-Driven Metadata** | Uses LLMs to extract titles, authors, years, and categories |
@@ -70,6 +74,7 @@ Description -- Category -- (Language).ext
 
 1. **Python 3.12+**
 2. **Tesseract OCR** - [Download for Windows](https://github.com/UB-Mannheim/tesseract/wiki/Tesseract-at-UB-Mannheim) or install via package manager:
+
    ```bash
    # Ubuntu/Debian
    sudo apt-get install tesseract-ocr
@@ -77,6 +82,7 @@ Description -- Category -- (Language).ext
    # macOS
    brew install tesseract
    ```
+
 3. **mutool (Optional)** - Part of [MuPDF](https://mupdf.com/releases/index.html)
 
 ### Setup
@@ -86,11 +92,8 @@ Description -- Category -- (Language).ext
 git clone https://github.com/ozgurulukir/renAI.git
 cd renAI
 
-# Install (creates 'renai' command)
-pip install -e .
-
-# Optional: Install with extra PDF extractors (pdfplumber, pypdf, pypdfium2)
-pip install -e ".[pdf-extra]"
+# Install using uv (creates 'renai' command)
+uv sync --all-extras
 ```
 
 ### API Keys
@@ -105,6 +108,7 @@ cp .env.example .env
 ```
 
 Then edit `.env` with your API keys:
+
 - `DEEPINFRA_API_KEY`
 - `OPENROUTER_API_KEY`
 - `OPENAI_API_KEY`
@@ -114,6 +118,7 @@ Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrou
 ### Configuration
 
 Configuration options in `.env`:
+
 - `RENAI_PROVIDER` - LLM provider (deepinfra, openrouter, openai, custom)
 - `RENAI_WORKERS` - Number of concurrent workers (default: 4)
 - `RENAI_TEXT_LENGTH` - Max text length for LLM (default: 10000)
@@ -121,7 +126,7 @@ Configuration options in `.env`:
 
 ### Custom Categories
 
-Custom categories are now managed via `categories.toml`. See [Configuration](#configuration-1) for details.
+Custom categories are now managed via `categories.toml`. See [Configuration](#-configuration) for details.
 
 ---
 
@@ -131,7 +136,7 @@ Custom categories are now managed via `categories.toml`. See [Configuration](#co
 
 ```bash
 # Rename all files in directory
-renai process "C:/Path/To/Books" --mode rename
+uv run renai process "C:/Path/To/Books" --mode rename
 ```
 
 ### Organizing into Folders
@@ -179,7 +184,7 @@ renai process "C:/Path/To/Images" --fallback-mode vision --rename-images --provi
 Process both PDFs and images in the same folder:
 
 | Parameter | PDF/Supported | Image |
-|-----------|---------------|-------|
+| :--- | :--- | :--- |
 | `--fallback-mode vision` | Normal → Vision fallback | ⏭️ Skipped |
 | `--fallback-mode vision --rename-images` | Normal → Vision fallback | 🔄 Vision rename |
 | `--rename-images` | Normal → OCR fallback | 🔄 Vision rename |
@@ -202,18 +207,19 @@ renai process "C:/Path/To/PDFs" --fallback-mode vision --provider openai --model
 renai process "C:/Path/To/Books" --ocr-enhanced --use-mutool
 ```
 
-### Using Different```bash
-# LLM Providers
+### LLM Providers
 
- DeepInfra (default)
-renai process "C:/Path/To/Books" --mode rename --provider deepinfra
+#### DeepInfra (default)
 
-# OpenRouter
-renai process "C:/Path/To/Books" --mode rename --provider openrouter
+uv run renai process "C:/Path/To/Books" --mode rename --provider deepinfra
 
-# OpenAI
-renai process "C:/Path/To/Books" --mode rename --provider openai
-```
+#### OpenRouter
+
+uv run renai process "C:/Path/To/Books" --mode rename --provider openrouter
+
+#### OpenAI
+
+uv run renai process "C:/Path/To/Books" --mode rename --provider openai
 
 ### Local Inference (Ollama / LM Studio)
 
@@ -235,7 +241,7 @@ renai process "C:/Path/To/Books" --mode rename --provider custom
 renai process "C:/Path/To/Books" --mode rename --provider custom --model mistral
 ```
 
-#### Controlling Text Length for Local Models
+## Controlling Text Length for Local Models
 
 When running local models on consumer hardware, you can reduce the text length sent to the LLM to decrease memory usage and improve performance:
 
@@ -248,13 +254,13 @@ renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 2
 ```
 
 | Option | Description | Default |
-|--------|-------------|---------|
+| :--- | :--- | :--- |
 | `--text-length` | Target text length sent to LLM | 10000 |
 
-#### Environment Variables for Custom Provider
+### Environment Variables for Custom Provider
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| :--- | :--- | :--- |
 | `CUSTOM_API_BASE_URL` | Base URL of your local API server | `http://localhost:8000/v1` |
 | `CUSTOM_MODEL` | Model name to use | `llama3` |
 | `CUSTOM_API_KEY` | API key (usually not needed for local) | `not-required` |
@@ -262,7 +268,7 @@ renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 2
 #### Common Local Server URLs
 
 | Tool | URL |
-|------|-----|
+| :--- | :--- |
 | Ollama | `http://localhost:11434/v1` |
 | LM Studio | `http://localhost:1234/v1` |
 | LocalAI | `http://localhost:8080/v1` |
@@ -295,18 +301,23 @@ renai process "C:/Path/To/Books" --mode rename --update-metadata
 ### Benchmarking & Model Evaluation
 
 #### PDF Extractor Benchmark
+
 Compare the performance and accuracy of different PDF extraction libraries on your documents.
+
 ```bash
 renai process "C:/Path/To/Books" --benchmark
 ```
 
 #### LLM Model Evaluation
+
 Test multiple models from a provider to find the best balance between cost and accuracy for your specific document collection.
+
 ```bash
 renai process "C:/Path/To/Books" --eval-model --provider deepinfra
 ```
 
 **How it works:**
+
 - Models are loaded from provider-specific configuration files: `eval_models_deepinfra.txt`, `eval_models_openai.txt`, or `eval_models_openrouter.txt`.
 - Each file should contain a list of model names, one per line.
 - The tool processes the first 2 files in your directory using **all** listed models.
@@ -331,7 +342,7 @@ renAI supports vision-capable LLMs that can process PDFs and images as visual co
 ### Recommended Vision Models
 
 | Provider | Model | Best For |
-|----------|-------|----------|
+| :--- | :--- | :--- |
 | **OpenAI** | `gpt-4o` | Best accuracy, reliable |
 | **OpenAI** | `gpt-4o-mini` | Fast, cost-effective |
 | **OpenRouter** | `openai/gpt-4o` | Flexible pricing |
@@ -343,7 +354,7 @@ renAI supports vision-capable LLMs that can process PDFs and images as visual co
 ### Vision Mode vs OCR
 
 | Feature | Vision Mode (`--vision`) | OCR Mode (default) |
-|---------|--------------------------|-------------------|
+| :--- | :--- | :--- |
 | **Speed** | Faster for text PDFs | Slower |
 | **Accuracy** | Higher for clear text | Depends on scan quality |
 | **Scanned Docs** | May struggle | Optimized for scans |
@@ -351,12 +362,14 @@ renAI supports vision-capable LLMs that can process PDFs and images as visual co
 | **API Cost** | Image tokens | Text tokens |
 
 **When to use Vision Mode:**
+
 - PDFs where text extraction might fail
 - When you don't have Tesseract installed
 - When OCR is too slow or inaccurate
 - When you want better results on formatted documents
 
 **When to use OCR:**
+
 - Scanned documents
 - Low-quality images
 - Multi-language documents
@@ -378,6 +391,7 @@ renAI supports vision-capable LLMs that can process PDFs and images as visual co
 ### Directory Layout Warning (Organize Mode)
 
 When using `--mode organize`:
+
 - Files from all subdirectories are moved to category folders at the root
 - Empty subdirectories may remain after files are moved
 - Category folders are created at the root level, not within subdirectories
@@ -386,7 +400,7 @@ When using `--mode organize`:
 ### Technical Limitations
 
 | Limitation | Description |
-|------------|-------------|
+| :--- | :--- |
 | **Text Length** | Up to 8000 characters sent to LLM per file |
 | **API Costs** | Each file processed sends text to an LLM API |
 | **Rate Limits** | Providers may enforce rate limits |
@@ -418,17 +432,19 @@ When using `--mode organize`:
 renAI uses an intelligent caching system that includes provider-model awareness:
 
 | Cache Type | Key Components | Invalidation |
-|------------|----------------|--------------|
+| :--- | :--- | :--- |
 | **Text Cache** | File hash + OCR settings | When file content or OCR mode changes |
 | **Metadata Cache** | File hash + provider + model | When file content, provider, or model changes |
 
 **How it works:**
+
 - Each file is identified by its MD5 hash
 - Metadata cache keys include a hash of the provider-model pair
 - Switching providers or models automatically invalidates old cache
 - Use `--update-metadata` to force fresh extraction regardless of cache
 
 **Example:**
+
 ```bash
 # First run with DeepInfra - caches metadata
 renai process "C:/Books" --provider deepinfra
@@ -446,6 +462,7 @@ renai process "C:/Books" --provider deepinfra --update-metadata
 **Cache Location:** Managed automatically by the OS via `platformdirs` (e.g., `~/.cache/renAI` on Linux, `~/Library/Caches/renAI` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows).
 
 **Clear Cache:**
+
 ```bash
 # Clear all cache (metadata and text)
 renai cache
@@ -457,7 +474,7 @@ renai process --clear-cache
 ### Privacy Considerations
 
 | Scenario | Recommended Provider |
-|----------|---------------------|
+| :--- | :--- |
 | Public documents | Any cloud provider (DeepInfra, OpenRouter, OpenAI) |
 | Private/personal files | `custom` provider with local LLM |
 | Sensitive business documents | `custom` provider with local LLM |
@@ -468,7 +485,7 @@ For detailed privacy guidance, data retention policies, and compliance considera
 ### Cost Estimation
 
 | Files | Est. Cost (~$0.001/file) |
-|-------|--------------------------|
+| :--- | :--- |
 | 100 | $0.10 |
 | 1,000 | $1.00 |
 | 10,000 | $10.00 |
@@ -487,7 +504,7 @@ renAI now utilizes modern OS-agnostic path management via the `platformdirs` lib
 - **Log and Debug Data:** Managed in the OS user data directory.
 - **Configuration (like `categories.txt`):** Managed in the OS config directory.
 
-### Custom Categories
+### Defining Custom Categories
 
 Create `categories.toml` in your OS's respective user config directory for `renAI` (e.g., `~/.config/renAI/categories.toml` on Linux, `%APPDATA%\renAI\categories.toml` on Windows):
 
@@ -510,7 +527,7 @@ categories = [
 ### Command Options
 
 | Option | Description |
-|--------|-------------|
+| :--- | :--- |
 | `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
 | `--model` | Model name (for text processing or vision if --fallback-mode vision is used) |
 | `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
@@ -533,7 +550,7 @@ categories = [
 
 ## 🏗️ Architecture
 
-```
+```text
 renAI/
 ├── src/
 │   └── renai/
@@ -584,11 +601,11 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🤖 Vision Models
+## 🖼️ Advanced Vision Workflows
 
 Vision mode allows renAI to process PDFs and images without text extraction, using multimodal AI models that can "see" document content.
 
-### Image Renaming
+### Direct Image Renaming
 
 Rename image files (photos, screenshots) using AI:
 
@@ -598,7 +615,7 @@ renai process "C:/Photos" --mode rename --fallback-mode vision --provider deepin
 
 This will analyze each image and rename it based on its visual content.
 
-### Mixed Folders (PDF + Images)
+### Processing Mixed Folders Strategy
 
 Process folders containing both PDFs and images:
 
@@ -607,6 +624,7 @@ renai process "C:/Documents" --mode rename --fallback-mode vision --provider dee
 ```
 
 This processes:
+
 - PDFs with vision model (no OCR needed)
 - Images with vision model
 
@@ -620,19 +638,19 @@ renai process "C:/Photos" --mode rename --fallback-mode vision --provider deepin
 
 This adds the photo date from EXIF metadata to the filename when available.
 
-### Recommended Vision Models
+### Top-Tier Vision Model Options
 
 | Model | Provider | Notes |
-|-------|----------|-------|
+| :--- | :--- | :--- |
 | `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra | Best balance of quality and speed |
 | `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra | Faster, good for large batches |
 | `openai/gpt-4o` | OpenAI | Highest quality, more expensive |
 | `google/gemini-1.5-pro` | OpenRouter | Good alternative |
 
-### Vision Mode vs OCR
+### Vision Mode Comparison with OCR Engine
 
 | Feature | Vision Mode | OCR Mode |
-|---------|-------------|----------|
+| :--- | :--- | :--- |
 | Speed | Faster (no text extraction) | Slower |
 | Accuracy | Depends on model | Good for clear text |
 | Cost | API calls per file | API calls per file |
@@ -646,15 +664,15 @@ Run the test suite:
 
 ```bash
 # Run all tests
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run vision-specific tests
-pytest tests/test_vision_*.py -v
+uv run pytest tests/test_vision_*.py -v
 
 # Run with coverage
-pytest tests/test_file_processor.py --cov=src/renai/processors/book
+uv run pytest tests/test_file_processor.py --cov=src/renai/processors/book
 ```
 
 ---
 
-*renAI - Organize your digital library with AI*
+renAI - Organize your digital library with AI
