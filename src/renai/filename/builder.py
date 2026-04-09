@@ -17,19 +17,19 @@ Example:
 
 Images (Vision Mode):
 --------------------
-Format: Title -- Category -- [Date] -- (Language).ext
+Format: Title -- [Date] -- (Language).ext
 
 Example:
     Input: {"title": "Sunset at Beach", "category": "Photo", "language": "en"}
-    Output: "Sunset at Beach -- Photo -- (en).jpg"
+    Output: "Sunset at Beach -- (en).jpg"
 
 Vision Mode (PDFs):
 -----------------
-Format: Description -- Category -- (Language).ext
+Format: Description -- (Language).ext
 
 Example:
     Input: {"title": "Research Paper", "category": "Academic", "language": "en"}
-    Output: "Research Paper -- Academic -- (en).pdf"
+    Output: "Research Paper -- (en).pdf"
 
 Key Features:
 ============
@@ -150,14 +150,14 @@ def build_image_filename(
 
     Constructs a filename for images processed with vision models.
 
-    Format: Title -- Category -- [Date] -- (Language).ext
+    Format: Description -- [Date] -- (Language).ext
 
     Args:
         image_data: Dictionary containing image metadata with keys:
-            - title (str): Image title/description
+            - description (str): Image description (filename-ready)
             - category (str): Category (e.g., "Photo", "Screenshot")
             - language (str): Language code (e.g., "en", "tr")
-            - description (str, optional): Additional description
+            - visual_context (str, optional): Additional context
         original_extension: Original file extension including dot
         exif_date: EXIF date string in YYYY-MM-DD format, if available
         add_exif_date: Whether to include the EXIF date in the filename
@@ -166,39 +166,33 @@ def build_image_filename(
         The constructed filename string.
 
     Example:
-        >>> data = {"title": "Sunset", "category": "Photo", "language": "en"}
+        >>> data = {"description": "Sunset", "category": "Photo", "language": "en"}
         >>> build_image_filename(data, ".jpg")
-        "Sunset -- Photo -- (en).jpg"
+        "Sunset -- (en).jpg"
 
         >>> # With EXIF date
         >>> build_image_filename(data, ".jpg", exif_date="2024-07-15", add_exif_date=True)
-        "Sunset -- Photo -- [2024-07-15] -- (en).jpg"
+        "Sunset -- [2024-07-15] -- (en).jpg"
 
         >>> # Minimal
         >>> build_image_filename({}, ".png")
         "Image -- (en).png"
 
     Note:
-        - Category is omitted if "Other" or "Diğer"
         - Language defaults to "en" if not specified
         - EXIF date formatted as [YYYY-MM-DD]
     """
-    title = (image_data.get("title") or "").strip()
-    category = (image_data.get("category") or "Other").strip()
-    language = (image_data.get("language") or "en").strip()
     description = (image_data.get("description") or "").strip()
+    language = (image_data.get("language") or "en").strip()
+    visual_context = (image_data.get("visual_context") or "").strip()
 
     name_parts = []
 
-    # Add title or description
-    if title:
-        name_parts.append(title)
-    elif description:
+    # Add description or visual context
+    if description:
         name_parts.append(description)
-
-    # Add category if not "Other"
-    if category and category.lower() not in ("other", "diğer"):
-        name_parts.append(category)
+    elif visual_context:
+        name_parts.append(visual_context)
 
     # Add EXIF date if requested and available
     if add_exif_date and exif_date:
@@ -290,7 +284,7 @@ def build_vision_filename(
     For vision mode, uses simpler format since metadata is less structured.
     Uses language indicator since vision models often detect language.
 
-    Format: Description -- Category -- (Language).ext
+    Format: Description -- (Language).ext
 
     Args:
         book_data: Dictionary containing metadata with keys:
@@ -305,24 +299,19 @@ def build_vision_filename(
     Example:
         >>> data = {"title": "Research Paper", "category": "Academic", "language": "en"}
         >>> build_vision_filename(data, ".pdf")
-        "Research Paper -- Academic -- (en).pdf"
+        "Research Paper -- (en).pdf"
 
     Note:
         - Category omitted if "Other", "Diğer", or "Uncategorized"
         - Language defaults to "en"
     """
     title = (book_data.get("title") or "").strip()
-    category = (book_data.get("category") or "Uncategorized").strip()
     language = (book_data.get("language") or "en").strip()
 
     name_parts = []
 
     if title:
         name_parts.append(title)
-
-    # Add category if not "Other"
-    if category and category.lower() not in ("other", "diğer", "uncategorized"):
-        name_parts.append(category)
 
     lang_indicator = "tr" if language.lower() == "tr" else "en"
 

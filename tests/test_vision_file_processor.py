@@ -15,6 +15,7 @@ import pytest
 
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
+from renai.models import ProcessingResult
 
 
 @pytest.fixture
@@ -130,7 +131,7 @@ class TestProcessSingleBookVision:
             result = book_processor.process_file(
                 symlink_file, mode="rename", fallback_mode=FallbackMode.VISION
             )
-            assert result[0] is False  # Should fail due to PDF parsing
+            assert result.success is False  # Should fail due to PDF parsing
         except (OSError, NotImplementedError):
             pytest.skip("Symlink creation not supported")
 
@@ -167,7 +168,7 @@ class TestProcessSingleBookVision:
             )
 
             # Should succeed using cached data
-            assert result[0] is True
+            assert result.success is True
 
     @pytest.mark.skip(
         reason="Vision engine architecture changed - needs complex mocking"
@@ -222,7 +223,7 @@ class TestProcessSingleImage:
             symlink_file.symlink_to(real_file)
 
             result = book_processor.process_file(symlink_file, rename_images=True)
-            assert result[0] is False
+            assert result.success is False
         except (OSError, NotImplementedError):
             pytest.skip("Symlink creation not supported")
 
@@ -282,11 +283,11 @@ class TestProcessSingleImage:
                     result = book_processor.process_file(img_file, rename_images=True)
 
                     # Check filename construction
-                    if result[2]:  # new_name
-                        assert "Beach Sunset" in result[2]
-                        assert "Photo" in result[2]
-                        assert "(en)" in result[2]
-                        assert result[2].endswith(".jpg")
+                    if result.name:  # new_name
+                        assert "Beach Sunset" in result.name
+                        assert "Photo" in result.name
+                        assert "(en)" in result.name
+                        assert result.name.endswith(".jpg")
 
     @pytest.mark.skip(reason="Internal implementation detail")
     def test_turkish_language_in_filename(self, book_processor, tmp_path):
@@ -313,8 +314,8 @@ class TestProcessSingleImage:
 
                     result = book_processor.process_file(img_file, rename_images=True)
 
-                    if result[2]:
-                        assert "(tr)" in result[2]
+                    if result.name:
+                        assert "(tr)" in result.name
 
     @pytest.mark.skip(
         reason="Vision engine architecture changed - needs complex mocking"
@@ -341,7 +342,7 @@ class TestProcessSingleImage:
             result = book_processor.process_file(img_file, rename_images=True)
 
             # Should succeed using cached data
-            assert result[0] is True
+            assert result.success is True
             # LLM should not be called
             book_processor.llm_engine.get_image_metadata.assert_not_called()
 
@@ -360,7 +361,7 @@ class TestProcessSingleImage:
 
                 result = book_processor.process_file(img_file, rename_images=True)
 
-                assert result[0] is False
+                assert result.success is False
 
     def test_identical_name_skips_move(self, book_processor, tmp_path):
         """Test that identical names don't trigger file move."""

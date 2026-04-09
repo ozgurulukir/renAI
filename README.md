@@ -29,15 +29,21 @@ Title -- Subtitle -- Edition -- Author -- (Year).ext
 
 *Example: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
 
-**Documents & Images (Vision Mode):**
+**Documents (Vision Mode):**
 
 ```text
-Description -- Category -- (Language).ext
+Title -- (Language).ext
 ```
 
-*Example: `Deep Learning Research Paper -- Academic.pdf`*
+*Example: `Deep Learning Research Paper -- (en).pdf`*
 
-*Example: `Sunset at Beach -- Photo -- (en).jpg`*
+**Images (Vision Mode):**
+
+```text
+Description -- [Date] -- (Language).ext
+```
+
+*Example: `Sunset -- [2024-07-15] -- (en).jpg`*
 
 ---
 

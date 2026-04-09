@@ -23,6 +23,7 @@ from ..filename.builder import (
     extract_category_from_metadata,
     is_filename_changed,
 )
+from ..models import ProcessingResult
 from ..settings import IMAGE_EXTENSIONS, CACHE_DIR
 from ..utils import get_file_hash
 from .text_extractor import TextExtractor, FallbackMode
@@ -96,14 +97,14 @@ class BookProcessor:
         rename_images: bool = False,
         update_metadata: bool = False,
         add_exif_date: bool = False,
-    ) -> Tuple[bool, Optional[Path], Optional[str], Optional[str], Optional[str]]:
+    ) -> ProcessingResult:
         """
         Unified processing entry point for documents and images.
         """
         try:
             if file_path.is_symlink():
                 logging.warning(f"Skipping symlink: {file_path.name}")
-                return False, None, None, None, None
+                return ProcessingResult(success=False, error="Symlink skipped")
 
             file_hash = get_file_hash(file_path)
             is_image = file_path.suffix.lower() in IMAGE_EXTENSIONS
@@ -146,7 +147,7 @@ class BookProcessor:
                 self.scan_failed_files.add(file_path)
                 if self.text_extractor.move_scan_failures:
                     self.text_extractor._move_to_scan_failures(file_path)
-                return False, None, None, None, None
+                return ProcessingResult(success=False, error="Metadata extraction failed")
 
             # Build filename and category
             if is_image:
@@ -162,7 +163,13 @@ class BookProcessor:
             category = extract_category_from_metadata(metadata)
 
             if not is_filename_changed(file_path, new_name):
-                return True, file_path, new_name, category, file_hash
+                return ProcessingResult(
+                    success=True,
+                    file_path=file_path,
+                    name=new_name,
+                    category=category,
+                    file_hash=file_hash,
+                )
 
             # Perform rename
             new_path = file_path.parent / new_name
@@ -171,11 +178,18 @@ class BookProcessor:
                     file_path, new_path, "rename", source_hash=file_hash
                 )
 
-            return True, final_path, final_path.name, category, file_hash
+            return ProcessingResult(
+                success=True,
+                file_path=final_path,
+                name=final_path.name,
+                category=category,
+                file_hash=file_hash,
+            )
 
         except Exception as e:
-            logging.error(f"Error processing {file_path.name}: {e}")
-            return False, None, None, None, None
+            msg = f"Critical error processing {file_path.name}: {e}"
+            logging.error(msg)
+            return ProcessingResult(success=False, error=msg)
 
     def _extract_metadata_dispatch(
         self,
@@ -218,33 +232,33 @@ class BookProcessor:
 
     def organize_files(
         self,
-        processed_info: List[Tuple[bool, Optional[Path], str, str, str]],
+        processed_info: List[ProcessingResult],
         root_dir: Path,
     ):
         """Moves renamed files into category folders."""
         created_dirs = set()
-        for success, current_path, name, category, file_hash in processed_info:
-            if not (success and current_path and current_path.exists() and category):
+        for res in processed_info:
+            if not (res.success and res.file_path and res.file_path.exists() and res.category):
                 continue
 
-            category_dir = root_dir / category
+            category_dir = root_dir / res.category
             try:
                 if category_dir not in created_dirs:
                     category_dir.mkdir(parents=True, exist_ok=True)
                     created_dirs.add(category_dir)
 
-                dest_path = category_dir / name
+                dest_path = category_dir / res.name
                 with self.file_operation_lock:
                     safe_move_file(
-                        current_path,
+                        res.file_path,
                         dest_path,
                         "organize",
                         ensure_dirs=False,
-                        source_hash=file_hash,
+                        source_hash=res.file_hash,
                     )
-                logging.info(f"Organized {name} -> {category}/{name}")
+                logging.info(f"Organized {res.name} -> {res.category}/{res.name}")
             except Exception as e:
-                logging.error(f"Failed to organize {name} into {category}: {e}")
+                logging.error(f"Failed to organize {res.name} into {res.category}: {res.category} | Error: {e}")
 
     def evaluate_models(
         self, file_path: Path, provider: str, model_names: list[str]

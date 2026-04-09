@@ -5,7 +5,7 @@ Extracts heavy workflow logic from CLI parameters.
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import typer
 from rich.console import Console
@@ -13,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
+from renai.models import ProcessingResult
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
 from renai.settings import (
@@ -188,11 +189,11 @@ def process_files(
                     console.print(
                         f"[red]Error processing {futures[future].name}: {e}[/red]"
                     )
-                    results.append((False, None, None, None, None))
+                    results.append(ProcessingResult(success=False, error=str(e)))
                 progress.advance(task)
 
     # Log results
-    success_count = sum(1 for r in results if r[0])
+    success_count = sum(1 for r in results if r.success)
     console.print(
         f"[green]Processed {success_count}/{len(file_paths)} files successfully[/green]"
     )
@@ -215,6 +216,34 @@ def process_files(
                 f"[red]Total files failed processing: {len(processor.scan_failed_files)}[/red]"
             )
             console.print("[red]Files moved to Scan_Failures directory.[/red]")
+
+
+def _configure_fallback_folders(
+    processor: BookProcessor,
+    root_dir: Path,
+    fallback_mode: FallbackMode,
+    move_scan_failures: bool,
+) -> None:
+    """Configure special folders for scan fallbacks and failures."""
+    if fallback_mode == FallbackMode.MOVE_TO_FOLDER:
+        processor.set_needs_scan_folder(root_dir, skip=True)
+    if move_scan_failures:
+        processor.set_scan_failures_folder(root_dir, enabled=True)
+
+
+def _collect_all_processing_files(
+    root_dir: Path, processor: BookProcessor, recursive: bool, rename_images: bool
+) -> List[Path]:
+    """Collect all files to be processed, including images if requested."""
+    file_paths = collect_files(root_dir, processor, recursive)
+    if rename_images:
+        image_files = collect_image_files(root_dir, processor, recursive)
+        seen = set(file_paths)
+        for img in image_files:
+            if img not in seen:
+                file_paths.append(img)
+                seen.add(img)
+    return file_paths
 
 
 def run_pipeline(
@@ -255,21 +284,14 @@ def run_pipeline(
     )
 
     # 2. Configure fallback folders
-    if fallback_mode == FallbackMode.MOVE_TO_FOLDER:
-        processor.set_needs_scan_folder(root_dir, skip=True)
-    if move_scan_failures:
-        processor.set_scan_failures_folder(root_dir, enabled=True)
+    _configure_fallback_folders(
+        processor, root_dir, fallback_mode, move_scan_failures
+    )
 
     # 3. Collect files
-    file_paths = collect_files(root_dir, processor, recursive)
-    if rename_images:
-        image_files = collect_image_files(root_dir, processor, recursive)
-        # Avoid duplicates if some extensions overlap (though unlikely)
-        seen = set(file_paths)
-        for img in image_files:
-            if img not in seen:
-                file_paths.append(img)
-                seen.add(img)
+    file_paths = _collect_all_processing_files(
+        root_dir, processor, recursive, rename_images
+    )
 
     if not file_paths:
         console.print("[yellow]No supported files found.[/yellow]")

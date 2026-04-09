@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-04-09
+
+### [Added]
+
+- **Dynamic Custom Categories**: Refactored `LLMEngine` to inject custom categories from `categories.toml` directly into LLM prompts using a `{category_table}` placeholder.
+- **Improved Settings Support**: Added support for nested category structures in `categories.toml`, allowing separate category sets for documents and images.
+- **Enhanced Image Naming**: Renamed the `title` metadata field to `description` for image renaming tasks to provide clearer, more descriptive filenames.
+
+### [Changed]
+
+- **Filename Normalization**: Removed category names from generated filenames in Vision and Image modes to ensure cleaner, more professional naming across all files.
+- **Metadata-First Architecture**: Standardized the role of categories to be used exclusively for folder organization (`--mode organize`) and metadata storage rather than filename strings.
+- **Strict Date Inclusion**: Ensured that dates are only included in image filenames when the `--exif` flag is explicitly passed, avoiding automatic date inclusion.
+- **Test Suite Updates**: Refactored `test_config.py` and `test_filename_builder.py` to align with the new nested category structure and normalized filename formats.
+
 ## [1.3.0] - 2026-04-08
 
 ### [Added]

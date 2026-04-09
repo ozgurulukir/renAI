@@ -7,6 +7,7 @@ import shutil  # noqa: E402
 from pathlib import Path  # noqa: E402
 from unittest.mock import Mock  # noqa: E402
 from renai.processors.book import BookProcessor  # noqa: E402
+from renai.models import ProcessingResult
 
 
 def test_file_processing_integration():
@@ -43,17 +44,15 @@ def test_file_processing_integration():
         }
 
         # Process the book
-        success, new_path, new_name, category, file_hash = (
-            processor.process_file(test_file, mode="rename")
-        )
+        result = processor.process_file(test_file, mode="rename")
 
         # Check results
-        assert success
-        assert new_path is not None
-        assert new_name is not None
-        assert "AI Fundamentals" in new_name
-        assert "John Doe" in new_name
-        assert category == "Computer Science"
+        assert result.success
+        assert result.file_path is not None
+        assert result.name is not None
+        assert "AI Fundamentals" in result.name
+        assert "John Doe" in result.name
+        assert result.category == "Computer Science"
 
         print("PASS: File processing integration test passed")
 
@@ -85,7 +84,13 @@ def test_organize_files_integration():
             shutil.copy(test_file, renamed_file)
 
             test_files.append(
-                (True, renamed_file, renamed_file.name, category, "fake_hash")
+                ProcessingResult(
+                    success=True,
+                    file_path=renamed_file,
+                    name=renamed_file.name,
+                    category=category,
+                    file_hash="fake_hash",
+                )
             )
 
         # Organize files
@@ -136,19 +141,19 @@ def test_cache_functionality():
         mock_llm_engine.get_book_metadata.return_value = metadata
 
         # Process file with update_metadata=False (should use cache if exists)
-        success1, new_path1, _, _, _ = processor.process_file(
+        result1 = processor.process_file(
             test_file, mode="rename", update_metadata=False
         )
 
         # Process same file again with update_metadata=False (should use cache)
         # Use new_path1 because the file was renamed
-        assert new_path1 is not None
-        success2, _, _, _, _ = processor.process_file(
-            new_path1, mode="rename", update_metadata=False
+        assert result1.file_path is not None
+        result2 = processor.process_file(
+            result1.file_path, mode="rename", update_metadata=False
         )
 
-        assert success1
-        assert success2
+        assert result1.success
+        assert result2.success
         # LLM should be called once for each file processing
         # (cache is based on file hash, but since file is renamed, it's treated as different)
         print(f"LLM call count: {mock_llm_engine.get_book_metadata.call_count}")

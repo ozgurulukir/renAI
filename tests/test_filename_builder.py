@@ -50,23 +50,23 @@ class TestBuildImageFilename:
 
     def test_full_metadata(self):
         """Test image filename with all fields."""
-        data = {"title": "Sunset", "category": "Photo", "language": "en"}
+        data = {"description": "Sunset", "category": "Photo", "language": "en"}
         result = build_image_filename(
             data, ".jpg", exif_date="2024-07-15", add_exif_date=True
         )
         assert "Sunset" in result
-        assert "Photo" in result
+        assert "Photo" not in result
         assert "[2024-07-15]" in result
 
     def test_minimal(self):
         """Test image filename with minimal data."""
-        data = {"title": "Beach"}
+        data = {"description": "Beach"}
         result = build_image_filename(data, ".png")
         assert "Beach" in result
 
     def test_turkish_language(self):
         """Test image filename with Turkish language."""
-        data = {"title": "İstanbul", "language": "tr"}
+        data = {"description": "İstanbul", "language": "tr"}
         result = build_image_filename(data, ".jpg")
         assert "(tr)" in result
 
@@ -79,7 +79,7 @@ class TestBuildVisionFilename:
         data = {"title": "Research Paper", "category": "Academic", "language": "en"}
         result = build_vision_filename(data, ".pdf")
         assert "Research Paper" in result
-        assert "Academic" in result
+        assert "Academic" not in result
 
     def test_without_category(self):
         """Test vision filename without category."""

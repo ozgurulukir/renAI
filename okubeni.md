@@ -29,15 +29,21 @@ Başlık -- Alt Başlık -- Baskı -- Yazar -- (Yıl).uzantı
 
 *Örnek: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
 
-**Belge ve Görseller (Multimodal Görüş Modu):**
+**Belgeler (Multimodal Görüş Modu):**
 
 ```text
-Açıklama -- Kategori -- (Dil).uzantı
+Başlık -- (Dil).uzantı
 ```
 
-*Örnek: `Deep Learning Research Paper -- Academic -- (en).pdf`*
+*Örnek: `Deep Learning Research Paper -- (en).pdf`*
 
-*Örnel: `Sunset at Beach -- Photo -- (en).jpg`*
+**Görseller (Multimodal Görüş Modu):**
+
+```text
+Açıklama -- [Tarih] -- (Dil).uzantı
+```
+
+*Örnek: `Sunset -- [2024-07-15] -- (en).jpg`*
 
 ---
 

@@ -77,9 +77,26 @@ DEFAULT_CATEGORIES = {
         "Manual",
         "Thesis",
         "Research",
+    ],
+}
+
+# Default Image Categories for --rename-images mode
+IMAGE_CATEGORIES = {
+    "tr": [
+        "Fotoğraf",
+        "Snapshot",
+        "Screenshot",
+        "Belge",
+        "Diyagram",
+        "Diğer",
+    ],
+    "en": [
+        "Photo",
+        "Snapshot",
+        "Screenshot",
+        "Document",
+        "Diagram",
         "Other",
-        "Dictionary",
-        "Magazine",
     ],
 }
 
@@ -299,16 +316,23 @@ def load_categories_from_file() -> dict:
     except ImportError:
         import tomli as tomllib
 
+    def _parse_toml_data(data: dict) -> dict:
+        result = {"categories": {}, "image_categories": {}}
+        for lang in ["en", "tr"]:
+            if lang in data:
+                if "categories" in data[lang]:
+                    result["categories"][lang] = data[lang]["categories"]
+                if "image_categories" in data[lang]:
+                    result["image_categories"][lang] = data[lang]["image_categories"]
+        return result
+
     # Try user config first
     if CUSTOM_CATEGORIES_FILE.exists():
         try:
             with open(CUSTOM_CATEGORIES_FILE, "rb") as f:
                 data = tomllib.load(f)
-                result = {}
-                for lang in ["en", "tr"]:
-                    if lang in data and "categories" in data[lang]:
-                        result[lang] = data[lang]["categories"]
-                if result:
+                result = _parse_toml_data(data)
+                if result["categories"] or result["image_categories"]:
                     return result
         except Exception as e:
             logging.warning(f"Could not load user categories: {e}")
@@ -319,26 +343,25 @@ def load_categories_from_file() -> dict:
         try:
             with open(package_categories_file, "rb") as f:
                 data = tomllib.load(f)
-                result = {}
-                for lang in ["en", "tr"]:
-                    if lang in data and "categories" in data[lang]:
-                        result[lang] = data[lang]["categories"]
-                return result
+                return _parse_toml_data(data)
         except Exception as e:
             logging.warning(f"Could not load package categories: {e}")
 
-    return {}
+    return {"categories": {}, "image_categories": {}}
 
 
 # Load custom categories if file exists
-CUSTOM_CATEGORIES = load_categories_from_file()
+CUSTOM_CONFIG = load_categories_from_file()
 
 
 def get_allowed_categories() -> dict:
-    """Get allowed categories, preferring custom categories if file exists."""
-    if CUSTOM_CATEGORIES:
-        return CUSTOM_CATEGORIES
-    return DEFAULT_CATEGORIES
+    """Get allowed categories for documents."""
+    return CUSTOM_CONFIG.get("categories") or DEFAULT_CATEGORIES
+
+
+def get_image_categories() -> dict:
+    """Get allowed categories for images."""
+    return CUSTOM_CONFIG.get("image_categories") or IMAGE_CATEGORIES
 
 
 def get_tesseract_path() -> Path:

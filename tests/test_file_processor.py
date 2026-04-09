@@ -16,6 +16,7 @@ import pytest
 from renai.file_ops import safe_move_file, safe_copy_file
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
+from renai.models import ProcessingResult
 
 
 class TestSafeCopyFile:
@@ -189,7 +190,7 @@ class TestOrganizeFiles:
 
         # Execute
         processor.organize_files(
-            [(True, test_file, "book.pdf", "Fiction", "hash")], tmp_path
+            [ProcessingResult(success=True, file_path=test_file, name="book.pdf", category="Fiction", file_hash="hash")], tmp_path
         )
 
         # Verify
@@ -203,7 +204,7 @@ class TestOrganizeFiles:
 
         # File doesn't exist (already moved)
         result = processor.organize_files(
-            [(True, tmp_path / "book.pdf", "book.pdf", "Fiction", "hash")], tmp_path
+            [ProcessingResult(success=True, file_path=tmp_path / "book.pdf", name="book.pdf", category="Fiction", file_hash="hash")], tmp_path
         )
 
         # Should not raise, should complete silently
@@ -216,7 +217,7 @@ class TestOrganizeFiles:
         processor = BookProcessor(Mock(), Mock())
 
         # Failed processing (success=False)
-        result = processor.organize_files([(False, None, "", "", "")], tmp_path)
+        result = processor.organize_files([ProcessingResult(success=False)], tmp_path)
 
         assert result is None
 
@@ -229,7 +230,7 @@ class TestOrganizeFiles:
 
         # Turkish category with unicode characters
         processor.organize_files(
-            [(True, test_file, "book.pdf", "Kurgu Dışı", "hash")], tmp_path
+            [ProcessingResult(success=True, file_path=test_file, name="book.pdf", category="Kurgu Dışı", file_hash="hash")], tmp_path
         )
 
         category_dir = tmp_path / "Kurgu Dışı"
@@ -247,8 +248,8 @@ class TestOrganizeFiles:
 
         processor.organize_files(
             [
-                (True, file1, "book1.pdf", "Science", "hash1"),
-                (True, file2, "book2.pdf", "Science", "hash2"),
+                ProcessingResult(success=True, file_path=file1, name="book1.pdf", category="Science", file_hash="hash1"),
+                ProcessingResult(success=True, file_path=file2, name="book2.pdf", category="Science", file_hash="hash2"),
             ],
             tmp_path,
         )
@@ -269,8 +270,8 @@ class TestOrganizeFiles:
 
         processor.organize_files(
             [
-                (True, file1, "book1.pdf", "Fiction", "hash1"),
-                (True, file2, "book2.txt", "Non-Fiction", "hash2"),
+                ProcessingResult(success=True, file_path=file1, name="book1.pdf", category="Fiction", file_hash="hash1"),
+                ProcessingResult(success=True, file_path=file2, name="book2.txt", category="Non-Fiction", file_hash="hash2"),
             ],
             tmp_path,
         )
@@ -290,7 +291,7 @@ class TestOrganizeFiles:
             Path, "mkdir", side_effect=PermissionError("Permission denied")
         ):
             result = processor.organize_files(
-                [(True, test_file, "book.pdf", "Fiction", "hash")], tmp_path
+                [ProcessingResult(success=True, file_path=test_file, name="book.pdf", category="Fiction", file_hash="hash")], tmp_path
             )
 
         # Should complete without raising, file should remain
@@ -471,7 +472,7 @@ class TestProcessSingleBookVision:
         test_file = tmp_path / "test.epub"
         test_file.write_text("test content")
         result = processor.process_file(test_file, mode="rename", fallback_mode=FallbackMode.VISION)
-        assert result == (False, None, None, None, None)
+        assert result.success is False
 
     def test_vision_symlink_skips(self, tmp_path):
         """Test that symlinks are skipped in vision mode."""
@@ -488,7 +489,7 @@ class TestProcessSingleBookVision:
         try:
             symlink.symlink_to(real_file)
             result = processor.process_file(symlink, mode="rename", fallback_mode=FallbackMode.VISION)
-            assert result == (False, None, None, None, None)
+            assert result.success is False
         except (OSError, NotImplementedError):
              pytest.skip("Symlink creation not supported")
 
@@ -501,7 +502,7 @@ class TestProcessSingleBookVision:
         test_file = tmp_path / "test.pdf"
         test_file.write_text("test")
         result = processor.process_file(test_file, mode="rename", fallback_mode=FallbackMode.VISION)
-        assert result == (False, None, None, None, None)
+        assert result.success is False
 
 
 class TestProcessSingleImage:
@@ -517,7 +518,7 @@ class TestProcessSingleImage:
         test_image.write_bytes(b"fake jpeg")
         mock_llm.get_image_metadata.return_value = {"title": "Test Image", "category": "Photos", "language": "en"}
         result = processor.process_file(test_image, mode="rename", rename_images=True)
-        assert result[0] is True
+        assert result.success is True
 
     def test_get_image_exif_date_without_exif(self, tmp_path):
         """Test EXIF date returns None when not available."""
@@ -558,6 +559,6 @@ class TestOrganizeFilesEdgeCases:
         mock_ocr = MagicMock()
         mock_llm = MagicMock()
         processor = BookProcessor(mock_ocr, mock_llm)
-        processed_info = [(False, None, "", "", ""), (False, None, "", "", "")]
+        processed_info = [ProcessingResult(success=False), ProcessingResult(success=False)]
         result = processor.organize_files(processed_info, tmp_path)
         assert result is None

@@ -38,7 +38,7 @@ class TestLoadCategories:
 
         with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
             result = load_categories_from_file()
-            assert result == {"en": ["UserEn"], "tr": ["UserTr"]}
+            assert result["categories"] == {"en": ["UserEn"], "tr": ["UserTr"]}
 
     def test_package_default(self, tmp_path):
         """Should fallback to package config if user config missing."""
@@ -53,7 +53,7 @@ class TestLoadCategories:
         with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
             with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
                 result = load_categories_from_file()
-                assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
     def test_user_config_empty_categories_fallback_to_package(self, tmp_path):
         """Should fallback to package config if user config has no categories."""
@@ -70,7 +70,7 @@ class TestLoadCategories:
         with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
             with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
                 result = load_categories_from_file()
-                assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
     def test_user_invalid(self, tmp_path):
         """Should fallback and log warning if user config is invalid."""
@@ -89,7 +89,7 @@ class TestLoadCategories:
                 with patch("logging.warning") as mock_warn:
                     result = load_categories_from_file()
 
-                    assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                    assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
                     mock_warn.assert_called_once()
                     assert "Could not load user categories" in mock_warn.call_args[0][0]
 
@@ -118,7 +118,7 @@ class TestLoadCategories:
                     with patch("logging.warning") as mock_warn:
                         result = load_categories_from_file()
 
-                        assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                        assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
                         mock_warn.assert_called_once()
                         assert "Could not load user categories" in mock_warn.call_args[0][0]
 
@@ -137,7 +137,7 @@ class TestLoadCategories:
         with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
             with patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
                 result = load_categories_from_file()
-                assert result == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
     def test_package_invalid(self, tmp_path):
         """Should return empty and log warning if both configs missing/invalid."""
@@ -153,7 +153,7 @@ class TestLoadCategories:
                 with patch("logging.warning") as mock_warn:
                     result = load_categories_from_file()
 
-                    assert result == {}
+                    assert result == {"categories": {}, "image_categories": {}}
                     mock_warn.assert_called_once()
                     assert "Could not load package categories" in mock_warn.call_args[0][0]
 
@@ -179,7 +179,7 @@ class TestLoadCategories:
                     with patch("logging.warning") as mock_warn:
                         result = load_categories_from_file()
 
-                        assert result == {}
+                        assert result == {"categories": {}, "image_categories": {}}
                         mock_warn.assert_called_once()
                         assert "Could not load package categories" in mock_warn.call_args[0][0]
 
@@ -193,7 +193,7 @@ class TestLoadCategories:
         with patch("renai.settings.CUSTOM_CATEGORIES_FILE", user_file):
             with patch("renai.settings.PACKAGE_CONFIG_DIR", package_dir):
                 result = load_categories_from_file()
-                assert result == {}
+                assert result == {"categories": {}, "image_categories": {}}
 
 
 class TestCategories:
@@ -209,14 +209,14 @@ class TestCategories:
 
     def test_custom_categories_override_defaults(self):
         """Custom categories should override defaults."""
-        custom = {"en": ["Custom1", "Custom2"]}
-        with patch("renai.settings.CUSTOM_CATEGORIES", custom):
+        custom = {"categories": {"en": ["Custom1", "Custom2"]}}
+        with patch("renai.settings.CUSTOM_CONFIG", custom):
             result = get_allowed_categories()
-            assert result == custom
+            assert result == custom["categories"]
 
     def test_no_custom_returns_default(self):
         """No custom categories should return defaults."""
-        with patch("renai.settings.CUSTOM_CATEGORIES", {}):
+        with patch("renai.settings.CUSTOM_CONFIG", {}):
             result = get_allowed_categories()
             assert result == DEFAULT_CATEGORIES
 
