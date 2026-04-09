@@ -13,8 +13,8 @@ Only the latest version of renAI is supported for security updates.
 
 We take the security of renAI seriously. If you believe you have found a security vulnerability, please do NOT open a public issue. Instead, please report it via one of the following methods:
 
-1.  **Private Email**: Send a detailed report to `ozgur.ulukir@gmail.com`.
-2.  **GitHub Private Vulnerability Reporting**: Use the "Report a vulnerability" button on the GitHub Security tab if enabled.
+1. **Private Email**: Send a detailed report to `ozgur.ulukir@gmail.com`.
+2. **GitHub Private Vulnerability Reporting**: Use the "Report a vulnerability" button on the GitHub Security tab if enabled.
 
 ### What to include in your report
 

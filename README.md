@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-Last updated: 2026-04-09
+Last updated: 2026-04-10
 
 ---
 
@@ -59,6 +59,8 @@ Description -- [Date] -- (Language).ext
 | **Advanced OCR** | Tesseract integration with Enhanced Mode for low-quality scans |
 | **mutool Support** | Extracts high-quality images from fixed-layout PDFs |
 | **Smart Caching** | MD5-based caching reduces API costs and processing time |
+| **Unified Refinement** | Standardized second-pass 'Senior Editor' logic for both text and vision modes |
+| **Token Optimization** | Context-free refinement pass reduces secondary API costs by ~90% |
 | **Custom Categories** | Define your own categories per language in `categories.toml` |
 
 ### Operating Modes

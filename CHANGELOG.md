@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-04-10
+
+### [Added]
+
+- **Unified Refinement Pass**: Standardized the 'Senior Editor' pass for both text and vision modes, ensuring consistent metadata quality regardless of the extraction strategy.
+- **Modular Prompt Architecture**: Refactored `LLMEngine` to use shared, reusable prompt components (Security Warnings, Guidelines, Category Rules), eliminating redundancies and ensuring a single point of truth for prompt logic.
+
+### [Changed]
+
+- **Context-Free Refinement**: Optimized the secondary LLM pass by removing source text dependency. The model now refines metadata using only the initial JSON and its internal knowledge, reducing token usage by approximately 90%.
+- **Pure TOML Categorization**: Removed hardcoded guiding notes from prompts to ensure categorization is strictly driven by the user's `categories.toml` file.
+
+### [Fixed]
+
+- **Version Synchronization**: Resolved a discrepancy where internal version strings were out of sync with project metadata.
+
 ## [1.3.1] - 2026-04-09
 
 ### [Added]
