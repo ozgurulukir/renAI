@@ -9,7 +9,7 @@ if (Path.cwd() / "src").exists():
 elif (Path.cwd().parent / "src").exists():
     sys.path.insert(0, str(Path.cwd().parent / "src"))
 
-from renai.cli import collect_files
+from renai.processors.orchestrator import collect_files
 
 class MockProcessor:
     @property
