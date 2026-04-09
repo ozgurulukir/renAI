@@ -90,7 +90,7 @@ def get_text_cache_path(
     return cache_dir / cache_filename
 
 
-def sanitize_filename(filename: str, max_length: int = 150) -> str:
+def sanitize_filename(filename: str, max_length: int = 200) -> str:
     """
     Replace invalid characters and remove all control characters.
     Limits length to stay within Windows path limits.

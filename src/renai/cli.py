@@ -279,28 +279,32 @@ def process(
     # Display warnings
     display_warnings(mode, recursive)
 
-    # Setup engines and run pipeline
-    run_pipeline(
-        root_dir=root_dir,
-        mode=mode,
-        provider=provider,
-        model=model,
-        ocr_enhanced=ocr_enhanced,
-        debug_ocr=debug_ocr,
-        use_mutool=use_mutool,
-        mutool_path=mutool_path,
-        extractor=extractor,
-        workers=workers,
-        text_length=text_length,
-        recursive=recursive,
-        update_metadata=update_metadata,
-        fallback_mode=fallback_mode,
-        move_scan_failures=move_scan_failures,
-        rename_images=rename_images,
-        exif=exif,
-        benchmark=benchmark,
-        eval_model=eval_model,
-    )
+    try:
+        # Setup engines and run pipeline
+        run_pipeline(
+            root_dir=root_dir,
+            mode=mode,
+            provider=provider,
+            model=model,
+            ocr_enhanced=ocr_enhanced,
+            debug_ocr=debug_ocr,
+            use_mutool=use_mutool,
+            mutool_path=mutool_path,
+            extractor=extractor,
+            workers=workers,
+            text_length=text_length,
+            recursive=recursive,
+            update_metadata=update_metadata,
+            fallback_mode=fallback_mode,
+            move_scan_failures=move_scan_failures,
+            rename_images=rename_images,
+            exif=exif,
+            benchmark=benchmark,
+            eval_model=eval_model,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Operation cancelled by user. Exiting...[/yellow]")
+        raise typer.Exit(code=0)
 
 
 @app.command("providers")

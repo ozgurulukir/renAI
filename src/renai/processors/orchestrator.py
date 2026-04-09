@@ -182,15 +182,21 @@ def process_files(
                 )
                 futures[future] = p
 
-            for future in as_completed(futures):
-                try:
-                    results.append(future.result())
-                except Exception as e:
-                    console.print(
-                        f"[red]Error processing {futures[future].name}: {e}[/red]"
-                    )
-                    results.append(ProcessingResult(success=False, error=str(e)))
-                progress.advance(task)
+            try:
+                for future in as_completed(futures):
+                    try:
+                        results.append(future.result())
+                    except Exception as e:
+                        console.print(
+                            f"[red]Error processing {futures[future].name}: {e}[/red]"
+                        )
+                        results.append(ProcessingResult(success=False, error=str(e)))
+                    progress.advance(task)
+            except KeyboardInterrupt:
+                console.print("\n[red]Stopping... Cancelling pending tasks...[/red]")
+                executor.shutdown(wait=False, cancel_futures=True)
+                # Re-raise to let the CLI handle common exit
+                raise
 
     # Log results
     success_count = sum(1 for r in results if r.success)
