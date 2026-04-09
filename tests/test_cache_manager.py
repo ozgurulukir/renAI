@@ -106,16 +106,22 @@ def test_read_metadata_cache_exception(tmp_path, caplog):
             assert "Read error" in caplog.text
 
 def test_get_metadata_cache_path():
-    """Test generating metadata cache path."""
+    """Test generating metadata cache path with mode awareness."""
     file_hash = "abc123"
     provider = "openai"
     model = "gpt-4"
     cache_dir = Path("/tmp/cache")
     
+    # Test default mode (doc)
     path = get_metadata_cache_path(file_hash, provider, model, cache_dir=cache_dir)
-    assert "abc123_" in path.name
+    assert "doc_abc123_" in path.name
     assert ".json" in path.name
     assert path.parent.name == "metadata"
+
+    # Test image mode
+    path = get_metadata_cache_path(file_hash, provider, model, mode="img", cache_dir=cache_dir)
+    assert "img_abc123_" in path.name
+    assert ".json" in path.name
 
 def test_invalidate_cache_for_provider_model_basic(tmp_path):
     """Test basic clearing of metadata cache files for provider/model."""

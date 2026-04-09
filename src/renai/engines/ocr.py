@@ -30,7 +30,7 @@ except ImportError:
 
 # Configure Tesseract
 if TESSERACT_PATH.exists():
-    pytesseract.pytesseract.tesseract_cmd = str(TESSERACT_PATH)
+    pytesseract.pytesseract.tesseract_cmd = str(TESSERACT_PATH)  # type: ignore[assignment]
 
 
 class OCREngine:
@@ -172,8 +172,6 @@ class OCREngine:
 
         try:
             # Convert PIL image to numpy array
-            import cv2
-
             image_array = np.asarray(image)
 
             # Handle grayscale vs color (ensure we have a 1-channel image for thresholding)
@@ -387,7 +385,7 @@ class OCREngine:
             page = doc.load_page(pno)
             zoom = target_dpi / 72
             pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
-            image = Image.frombytes(  # type: ignore
+            image = Image.frombytes(
                 "RGB",
                 (pix.width, pix.height),
                 pix.samples,
@@ -427,7 +425,7 @@ class OCREngine:
             # 4. Thresholding (Binarization)
             if self.cfg["threshold"]:
                 # Convert to 1-bit black and white
-                image = image.point(lambda x: 0 if x < 140 else 255)  # type: ignore
+                image = image.point(lambda x: 0 if x < 140 else 255)
         return image
 
     def _perform_ocr(self, image: Image.Image, pno: int) -> str:
@@ -465,7 +463,7 @@ class OCREngine:
             bulk_images = {}
             if self.use_mutool and file_path.suffix.lower() == ".pdf":
                 bulk_images = self._bulk_extract_images(
-                    file_path, pages_to_extract, self.cfg["dpi"]
+                    file_path, pages_to_extract, int(self.cfg["dpi"])
                 )
 
             extracted_text = []
@@ -483,7 +481,7 @@ class OCREngine:
                     target_dpi = min(self.cfg["dpi"], source_dpi)
 
                 image, temp_img = self._extract_image_from_page(
-                    doc, pno, file_path, target_dpi, pre_extracted_path=pre_path
+                    doc, pno, file_path, int(target_dpi), pre_extracted_path=pre_path
                 )
 
                 if image:

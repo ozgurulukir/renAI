@@ -135,6 +135,7 @@ def get_metadata_cache_path(
     provider: str,
     model: str,
     *,
+    mode: str = "doc",
     cache_dir: Optional[Path] = None,
     use_vision: bool = False,
 ) -> Path:
@@ -142,24 +143,25 @@ def get_metadata_cache_path(
     Get the cache file path for metadata.
 
     The cache key includes provider and model to ensure separate cache entries
-    for different LLM providers/models. This allows switching between providers
-    without losing cached results.
+    for different LLM providers/models. It also includes a mode prefix ('doc' or 'img')
+    to prevent collisions between different processing strategies.
 
     Args:
         file_hash: SHA256 hash of the source file.
         provider: LLM provider name (e.g., "deepinfra", "openrouter", "openai").
         model: LLM model name (e.g., "Qwen/Qwen2.5-72B-Instruct").
+        mode: Processing mode prefix ("doc" for book metadata, "img" for image renaming).
         cache_dir: Override the default cache directory.
         use_vision: Whether vision mode was used. If True, includes "_vision"
                     suffix for separate cache.
 
     Returns:
         Path to the metadata cache file.
-        Path format: {cache_dir}/metadata/{file_hash}_{provider_model_key}[_vision].json
+        Path format: {cache_dir}/metadata/{mode}_{file_hash}_{provider_model_key}[_vision].json
 
     Example:
-        >>> path = get_metadata_cache_path("a" * 64, "deepinfra", "llama-3.1-70b")
-        >>> # Returns: Path(".../metadata/" + "a" * 64 + "_hashed_provider_model.json")
+        >>> path = get_metadata_cache_path("abc123", "deepinfra", "llama3", mode="img")
+        >>> # Returns: Path(".../metadata/img_abc123_hashed_pm.json")
     """
     if cache_dir is None:
         cache_dir = CACHE_DIR
@@ -168,7 +170,7 @@ def get_metadata_cache_path(
     provider_model_key = get_provider_model_key(provider, model)
     vision_suffix = "_vision" if use_vision else ""
 
-    cache_key = f"{file_hash}_{provider_model_key}{vision_suffix}.json"
+    cache_key = f"{mode}_{file_hash}_{provider_model_key}{vision_suffix}.json"
     return cache_dir / "metadata" / cache_key
 
 

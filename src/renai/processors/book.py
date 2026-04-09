@@ -109,15 +109,23 @@ class BookProcessor:
             file_hash = get_file_hash(file_path)
             is_image = file_path.suffix.lower() in IMAGE_EXTENSIONS
 
-            # Check for cached metadata
-            use_vision_cache = (
+            # Determine cache mode and vision usage
+            # Use 'img' mode only when explicitly renaming images via vision
+            cache_mode = "img" if (is_image and rename_images) else "doc"
+            
+            # Vision is used if:
+            # - We are renaming images (they always use vision)
+            # - We are falling back to vision for a PDF
+            use_vision_cache = (is_image and rename_images) or (
                 fallback_mode == FallbackMode.VISION
                 and file_path.suffix.lower() == ".pdf"
             )
+
             cache_path = get_metadata_cache_path(
                 file_hash,
                 self.provider,
                 self.model,
+                mode=cache_mode,
                 cache_dir=CACHE_DIR,
                 use_vision=use_vision_cache,
             )

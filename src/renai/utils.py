@@ -45,49 +45,7 @@ def get_provider_model_key(provider: str, model: str) -> str:
     return generate_cache_key(provider, model)
 
 
-def get_metadata_cache_path(
-    file_hash: str, provider: str, model: str, cache_dir: Path, *, use_vision: bool = False
-) -> Path:
-    """Get the cache path for metadata with provider-model awareness.
 
-    The cache key includes the file hash and provider-model pairing.
-    This ensures that metadata cached with one provider/model is not
-    incorrectly reused with a different provider/model.
-
-    Args:
-        file_hash: SHA256 hash of the file content
-        provider: LLM provider name
-        model: Model name
-        cache_dir: Directory for cache files
-        use_vision: If True, creates separate cache for vision mode processing
-
-    Returns:
-        Path to the metadata cache file
-    """
-    provider_model_key = get_provider_model_key(provider, model)
-    vision_suffix = "_vision" if use_vision else ""
-    cache_filename = f"{file_hash}_{provider_model_key}{vision_suffix}_metadata.json"
-    return cache_dir / cache_filename
-
-
-def get_text_cache_path(
-    file_hash: str, *, ocr_enhanced: bool, use_mutool: bool, cache_dir: Path
-) -> Path:
-    """Get the cache path for extracted text.
-
-    Args:
-        file_hash: SHA256 hash of the file content
-        ocr_enhanced: Whether enhanced OCR was used
-        use_mutool: Whether mutool was used for extraction
-        cache_dir: Directory for cache files
-
-    Returns:
-        Path to the text cache file
-    """
-    quality_suffix = "enhanced" if ocr_enhanced else "basic"
-    method_suffix = "_mutool" if use_mutool else ""
-    cache_filename = f"{file_hash}_{quality_suffix}{method_suffix}.txt"
-    return cache_dir / cache_filename
 
 
 def sanitize_filename(filename: str, max_length: int = 200) -> str:

@@ -8,8 +8,6 @@ from renai.utils import (
     get_file_hash,
     generate_cache_key,
     get_provider_model_key,
-    get_metadata_cache_path,
-    get_text_cache_path,
     sanitize_filename,
     proportional_chunk_trim,
     read_text_limited,
@@ -101,38 +99,7 @@ def test_get_provider_model_key():
     assert get_provider_model_key(provider, model) == expected
 
 
-def test_get_metadata_cache_path(tmp_path):
-    """Test metadata cache path construction."""
-    file_hash = "abc123hash"
-    provider = "deepinfra"
-    model = "llama-3"
 
-    pm_key = get_provider_model_key(provider, model)
-    expected_name = f"{file_hash}_{pm_key}_metadata.json"
-
-    path = get_metadata_cache_path(file_hash, provider, model, cache_dir=tmp_path)
-    assert path == tmp_path / expected_name
-
-
-def test_get_text_cache_path(tmp_path):
-    """Test text cache path construction with various options."""
-    file_hash = "texthash"
-
-    # Basic extraction
-    path = get_text_cache_path(file_hash, ocr_enhanced=False, use_mutool=False, cache_dir=tmp_path)
-    assert path == tmp_path / f"{file_hash}_basic.txt"
-
-    # Enhanced OCR
-    path = get_text_cache_path(file_hash, ocr_enhanced=True, use_mutool=False, cache_dir=tmp_path)
-    assert path == tmp_path / f"{file_hash}_enhanced.txt"
-
-    # Enhanced OCR + mutool
-    path = get_text_cache_path(file_hash, ocr_enhanced=True, use_mutool=True, cache_dir=tmp_path)
-    assert path == tmp_path / f"{file_hash}_enhanced_mutool.txt"
-
-    # Basic + mutool
-    path = get_text_cache_path(file_hash, ocr_enhanced=False, use_mutool=True, cache_dir=tmp_path)
-    assert path == tmp_path / f"{file_hash}_basic_mutool.txt"
 
 
 @pytest.mark.parametrize(
