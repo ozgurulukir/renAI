@@ -32,10 +32,10 @@ Başlık -- Alt Başlık -- Baskı -- Yazar -- (Yıl).uzantı
 **Belgeler (Multimodal Görüş Modu):**
 
 ```text
-Başlık -- (Dil).uzantı
+Başlık -- Yazar -- (Yıl) -- (Dil).uzantı
 ```
 
-*Örnek: `Deep Learning Research Paper -- (en).pdf`*
+*Örnek: `Deep Learning Research -- Ian Goodfellow -- (2016) -- (en).pdf`*
 
 **Görseller (Multimodal Görüş Modu):**
 
@@ -58,7 +58,9 @@ Açıklama -- [Tarih] -- (Dil).uzantı
 | **Görüntü Yeniden Adlandırma** | Yapay zeka görüntü analizi ile görüntü dosyalarını yeniden adlandır |
 | **Gelişmiş OCR** | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu |
 | **mutool Desteği** | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır |
-| **Akıllı Önbellekleme** | API maliyetlerini ve işleme süresini azaltan MD5 tabanlı önbellekleme |
+| **Akıllı Önbellekleme** | SHA256 tabanlı önbellekleme sistemi (Hem metin hem metadata için ayrı katmanlar). |
+| **SSoT Mimarisi** | Sıkı tipli Pydantic modelleri kullanarak meta veriler için Tek Gerçek Kaynak (SSoT) |
+| **Modüler Promptlar** | Dinamik şema enjeksiyonuna sahip merkezi ve yeniden kullanılabilir prompt bileşenleri |
 | **Bütünleşik İyileştirme** | Hem metin hem de görsel modları için standartlaştırılmış ikinci geçiş 'Kıdemli Editör' mantığı |
 | **Token Optimizasyonu** | Bağlamdan bağımsız iyileştirme geçişi ile ikincil API maliyetlerinde ~%90 tasarruf |
 | **Özel Kategoriler** | `categories.toml` dosyasında dil başına kendi kategorilerinizi tanımlayın |
@@ -442,12 +444,12 @@ renAI, sağlayıcı-model farkındalığına sahip akıllı bir önbellek sistem
 
 | Önbellek Türü | Anahtar Bileşenleri | Geçersiz Kılma |
 | :--- | :--- | :--- |
-| **Metin Önbelleği** | Dosya hash + OCR ayarları | Dosya içeriği veya OCR modu değiştiğinde |
-| **Meta Veri Önbelleği** | Dosya hash + sağlayıcı + model | Dosya içeriği, sağlayıcı veya model değiştiğinde |
+| **Metin Önbelleği** | Dosya hash + OCR ayarları | **Dosya İçeriği**: Dosyanın SHA256 karması değiştiğinde önbellek geçersiz kılınır. |
+| **Meta Veri Önbelleği** | Dosya hash + sağlayıcı + model + şema doğrulaması | Dosya içeriği, sağlayıcı, model veya şema değiştiğinde |
 
 **Nasıl çalışır:**
 
-- Her dosya MD5 hash'i ile tanımlanır
+- Her dosya SHA256 hash'i ile tanımlanır
 - Meta veri önbellek anahtarları sağlayıcı-model çiftinin hash'ini içerir
 - Sağlayıcı veya model değiştirmek eski önbelleği otomatik olarak geçersiz kılar
 - `--update-metadata` gerektiğinde taze çıkarma zorlar
@@ -555,13 +557,14 @@ categories = [
 
 ```text
 
-renAI/
 ├── src/
 │   └── renai/
 │       ├── cli.py               # CLI giriş noktası (Typer)
 │       ├── settings.py          # Yapılandırma ve Pydantic ayarları
 │       ├── utils.py             # Yardımcı fonksiyonlar
 │       ├── logging_config.py    # Yapılandırılmış günlükleme
+│       ├── prompts/             # Modüler .txt prompt şablonları
+│       ├── models/              # SSoT Pydantic Şemaları (Book, Image)
 │       ├── engines/             # Görüş ve OCR motorları
 │       ├── extractors/          # Belge ayrıştırıcıları
 │       ├── processors/          # Çekirdek işleme mantığı
@@ -571,7 +574,7 @@ renAI/
 │       │   └── visual.py
 │       ├── file_ops/            # Dosya işlem mantığı
 │       └── filename/            # İsimlendirme kuralları
-├── tests/                       # Birim testleri
+├── tests/                       # Senkronize edilmiş birim testleri (320+)
 ├── scripts/                     # Benchmark ve yardımcı scriptler
 ├── pyproject.toml               # Paket meta verileri ve bağımlılıklar
 └── requirements.txt             # Bağımlılık listesi

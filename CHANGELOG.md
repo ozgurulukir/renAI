@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-04-10
+
+### [Added]
+
+- **SSoT Metadata Architecture**: Implemented a Single Source of Truth for metadata using Pydantic models (`BookMetadata`, `ImageMetadata`). This eliminates raw dictionary access and ensures strict typing across the entire pipeline.
+- **Typed Cache Layer**: Optimized `CacheManager` to support validated loading into Pydantic models, enabling model-first processing after retrieval.
+- **Metadata Sanitization in Schema**: Centralized filename-safe category logic within the metadata models, reducing dependence on external utility functions.
+
+### [Changed]
+
+- **Strict Attribute Access**: Standardized the codebase to use attribute access (e.g., `metadata.title`) instead of index-based access (e.g., `metadata["title"]`), improving IDE support and runtime safety.
+- **Global Test Synchronization**: Refactored the entire test suite (320+ tests) to use Pydantic models for mocks, test fixtures, and assertions, restoring 100% architectural consistency.
+- **Modular Prompt Injection**: Enhanced the prompt system to automatically generate JSON schema examples directly from the Pydantic models, ensuring LLM outputs always match code expectations.
+
+### [Fixed]
+
+- **LLM Type Safety**: Resolved generic typing errors in `LLMEngine` by binding metadata completion to the `BaseMetadata` schema.
+- **Category Slashing Logic**: Fixed inconsistencies in category sanitization for sub-directories in organizational mode.
+
 ## [1.4.0] - 2026-04-10
 
 ### [Added]

@@ -7,7 +7,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Union, cast
 
 from ..cache.manager import (
     get_metadata_cache_path,
@@ -24,6 +24,7 @@ from ..filename.builder import (
     is_filename_changed,
 )
 from ..models import ProcessingResult
+from ..models.schemas import BookMetadata, ImageMetadata
 from ..settings import IMAGE_EXTENSIONS, CACHE_DIR
 from ..utils import get_file_hash
 from .text_extractor import TextExtractor, FallbackMode
@@ -110,12 +111,7 @@ class BookProcessor:
             is_image = file_path.suffix.lower() in IMAGE_EXTENSIONS
 
             # Determine cache mode and vision usage
-            # Use 'img' mode only when explicitly renaming images via vision
             cache_mode = "img" if (is_image and rename_images) else "doc"
-            
-            # Vision is used if:
-            # - We are renaming images (they always use vision)
-            # - We are falling back to vision for a PDF
             use_vision_cache = (is_image and rename_images) or (
                 fallback_mode == FallbackMode.VISION
                 and file_path.suffix.lower() == ".pdf"
@@ -130,10 +126,15 @@ class BookProcessor:
                 use_vision=use_vision_cache,
             )
 
+            # Determine which model class to expect
+            model_class = ImageMetadata if (is_image and rename_images) else BookMetadata
+
             metadata = (
                 None
                 if update_metadata
-                else read_metadata_cache(cache_path, self.provider, self.model)
+                else read_metadata_cache(
+                    cache_path, self.provider, self.model, model_class=model_class
+                )
             )
 
             if not metadata:
@@ -157,16 +158,17 @@ class BookProcessor:
                     self.text_extractor._move_to_scan_failures(file_path)
                 return ProcessingResult(success=False, error="Metadata extraction failed")
 
-            # Build filename and category
-            if is_image:
+            # Build filename and category (Type-safe Model Usage)
+            if isinstance(metadata, ImageMetadata):
                 new_name = build_image_filename(
                     metadata,
                     file_path.suffix,
-                    exif_date=metadata.get("exif_date"),
+                    exif_date=metadata.exif_date,
                     add_exif_date=add_exif_date,
                 )
             else:
-                new_name = build_book_filename(metadata, file_path.suffix)
+                # Explicitly cast to satisfy mypy (we know it's not ImageMetadata here)
+                new_name = build_book_filename(cast(Union[BookMetadata, Dict[str, Any]], metadata), file_path.suffix)
 
             category = extract_category_from_metadata(metadata)
 
@@ -207,8 +209,8 @@ class BookProcessor:
         rename_images: bool,
         add_exif_date: bool,
         file_hash: str,
-    ) -> Optional[Dict[str, Any]]:
-        """Dispatcher for different extraction strategies using switch-based fallback."""
+    ) -> Optional[Union[BookMetadata, ImageMetadata]]:
+        """Dispatcher for different extraction strategies returning typed models."""
         if is_image:
             if not rename_images:
                 return None
@@ -217,7 +219,6 @@ class BookProcessor:
             )
 
         # 1. Extract Text (Always Try First)
-        # In OCR/SKIP/VISION mode, the TextExtractor handles the internal logic or marks for further fallback.
         text = self.text_extractor.extract(
             file_path, fallback=fallback_mode, file_hash=file_hash
         )
@@ -234,8 +235,6 @@ class BookProcessor:
                 return self.visual_processor.extract_metadata_from_pdf(file_path)
 
             case _:  # FallbackMode.OCR, MOVE_TO_FOLDER, NONE
-                # TextExtractor already handled internal fallbacks or skips.
-                # If we are here and text was empty, we implicitly failed.
                 return None
 
     def organize_files(
@@ -255,6 +254,8 @@ class BookProcessor:
                     category_dir.mkdir(parents=True, exist_ok=True)
                     created_dirs.add(category_dir)
 
+                if res.name is None:
+                    continue
                 dest_path = category_dir / res.name
                 with self.file_operation_lock:
                     safe_move_file(
@@ -297,6 +298,10 @@ class BookProcessor:
 
             for model_name in model_names:
                 try:
+                    if not config.api_key:
+                        logging.error(f"API Key for {provider} not found.")
+                        continue
+
                     temp_engine = LLMEngine(
                         provider=provider,
                         api_key=config.api_key,
@@ -308,8 +313,10 @@ class BookProcessor:
                     logging.info(
                         f"{model_name:25} | {status} | {str(metadata)[:50]}..."
                     )
+                    # model_dump_json for logging
+                    dump = metadata.model_dump_json(ensure_ascii=False) if metadata else "{}"
                     f.write(
-                        f"[{model_name}] -> {json.dumps(metadata, ensure_ascii=False)}\n"
+                        f"[{model_name}] -> {dump}\n"
                     )
                 except Exception as e:
                     logging.error(f"{model_name:25} | ERROR: {str(e)[:25]}")

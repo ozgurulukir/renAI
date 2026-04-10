@@ -27,7 +27,7 @@ The text cache key is generated using:
 
 | Component | Description | Example |
 | :--- | :--- | :--- |
-| `file_hash` | MD5 hash of file content | `abc123def456` |
+| `file_hash` | SHA256 hash of file content | `abc123def456` |
 | `quality` | OCR quality (`basic` or `enhanced`) | `enhanced` |
 | `method` | Extraction method (`_mutool` or empty) | `_mutool` |
 
@@ -47,7 +47,7 @@ The metadata cache key is generated using:
 
 | Component | Description | Example |
 | :--- | :--- | :--- |
-| `file_hash` | MD5 hash of file content | `abc123def456` |
+| `file_hash` | SHA256 hash of file content | `abc123def456` |
 | `provider_model_hash` | Hash of provider:model pair | `a1b2c3d4` |
 | `_vision` | Optional suffix for Vision mode results | `_vision` |
 
@@ -73,7 +73,7 @@ The cache key includes a hash of the provider-model pair:
 def get_provider_model_key(provider: str, model: str) -> str:
     """Generate a cache key for provider-model pairing."""
     combined = f"{provider}:{model}".lower()
-    return hashlib.md5(combined.encode()).hexdigest()[:8]
+    return hashlib.sha256(combined.encode()).hexdigest()[:8]
 ```
 
 ### Cache Validation
@@ -257,7 +257,7 @@ $ renai "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
 
 ```python
 from utils import (
-    get_file_hash,                    # Get MD5 hash of a file
+    get_file_hash,                    # Get SHA256 hash of a file
     get_provider_model_key,           # Generate provider-model hash
     get_metadata_cache_path,          # Get metadata cache path
     get_text_cache_path,              # Get text cache path

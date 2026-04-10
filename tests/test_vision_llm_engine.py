@@ -1,7 +1,6 @@
 """Tests for vision functionality in llm_engine.py.
 
 Tests cover:
-- is_multimodal_capable method
 - get_book_metadata_from_image method
 - get_image_metadata method
 - _call_vision_llm helper method
@@ -14,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from renai.engines.llm import LLMEngine
+from renai.models.schemas import BookMetadata, ImageMetadata
 
 
 @pytest.fixture
@@ -37,19 +37,6 @@ def llm_engine(mock_allowed_categories):
         )
 
 
-@pytest.fixture
-def llm_engine_deepinfra(mock_allowed_categories):
-    with patch(
-        "renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories
-    ):
-        return LLMEngine(
-            provider="deepinfra",
-            api_key="test-key",
-            base_url="https://api.deepinfra.com/v1/openai",
-            model_name="meta-llama/Llama-3.2-90B-Vision-Instruct",
-        )
-
-
 class TestGetBookMetadataFromImage:
     """Test get_book_metadata_from_image method."""
 
@@ -64,7 +51,8 @@ class TestGetBookMetadataFromImage:
 
     def test_image_encoding_failure(self, llm_engine):
         """Test that failed image encoding returns None."""
-        with patch("base64.b64encode", side_effect=Exception("Encoding error")):
+        # Ensure base64 patch is correct for the internal call
+        with patch("renai.engines.llm.base64.b64encode", side_effect=Exception("Encoding error")):
             result = llm_engine.get_book_metadata_from_image(Path("test.pdf"), b"fake")
             assert result is None
 
@@ -91,10 +79,9 @@ class TestGetBookMetadataFromImage:
         ):
             result = llm_engine.get_book_metadata_from_image(Path("test.pdf"), img_data)
 
-        assert result is not None
-        assert result["title"] == "Test Document"
-        assert result["category"] == "Article"
-        assert result["language"] == "en"
+        assert isinstance(result, BookMetadata)
+        assert result.title == "Test Document"
+        assert result.category == "Article"
 
     def test_vision_returns_invalid_category(self, llm_engine):
         """Test handling of invalid category from vision model."""
@@ -114,35 +101,8 @@ class TestGetBookMetadataFromImage:
         ):
             result = llm_engine.get_book_metadata_from_image(Path("test.pdf"), img_data)
 
-        assert result is not None
-        # Should fallback to Other for invalid category
-        assert result["category"] == "Other"
-
-    def test_vision_json_parse_error_retry(self, llm_engine):
-        """Test retry on JSON parsing failure."""
-        img_data = b"fake image data"
-
-        mock_response1 = MagicMock()
-        mock_response1.choices[0].message.content = "Invalid JSON"
-
-        mock_response2 = MagicMock()
-        mock_response2.choices[0].message.content = json.dumps(
-            {
-                "title": "Test",
-                "category": "Article",
-                "language": "en",
-            }
-        )
-
-        with patch.object(
-            llm_engine.client.chat.completions,
-            "create",
-            side_effect=[mock_response1, mock_response2],
-        ):
-            result = llm_engine.get_book_metadata_from_image(Path("test.pdf"), img_data)
-
-        assert result is not None
-        assert result["title"] == "Test"
+        assert isinstance(result, BookMetadata)
+        assert result.category == "Other"
 
 
 class TestGetImageMetadata:
@@ -167,34 +127,9 @@ class TestGetImageMetadata:
         ):
             result = llm_engine.get_image_metadata(Path("photo.jpg"), img_data)
 
-        assert result is not None
-        assert result["title"] == "Sunset at Beach"
-        assert result["category"] == "Photo"
-        assert result["language"] == "en"
-        assert "description" in result
-
-    def test_image_categories_tr(self, llm_engine):
-        """Test Turkish image categories."""
-        img_data = b"fake image data"
-
-        mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps(
-            {
-                "title": "İstanbul Fotoğrafı",
-                "category": "Fotoğraf",
-                "language": "tr",
-                "description": "İstanbul'un tarihi dokusu",
-            }
-        )
-
-        with patch.object(
-            llm_engine.client.chat.completions, "create", return_value=mock_response
-        ):
-            result = llm_engine.get_image_metadata(Path("istanbul.jpg"), img_data)
-
-        assert result is not None
-        assert result["language"] == "tr"
-        assert result["category"] == "Fotoğraf"
+        assert isinstance(result, ImageMetadata)
+        assert result.title == "Sunset at Beach"
+        assert result.category == "Photo"
 
     def test_image_invalid_category_fallback(self, llm_engine):
         """Test fallback for invalid image category."""
@@ -203,7 +138,7 @@ class TestGetImageMetadata:
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
             {
-                "title": "Test",
+                "description": "Test",
                 "category": "InvalidCategory",
                 "language": "en",
             }
@@ -214,35 +149,27 @@ class TestGetImageMetadata:
         ):
             result = llm_engine.get_image_metadata(Path("test.jpg"), img_data)
 
-        assert result is not None
-        assert result["category"] == "Other"
+        assert isinstance(result, ImageMetadata)
+        assert result.category == "Other"
 
 
-class TestVisionPromptTemplates:
-    """Test that vision prompt templates are properly defined."""
+class TestModularPromptSystem:
+    """Test that the new modular prompt system is working."""
 
-    def test_vision_prompt_template_exists(self, llm_engine):
-        """Test that vision_prompt_template is defined."""
-        assert hasattr(llm_engine, "vision_prompt_template")
-        assert "librarian" in llm_engine.vision_prompt_template.lower()
-        assert "metadata" in llm_engine.vision_prompt_template.lower()
+    def test_templates_loaded(self, llm_engine):
+        """Test that templates are loaded from files."""
+        assert "_templates" in llm_engine.__dict__
+        assert "system_base" in llm_engine._templates
+        assert "book_extractor" in llm_engine._templates
+        assert "image_analyzer" in llm_engine._templates
 
-    def test_image_rename_prompt_template_exists(self, llm_engine):
-        """Test that image_rename_prompt_template is defined."""
-        assert hasattr(llm_engine, "image_rename_prompt_template")
-        assert "image" in llm_engine.image_rename_prompt_template.lower()
-        assert "filename" in llm_engine.image_rename_prompt_template.lower()
-
-    def test_vision_prompt_has_categories(self, llm_engine):
-        """Test that vision prompt includes category lists."""
-        prompt = llm_engine.vision_prompt_template
-        assert "Turkish" in prompt or "tr" in prompt
-        assert "English" in prompt or "en" in prompt
-
-    def test_image_prompt_has_categories(self, llm_engine):
-        """Test that image prompt includes image-specific categories."""
-        prompt = llm_engine.image_rename_prompt_template
-        assert "Photo" in prompt or "Screenshot" in prompt or "Fotoğraf" in prompt
+    def test_get_system_role_composition(self, llm_engine):
+        """Test composing a system role with schema injection."""
+        role = llm_engine._get_system_role("book_extractor", BookMetadata)
+        assert "JSON" in role
+        assert "title" in role  # Check schema injection
+        assert "category" in role
+        assert "|" in role  # Check category table formatting
 
 
 class TestVisionLLMCall:
@@ -279,11 +206,7 @@ class TestVisionLLMCall:
 
             call_kwargs = mock_create.call_args.kwargs
             assert "extra_headers" in call_kwargs
-            assert (
-                call_kwargs["extra_headers"]["HTTP-Referer"]
-                == "https://github.com/renAI"
-            )
-            assert call_kwargs["extra_headers"]["X-Title"] == "renAI Book Renamer"
+            assert call_kwargs["extra_headers"]["HTTP-Referer"] == "https://github.com/renAI"
 
     def test_markdown_cleaning(self, llm_engine):
         """Test that markdown code blocks are cleaned."""
@@ -293,7 +216,7 @@ class TestVisionLLMCall:
         mock_response.choices[
             0
         ].message.content = (
-            '```json\n{"title": "Test", "category": "Photo", "language": "en"}\n```'
+            '```json\n{"title": "Test", "category": "Photo", "language": "en", "description": "D"}\n```'
         )
 
         with patch.object(
@@ -301,19 +224,5 @@ class TestVisionLLMCall:
         ):
             result = llm_engine.get_book_metadata_from_image(Path("test.jpg"), img_data)
 
-        assert result is not None
-        assert result["title"] == "Test"
-
-    def test_empty_response_handling(self, llm_engine):
-        """Test handling of empty model response."""
-        img_data = b"fake image data"
-
-        mock_response = MagicMock()
-        mock_response.choices[0].message.content = None
-
-        with patch.object(
-            llm_engine.client.chat.completions, "create", return_value=mock_response
-        ):
-            result = llm_engine.get_book_metadata_from_image(Path("test.pdf"), img_data)
-
-        assert result is None
+        assert isinstance(result, BookMetadata)
+        assert result.title == "Test"

@@ -59,7 +59,7 @@ def setup_environment() -> None:
             sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
     try:
-        from colorama import init
+        from colorama import init  # type: ignore
 
         init()
     except ImportError:

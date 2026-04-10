@@ -18,7 +18,7 @@ Welcome to the official documentation for **renAI**, the AI-powered document and
 
 - **AI-Driven Metadata**: Automated titles, authors, and dates.
 - **Vision Mode**: Process scanned PDFs and images using multimodal AI.
-- **Smart Caching**: Efficient processing with MD5-based cache tracking.
+- **Smart Caching**: Efficient processing with SHA256-based cache tracking.
 - **Multi-Format**: Supports PDF, EPUB, DOCX, and common image formats.
 
 For detailed usage instructions, please visit the [main repository README](../README.md).

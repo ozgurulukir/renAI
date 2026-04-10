@@ -32,10 +32,10 @@ Title -- Subtitle -- Edition -- Author -- (Year).ext
 **Documents (Vision Mode):**
 
 ```text
-Title -- (Language).ext
+Title -- Author -- (Year) -- (Language).ext
 ```
 
-*Example: `Deep Learning Research Paper -- (en).pdf`*
+*Example: `Deep Learning Research -- Ian Goodfellow -- (2016) -- (en).pdf`*
 
 **Images (Vision Mode):**
 
@@ -58,7 +58,9 @@ Description -- [Date] -- (Language).ext
 | **Image Renaming** | Rename image files using AI vision analysis |
 | **Advanced OCR** | Tesseract integration with Enhanced Mode for low-quality scans |
 | **mutool Support** | Extracts high-quality images from fixed-layout PDFs |
-| **Smart Caching** | MD5-based caching reduces API costs and processing time |
+| **Smart Caching** | SHA256-based caching system (separate layers for both text and metadata). |
+| **SSoT Architecture** | Single Source of Truth for metadata using strictly-typed Pydantic models |
+| **Modular Prompts** | Centralized, reusable prompt components with dynamic schema injection |
 | **Unified Refinement** | Standardized second-pass 'Senior Editor' logic for both text and vision modes |
 | **Token Optimization** | Context-free refinement pass reduces secondary API costs by ~90% |
 | **Custom Categories** | Define your own categories per language in `categories.toml` |
@@ -441,12 +443,12 @@ renAI uses an intelligent caching system that includes provider-model awareness:
 
 | Cache Type | Key Components | Invalidation |
 | :--- | :--- | :--- |
-| **Text Cache** | File hash + OCR settings | When file content or OCR mode changes |
-| **Metadata Cache** | File hash + provider + model | When file content, provider, or model changes |
+| **Text Cache** | File hash + OCR settings | **File Content**: Cache is invalidated when the SHA256 hash of the file changes. |
+| **Metadata Cache** | File hash + provider + model + schema validation | When file content, provider, model, or schema changes |
 
 **How it works:**
 
-- Each file is identified by its MD5 hash
+- Each file is identified by its SHA256 hash
 - Metadata cache keys include a hash of the provider-model pair
 - Switching providers or models automatically invalidates old cache
 - Use `--update-metadata` to force fresh extraction regardless of cache
@@ -559,13 +561,14 @@ categories = [
 ## 🏗️ Architecture
 
 ```text
-renAI/
 ├── src/
 │   └── renai/
 │       ├── cli.py               # CLI entry point (Typer)
 │       ├── settings.py          # Configuration & Pydantic settings
 │       ├── utils.py             # Helper functions
 │       ├── logging_config.py    # Structured logging
+│       ├── prompts/             # Modular .txt prompt templates
+│       ├── models/              # SSoT Pydantic Schemas (Book, Image)
 │       ├── engines/             # Vision & OCR engines
 │       ├── extractors/          # Document parsers
 │       ├── processors/          # Core processing logic
@@ -575,7 +578,7 @@ renAI/
 │       │   └── visual.py
 │       ├── file_ops/            # File manipulation logic
 │       └── filename/            # Naming conventions
-├── tests/                       # Unit tests
+├── tests/                       # Synchronized unit tests (320+)
 ├── scripts/                     # Benchmark & Utility scripts
 ├── pyproject.toml               # Package metadata & dependencies
 └── requirements.txt             # Dependency list

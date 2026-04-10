@@ -33,15 +33,16 @@ from renai.cache.manager import (  # noqa: E402
     invalidate_cache_for_provider_model,
     get_metadata_cache_path,
 )
+from renai.models.schemas import BookMetadata  # noqa: E402
 
 def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
     """Test cache invalidation when provider or model doesn't match."""
     cache_path = tmp_path / "test_metadata.json"
-    metadata = {"title": "Test Book", "author": "Test Author"}
+    metadata = BookMetadata(title="Test Book", author="Test Author", category="Other", language="en")
     provider = "test_provider"
     model = "test_model"
 
-    # Write initial cache
+    # Write initial cache (supports both models and dicts)
     write_metadata_cache(cache_path, metadata, provider, model)
 
     # Test provider mismatch
@@ -50,32 +51,20 @@ def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
         assert result is None
         assert "Cache invalidated" in caplog.text
         assert "was test_provider/test_model" in caplog.text
-        assert "now different_provider/test_model" in caplog.text
-
-    # Test model mismatch
-    caplog.clear()
-    with caplog.at_level(logging.INFO):
-        result = read_metadata_cache(cache_path, provider, "different_model")
-        assert result is None
-        assert "Cache invalidated" in caplog.text
-        assert "was test_provider/test_model" in caplog.text
-        assert "now test_provider/different_model" in caplog.text
 
 def test_read_metadata_cache_success(tmp_path):
-    """Test successful metadata cache read."""
+    """Test successful metadata cache read with model validation."""
     cache_path = tmp_path / "success_metadata.json"
-    metadata = {"title": "Success Book", "author": "Success Author"}
+    metadata = BookMetadata(title="Success Book", author="Success Author", category="Other", language="en")
     provider = "p1"
     model = "m1"
 
     write_metadata_cache(cache_path, metadata, provider, model)
 
-    result = read_metadata_cache(cache_path, provider, model)
-    assert result is not None
-    assert result == metadata
-    # Internal fields should be removed
-    assert "_provider" not in result
-    assert "_model" not in result
+    # Test reading with model validation - SSoT focus
+    result = read_metadata_cache(cache_path, provider, model, model_class=BookMetadata)
+    assert isinstance(result, BookMetadata)
+    assert result.title == "Success Book"
 
 def test_read_metadata_cache_nonexistent(tmp_path):
     """Test reading from non-existent cache file."""

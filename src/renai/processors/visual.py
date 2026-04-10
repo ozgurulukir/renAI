@@ -1,18 +1,14 @@
-"""
-Visual processing module - handles both PDF-to-Image conversion and direct Image files.
-Merged from legacy vision.py and image.py.
-"""
-
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import pymupdf
 from PIL import Image
 from PIL.ExifTags import TAGS
 
 from ..engines.llm import LLMEngine
+from ..models.schemas import BookMetadata, ImageMetadata
 
 # Image optimization settings
 MULTIMODAL_IMAGE_MAX_SIZE = 1024
@@ -37,7 +33,7 @@ class VisualProcessor:
         self.image_max_size = MULTIMODAL_IMAGE_MAX_SIZE
         self.image_quality = MULTIMODAL_IMAGE_QUALITY
 
-    def extract_metadata_from_pdf(self, file_path: Path) -> Optional[Dict[str, Any]]:
+    def extract_metadata_from_pdf(self, file_path: Path) -> Optional[BookMetadata]:
         """Extract metadata from PDF by sampling pages and using vision model."""
         try:
             with pymupdf.open(str(file_path)) as doc:
@@ -65,7 +61,7 @@ class VisualProcessor:
 
     def extract_metadata_from_image(
         self, file_path: Path, add_exif_date: bool = False
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[ImageMetadata]:
         """Extract metadata from a direct image file."""
         try:
             image_bytes = file_path.read_bytes()
@@ -74,7 +70,7 @@ class VisualProcessor:
             if metadata and add_exif_date:
                 exif_date = self.get_exif_date(file_path)
                 if exif_date:
-                    metadata["exif_date"] = exif_date
+                    metadata.exif_date = exif_date
 
             return metadata
         except Exception as e:

@@ -1,83 +1,16 @@
-"""
-Cache management module - handles all caching operations for text and metadata.
-
-This module was extracted from file_processor.py and utils.py as part of the
-refactoring to improve code organization and testability.
-
-Cache Strategy Overview:
-=======================
-
-1. Text Cache (get_text_cache_path)
-   - Location: CACHE_DIR/text/
-   - Key: {file_hash}[_ocr][_mutool].txt
-   - Invalidated when: OCR settings change
-
-2. Metadata Cache (get_metadata_cache_path)
-   - Location: CACHE_DIR/metadata/
-   - Key: {file_hash}_{provider_model_hash}[_vision].json
-   - Invalidated when: provider or model changes
-   - Separate cache for vision mode
-
-Why Provider-Model Aware Caching?
-=================================
-Different LLMs may produce different metadata for the same document.
-By including the provider-model pair in the cache key, we ensure:
-- Switching providers creates new cache entries (old preserved)
-- Switching models creates new cache entries
-- Using --update-metadata bypasses cache entirely
-
-Example Cache Behavior:
-=======================
-# First run with DeepInfra - caches metadata
-renai "C:/Books" --provider deepinfra
-
-# Same files with OpenRouter - NEW cache entry (old one preserved)
-renai "C:/Books" --provider openrouter
-
-# Same provider/model - uses cached metadata
-renai "C:/Books" --provider deepinfra
-
-# Force refresh - bypasses cache
-renai "C:/Books" --provider deepinfra --update-metadata
-
-Module Functions:
-=================
-- get_text_cache_path(): Get path for text cache file
-- get_metadata_cache_path(): Get path for metadata cache file
-- read_text_cache(): Read cached text content
-- write_text_cache(): Write text content to cache
-- read_metadata_cache(): Read cached metadata with validation
-- write_metadata_cache(): Write metadata to cache
-- clear_all_cache(): Clear all caches
-- invalidate_cache_for_provider_model(): Clear metadata cache
-
-Usage:
-======
-    from renai.cache.manager import (
-        get_text_cache_path,
-        read_text_cache,
-        write_text_cache,
-    )
-
-    # Get cache path
-    cache_path = get_text_cache_path(file_hash, ocr_enabled=False)
-
-    # Read from cache
-    cached_text = read_text_cache(cache_path)
-
-    # Write to cache
-    write_text_cache(cache_path, extracted_text)
-"""
-
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type, TypeVar, Union
+
+from pydantic import BaseModel
 
 from ..settings import CACHE_DIR
 from ..utils import (
     get_provider_model_key,
 )
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def get_text_cache_path(
@@ -87,41 +20,10 @@ def get_text_cache_path(
     use_mutool: bool = False,
     cache_dir: Optional[Path] = None,
 ) -> Path:
-    """
-    Get the cache file path for extracted text.
-
-    The cache key includes OCR settings to ensure cache invalidation when
-    OCR mode changes (e.g., switching from regular to enhanced OCR).
-
-    Args:
-        file_hash: SHA256 hash of the source file. This uniquely identifies
-                   the file content for cache lookup.
-        ocr_enabled: Whether OCR was enabled during extraction. If True,
-                    cache key includes "_ocr" suffix.
-        use_mutool: Whether mutool was used for extraction. If True,
-                   cache key includes "_mutool" suffix.
-        cache_dir: Override the default cache directory. Defaults to CACHE_DIR
-                  from config module.
-
-    Returns:
-        Path to the text cache file. The file may or may not exist.
-        Path format: {cache_dir}/text/{file_hash}[_ocr][_mutool].txt
-
-    Example:
-        >>> path = get_text_cache_path("a" * 64)
-        >>> # Returns: Path("C:/Users/user/AppData/Local/renAI/Cache/text/" + "a" * 64 + ".txt")
-        >>> 
-        >>> path = get_text_cache_path("a" * 64, ocr_enabled=True)
-        >>> # Returns: Path(".../text/abc123_ocr.txt")
-
-    Note:
-        The cache directory and subdirectories are created automatically
-        when writing to the cache, not when generating the path.
-    """
+    """Get the cache file path for extracted text."""
     if cache_dir is None:
         cache_dir = CACHE_DIR
 
-    # Include OCR settings in cache key to invalidate when OCR mode changes
     ocr_suffix = "_ocr" if ocr_enabled else ""
     mutool_suffix = "_mutool" if use_mutool else ""
     suffix = f"{ocr_suffix}{mutool_suffix}" if ocr_suffix or mutool_suffix else ""
@@ -139,34 +41,10 @@ def get_metadata_cache_path(
     cache_dir: Optional[Path] = None,
     use_vision: bool = False,
 ) -> Path:
-    """
-    Get the cache file path for metadata.
-
-    The cache key includes provider and model to ensure separate cache entries
-    for different LLM providers/models. It also includes a mode prefix ('doc' or 'img')
-    to prevent collisions between different processing strategies.
-
-    Args:
-        file_hash: SHA256 hash of the source file.
-        provider: LLM provider name (e.g., "deepinfra", "openrouter", "openai").
-        model: LLM model name (e.g., "Qwen/Qwen2.5-72B-Instruct").
-        mode: Processing mode prefix ("doc" for book metadata, "img" for image renaming).
-        cache_dir: Override the default cache directory.
-        use_vision: Whether vision mode was used. If True, includes "_vision"
-                    suffix for separate cache.
-
-    Returns:
-        Path to the metadata cache file.
-        Path format: {cache_dir}/metadata/{mode}_{file_hash}_{provider_model_key}[_vision].json
-
-    Example:
-        >>> path = get_metadata_cache_path("abc123", "deepinfra", "llama3", mode="img")
-        >>> # Returns: Path(".../metadata/img_abc123_hashed_pm.json")
-    """
+    """Get the cache file path for metadata."""
     if cache_dir is None:
         cache_dir = CACHE_DIR
 
-    # Include provider-model in cache key for provider-model aware caching
     provider_model_key = get_provider_model_key(provider, model)
     vision_suffix = "_vision" if use_vision else ""
 
@@ -175,23 +53,7 @@ def get_metadata_cache_path(
 
 
 def read_text_cache(file_path: Path) -> Optional[str]:
-    """
-    Read cached text content.
-
-    Args:
-        file_path: Path to the cache file to read.
-
-    Returns:
-        Cached text content as string, or None if:
-        - File doesn't exist
-        - File is empty
-        - Read error occurs (logs warning)
-
-    Example:
-        >>> content = read_text_cache(Path("cache/text/abc123.txt"))
-        >>> if content:
-        ...     print(f"Found cached text: {content[:100]}...")
-    """
+    """Read cached text content."""
     try:
         if file_path.exists():
             return file_path.read_text(encoding="utf-8")
@@ -201,24 +63,7 @@ def read_text_cache(file_path: Path) -> Optional[str]:
 
 
 def write_text_cache(file_path: Path, content: str) -> bool:
-    """
-    Write text content to cache.
-
-    Creates the cache directory if it doesn't exist.
-
-    Args:
-        file_path: Path where to save the cached text.
-        content: Text content to cache.
-
-    Returns:
-        True if successful, False if write failed (logs warning).
-
-    Example:
-        >>> success = write_text_cache(
-        ...     Path("cache/text/abc123.txt"),
-        ...     "Extracted text content..."
-        ... )
-    """
+    """Write text content to cache."""
     try:
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
@@ -232,37 +77,11 @@ def read_metadata_cache(
     cache_path: Path,
     provider: str,
     model: str,
-) -> Optional[Dict[str, Any]]:
+    model_class: Optional[Type[T]] = None,
+) -> Union[Optional[Dict[str, Any]], Optional[T]]:
     """
     Read cached metadata with provider-model validation.
-
-    Validates that the cached metadata was generated by the same
-    provider-model pair currently in use. If different, returns None
-    to force re-generation.
-
-    Args:
-        cache_path: Path to the metadata cache file.
-        provider: Current LLM provider name.
-        model: Current LLM model name.
-
-    Returns:
-        Cached metadata as dictionary with keys like:
-        - title, subtitle, author, year, category
-        - _provider, _model (these are removed before return)
-
-        Returns None if:
-        - Cache file doesn't exist
-        - JSON parse error
-        - Provider/model doesn't match cached values
-
-    Example:
-        >>> metadata = read_metadata_cache(
-        ...     Path("cache/metadata/abc123.json"),
-        ...     "deepinfra",
-        ...     "llama-3.1-70b"
-        ... )
-        >>> if metadata:
-        ...     print(f"Title: {metadata.get('title')}")
+    If model_class is provided, returns a validated Pydantic model instance.
     """
     try:
         if not cache_path.exists():
@@ -276,15 +95,20 @@ def read_metadata_cache(
         cached_model = cache_data.get("_model", "")
 
         if cached_provider == provider and cached_model == model:
-            # Remove internal cache fields before returning
+            # Remove internal cache fields
             cache_data.pop("_provider", None)
             cache_data.pop("_model", None)
+            
+            if model_class:
+                try:
+                    return model_class(**cache_data)
+                except Exception as e:
+                    logging.warning(f"Failed to validate cached metadata against {model_class.__name__}: {e}")
+                    return None
             return cache_data
         else:
-            # Provider or model changed - cache invalid
             logging.info(
-                f"Cache invalidated (was {cached_provider}/{cached_model}, "
-                f"now {provider}/{model})"
+                f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
             )
             return None
 
@@ -295,40 +119,25 @@ def read_metadata_cache(
 
 def write_metadata_cache(
     cache_path: Path,
-    metadata: Dict[str, Any],
+    metadata: Union[BaseModel, Dict[str, Any]],
     provider: str,
     model: str,
 ) -> bool:
     """
-    Write metadata to cache with provider-model info.
-
-    Stores the provider and model used to generate the metadata
-    so future reads can validate cache freshness.
-
-    Args:
-        cache_path: Path where to save the metadata.
-        metadata: Metadata dictionary with keys like
-                  title, subtitle, author, year, category.
-        provider: LLM provider name.
-        model: LLM model name.
-
-    Returns:
-        True if successful, False if write failed (logs warning).
-
-    Example:
-        >>> success = write_metadata_cache(
-        ...     Path("cache/metadata/abc123.json"),
-        ...     {"title": "Book Title", "author": "Author"},
-        ...     "deepinfra",
-        ...     "llama-3.1-70b"
-        ... )
+    Write metadata to cache. 
+    Supports both Pydantic models (recommended) and dictionaries.
     """
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
 
+        if isinstance(metadata, BaseModel):
+            data = metadata.model_dump()
+        else:
+            data = metadata
+
         # Add provider-model info for validation
         cache_data = {
-            **metadata,
+            **data,
             "_provider": provider,
             "_model": model,
         }
@@ -343,25 +152,8 @@ def write_metadata_cache(
         return False
 
 
-def invalidate_cache_for_provider_model(
-    cache_dir: Optional[Path] = None,
-) -> int:
-    """
-    Clear metadata cache when switching providers/models.
-
-    This can be used when you want to force regeneration of all
-    metadata by clearing the metadata cache entirely.
-
-    Args:
-        cache_dir: Override the default cache directory.
-
-    Returns:
-        Number of cache files removed. 0 if no cache exists or error.
-
-    Example:
-        >>> count = invalidate_cache_for_provider_model()
-        >>> print(f"Cleared {count} cached entries")
-    """
+def invalidate_cache_for_provider_model(cache_dir: Optional[Path] = None) -> int:
+    """Clear metadata cache when switching providers/models."""
     if cache_dir is None:
         cache_dir = CACHE_DIR
 
@@ -376,27 +168,11 @@ def invalidate_cache_for_provider_model(
             count += 1
     except Exception as e:
         logging.warning(f"Failed to clear metadata cache: {e}")
-
     return count
 
 
 def clear_all_cache(cache_dir: Optional[Path] = None) -> Dict[str, int]:
-    """
-    Clear all caches (text and metadata).
-
-    Removes both text and metadata cache directories and all their contents.
-
-    Args:
-        cache_dir: Override the default cache directory.
-
-    Returns:
-        Dictionary with counts of cleared files per cache type:
-        {"text": <count>, "metadata": <count>}
-
-    Example:
-        >>> results = clear_all_cache()
-        >>> print(f"Cleared {results['text']} text files, {results['metadata']} metadata files")
-    """
+    """Clear all caches (text and metadata)."""
     import shutil
 
     if cache_dir is None:

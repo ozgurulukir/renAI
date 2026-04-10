@@ -144,6 +144,8 @@ class TextExtractor:
 
     Handles caching, format detection, and extraction fallback strategies.
     """
+    needs_scan_dir: Optional[Path]
+    scan_failures_dir: Optional[Path]
 
     def __init__(
         self,

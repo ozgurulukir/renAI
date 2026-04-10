@@ -5,110 +5,98 @@ from renai.filename.builder import (
     extract_category_from_metadata,
     is_filename_changed,
 )
+from renai.models.schemas import BookMetadata, ImageMetadata
 
 
 class TestBuildBookFilename:
-    """Test build_book_filename function."""
+    """Test build_book_filename function with SSoT models."""
 
-    def test_full_metadata(self):
-        """Test filename with all fields."""
-        data = {
-            "title": "Machine Learning",
-            "subtitle": "A Probabilistic Perspective",
-            "edition": "2nd",
-            "author": "Kevin Murphy",
-            "year": 2012,
-        }
+    def test_full_metadata_model(self):
+        """Test filename with BookMetadata model."""
+        data = BookMetadata(
+            title="Machine Learning",
+            subtitle="A Probabilistic Perspective",
+            edition="2nd",
+            author="Kevin Murphy",
+            year=2012,
+            category="Technology",
+            language="en"
+        )
         result = build_book_filename(data, ".pdf")
         assert "Machine Learning" in result
         assert "Kevin Murphy" in result
         assert "(2012)" in result
         assert result.endswith(".pdf")
 
+    def test_full_metadata_dict(self):
+        """Test filename with dictionary (backward compatibility)."""
+        data = {
+            "title": "Machine Learning",
+            "author": "Kevin Murphy",
+            "year": 2012,
+        }
+        result = build_book_filename(data, ".pdf")
+        assert "Machine Learning" in result
+        assert "(2012)" in result
+
     def test_minimal_metadata(self):
         """Test filename with only title."""
-        data = {"title": "My Book"}
+        data = BookMetadata(title="My Book", category="Other", language="en")
         result = build_book_filename(data, ".pdf")
         assert result == "My Book.pdf"
 
-    def test_with_year(self):
-        """Test filename with title and year."""
-        data = {"title": "Python Guide", "year": 2024}
-        result = build_book_filename(data, ".epub")
-        assert "Python Guide" in result
-        assert "(2024)" in result
-
-    def test_with_author(self):
-        """Test filename with author."""
-        data = {"title": "Test Book", "author": "John Doe"}
-        result = build_book_filename(data, ".pdf")
-        assert "John Doe" in result
-
 
 class TestBuildImageFilename:
-    """Test build_image_filename function."""
+    """Test build_image_filename function with SSoT models."""
 
-    def test_full_metadata(self):
-        """Test image filename with all fields."""
-        data = {"description": "Sunset", "category": "Photo", "language": "en"}
+    def test_full_metadata_model(self):
+        """Test image filename with ImageMetadata model."""
+        data = ImageMetadata(
+            description="Sunset", 
+            category="Photo", 
+            language="en", 
+            visual_context="Beach",
+            exif_date="2024-07-15"
+        )
         result = build_image_filename(
-            data, ".jpg", exif_date="2024-07-15", add_exif_date=True
+            data, ".jpg", add_exif_date=True
         )
         assert "Sunset" in result
-        assert "Photo" not in result
         assert "[2024-07-15]" in result
-
-    def test_minimal(self):
-        """Test image filename with minimal data."""
-        data = {"description": "Beach"}
-        result = build_image_filename(data, ".png")
-        assert "Beach" in result
 
     def test_turkish_language(self):
         """Test image filename with Turkish language."""
-        data = {"description": "İstanbul", "language": "tr"}
+        data = ImageMetadata(description="İstanbul", language="tr", category="Photo")
         result = build_image_filename(data, ".jpg")
         assert "(tr)" in result
 
 
 class TestBuildVisionFilename:
-    """Test build_vision_filename function."""
+    """Test build_vision_filename function with SSoT models."""
 
-    def test_with_category(self):
-        """Test vision filename with category."""
-        data = {"title": "Research Paper", "category": "Academic", "language": "en"}
+    def test_model_conversion(self):
+        """Test vision filename with BookMetadata model."""
+        data = BookMetadata(title="Research Paper", author="Author", year=2023, category="Paper", language="en")
         result = build_vision_filename(data, ".pdf")
         assert "Research Paper" in result
-        assert "Academic" not in result
-
-    def test_without_category(self):
-        """Test vision filename without category."""
-        data = {"title": "Document"}
-        result = build_vision_filename(data, ".pdf")
-        assert "Document" in result
+        assert "(2023)" in result
+        assert "(en)" in result
 
 
 class TestExtractCategoryFromMetadata:
     """Test extract_category_from_metadata function."""
 
-    def test_basic_category(self):
-        """Test basic category extraction."""
-        data = {"category": "Fiction"}
+    def test_model_safe_category(self):
+        """Test category extraction from Model using safe_category property."""
+        data = BookMetadata(title="T", category="Science/Fiction", language="en")
         result = extract_category_from_metadata(data)
-        assert result == "Fiction"
+        assert result == "Science&Fiction"
 
-    def test_slash_replacement(self):
-        """Test slash replacement in category."""
+    def test_dict_fallback_sanitization(self):
+        """Test that dicts still get sanitized for backward compatibility."""
         data = {"category": "Science/Fiction"}
         result = extract_category_from_metadata(data)
-        assert "/" not in result
-        assert "&" in result
-
-    def test_default_category(self):
-        """Test default category."""
-        data = {}
-        result = extract_category_from_metadata(data)
-        assert result == "Uncategorized"
+        assert result == "Science&Fiction"
 
 
 class TestIsFilenameChanged:

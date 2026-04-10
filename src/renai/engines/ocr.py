@@ -5,12 +5,11 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Optional
-
 import numpy as np
 import pymupdf
-import pytesseract
+import pytesseract  # type: ignore[import-untyped]
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+from typing import Any, Dict, Optional, Union
 
 from ..settings import (
     CACHE_DIR,
@@ -88,9 +87,9 @@ class OCREngine:
 
         self.MAX_DIMENSION = 2000
 
-    def _get_subprocess_kwargs(self) -> dict:
+    def _get_subprocess_kwargs(self) -> dict[str, Any]:
         """Consolidate Windows-specific subprocess flags."""
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         if sys.platform == "win32":
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -335,6 +334,7 @@ class OCREngine:
         pre_extracted_path: Optional[Path] = None,
     ) -> tuple[Optional[Image.Image], Optional[Path]]:
         """Handles mutool or pymupdf fallback to extract an image from a page."""
+        image: Optional[Image.Image] = None
         if pre_extracted_path and pre_extracted_path.exists():
             try:
                 image = Image.open(pre_extracted_path)
@@ -346,7 +346,6 @@ class OCREngine:
                 )
         use_mutool_for_page = self.use_mutool and file_path.suffix.lower() == ".pdf"
 
-        image = None
         temp_img = None
 
         if use_mutool_for_page:

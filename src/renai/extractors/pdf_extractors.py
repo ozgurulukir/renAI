@@ -31,7 +31,7 @@ class PyMuPDFExtractor(BaseExtractor):
 class PDFPlumberExtractor(BaseExtractor):
     def extract_text(self, file_path: Path) -> Optional[str]:
         try:
-            import pdfplumber
+            import pdfplumber  # type: ignore[import-untyped]
 
             text_parts = []
             with pdfplumber.open(file_path) as pdf:
@@ -53,7 +53,7 @@ class PDFPlumberExtractor(BaseExtractor):
 class PyPDFExtractor(BaseExtractor):
     def extract_text(self, file_path: Path) -> Optional[str]:
         try:
-            from pypdf import PdfReader
+            from pypdf import PdfReader  # type: ignore[import-untyped]
 
             text_parts = []
             with open(file_path, "rb") as f:
@@ -76,7 +76,7 @@ class PyPDFExtractor(BaseExtractor):
 class PyPdfium2Extractor(BaseExtractor):
     def extract_text(self, file_path: Path) -> Optional[str]:
         try:
-            import pypdfium2 as pdfium
+            import pypdfium2 as pdfium  # type: ignore[import-untyped]
 
             text_parts = []
             with pdfium.PdfDocument(file_path) as pdf:

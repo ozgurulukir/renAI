@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from renai.processors.visual import VisualProcessor
+from renai.models.schemas import BookMetadata, ImageMetadata
 
 
 class TestVisualProcessor:
@@ -13,11 +14,12 @@ class TestVisualProcessor:
         """Create mock LLM engine."""
         engine = Mock()
         engine.model_name = "gpt-4o"
+        # Mocking return values as Pydantic models to match SSoT architecture
         engine.get_book_metadata_from_image = Mock(
-            return_value={"title": "Vision Book"}
+            return_value=BookMetadata(title="Vision Book", category="Article", language="en")
         )
         engine.get_image_metadata = Mock(
-            return_value={"title": "Image Book", "category": "Photo"}
+            return_value=ImageMetadata(title="Image Book", category="Photo", language="en", description="A test image")
         )
         return engine
 
@@ -34,7 +36,9 @@ class TestVisualProcessor:
         test_file.write_bytes(b"fake image")
 
         result = visual_processor.extract_metadata_from_image(test_file)
-        assert result["title"] == "Image Book"
+        # SSoT: result is a Model, use attribute access
+        assert result.title == "Image Book"
+        assert result.category == "Photo"
         visual_processor.llm_engine.get_image_metadata.assert_called_once()
 
     def test_get_exif_date_none(self, visual_processor, tmp_path):
@@ -76,5 +80,6 @@ class TestVisualProcessor:
             visual_processor, "_convert_pdf_page_to_image", return_value=b"image bytes"
         ):
             result = visual_processor.extract_metadata_from_pdf(test_file)
-            assert result["title"] == "Vision Book"
+            # SSoT: result is a Model, use attribute access
+            assert result.title == "Vision Book"
             visual_processor.llm_engine.get_book_metadata_from_image.assert_called_once()
