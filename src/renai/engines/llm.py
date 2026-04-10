@@ -7,9 +7,8 @@ from typing import Any, Dict, Optional, Type, TypeVar
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
-from pydantic import BaseModel
 
-from ..settings import get_allowed_categories, get_image_categories
+from ..settings import get_allowed_categories, get_image_categories, app_settings
 from ..models.schemas import BookMetadata, ImageMetadata, BaseMetadata
 
 T = TypeVar("T", bound=BaseMetadata)
@@ -90,7 +89,7 @@ class LLMEngine:
             logging.error(f"API Key for {self.provider} not found.")
             return None
 
-        truncated_text = text[:8000]
+        truncated_text = text[:app_settings.text_length]
         system_role = self._get_system_role("book_extractor", BookMetadata)
 
         # 1. Initial Extraction
@@ -202,13 +201,13 @@ class LLMEngine:
         headers = {"HTTP-Referer": "https://github.com/renAI", "X-Title": "renAI"} if self.provider == "openrouter" else None
         last_parsed_data: dict[str, Any] | None = None
 
-        for attempt in range(2):
+        for attempt in range(app_settings.llm_max_retries):
             try:
                 completion = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    max_tokens=1024,
-                    temperature=0.3 if attempt == 0 else 0.5,
+                    max_tokens=app_settings.llm_max_tokens,
+                    temperature=app_settings.llm_temperature if attempt == 0 else app_settings.llm_temperature_retry,
                     extra_headers=headers,
                 )
 

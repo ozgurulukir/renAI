@@ -70,7 +70,7 @@ Description -- [Date] -- (Language).ext
 - **`rename`**: Renames files based on extracted metadata
 - **`organize`**: Moves renamed files into category folders
 - **`benchmark`**: Compares PDF extraction library performance
-- **`eval-model`**: Tests different LLM models for accuracy
+- **`evaluate`**: Tests multiple providers and models for accuracy
 - **`--fallback-mode ocr`**: Tries text extraction first. If it fails, falls back to Tesseract OCR (default behavior).
 - **`--fallback-mode vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs.
 - **`--fallback-mode move`**: Moves files where text extraction fails to `Needs_Scan/` folder.
@@ -104,39 +104,63 @@ cd renAI
 
 # Install using uv (creates 'renai' command)
 uv sync --all-extras
+
+# Initialize renAI (Interactive Wizard)
+# This will guide you through provider setup and create necessary config files
+renai init
 ```
 
-### API Keys
+### Setup & API Keys
 
-Set your API keys in `.env` file:
+renAI uses an interactive wizard for first-time setup. Run the following command:
 
 ```bash
-# Windows: %APPDATA%\renAI\renAI\.env
-# Linux/Mac: ~/.config/renAI/.env
-# Or copy from project root:
-cp .env.example .env
+renai init
 ```
 
-Then edit `.env` with your API keys:
+This will create your configuration files in the appropriate OS directory:
+- **Windows**: `%LOCALAPPDATA%\renAI`
+- **Linux**: `~/.config/renAI`
+- **macOS**: `~/Library/Application Support/renAI`
 
-- `DEEPINFRA_API_KEY`
-- `OPENROUTER_API_KEY`
-- `OPENAI_API_KEY`
+The wizard helps you configure:
+- **LLM Provider**: DeepInfra (default), OpenRouter, OpenAI, or Custom
+- **API Keys**: Stored securely in `secrets.toml`
+- **General Settings**: Concurrent workers, fallback strategies, etc.
+
+### Configuration Hierarchy
+
+renAI uses a robust, layered configuration system:
+
+1. **User Overrides**: `settings.toml` in your user config directory.
+2. **Physical Defaults**: `settings.default.toml` (auto-generated reference).
+3. **Internal Defaults**: Hardcoded baseline settings for zero-setup operation.
+
+#### Essential Files:
+- `settings.toml`: Customize application behavior and override provider defaults.
+- `secrets.toml`: Sensitive API keys. **Never share this file!**
+- `providers.toml`: Register custom LLM providers or override endpoints.
+- `categories.toml`: Define your own categories for organization (`--mode organize`).
+- `eval_models.toml`: List models to test with the `evaluate` command.
 
 Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrouter.ai) | [OpenAI](https://platform.openai.com/api-keys)
 
-### Configuration
+### Environment Variables
 
-Configuration options in `.env`:
+You can also configure renAI using environment variables (prefixed with `RENAI_`):
+- `RENAI_PROVIDER`: e.g., `openai`
+- `RENAI_MODEL`: e.g., `gpt-4o`
+- `RENAI_WORKERS`: e.g., `8`
 
-- `RENAI_PROVIDER` - LLM provider (deepinfra, openrouter, openai, custom)
-- `RENAI_WORKERS` - Number of concurrent workers (default: 4)
-- `RENAI_TEXT_LENGTH` - Max text length for LLM (default: 10000)
-- `RENAI_EXTRACTOR` - PDF extractor (pymupdf, pdfplumber, pypdf, pypdfium2)
+### Zero-Code Defaults
 
-### Custom Categories
+renAI follows a "Zero-Code Defaults" philosophy. You don't *need* to edit configuration files to start. Baseline factory defaults are included within the package, allowing it to "just work" after simple initialization.
 
-Custom categories are now managed via `categories.toml`. See [Configuration](#-configuration) for details.
+Override options are available via:
+1. Environment variables (prefixed with `RENAI_`)
+2. `settings.toml` in your user config directory
+3. `settings.default.toml` (Global baseline)
+4. CLI flags (highest priority)
 
 ---
 
@@ -154,6 +178,21 @@ uv run renai process "C:/Path/To/Books" --mode rename
 ```bash
 # Rename and organize into category folders
 renai process "C:/Path/To/Books" --mode organize
+```
+
+### Model Evaluation
+
+Evaluate multiple LLM providers and models against your sample files to find the best performer. Results are saved to `evaluation.log` in your app data directory.
+
+```bash
+# Evaluate ALL providers and models defined in eval_models.toml
+renai evaluate "C:/Path/To/Samples"
+
+# Evaluate only a specific provider
+renai evaluate "C:/Path/To/Samples" --provider deepinfra
+
+# Evaluate with custom worker count
+renai evaluate "C:/Path/To/Samples" --workers 8
 ```
 
 ### Vision Mode (PDF without OCR)
@@ -251,9 +290,9 @@ renai process "C:/Path/To/Books" --mode rename --provider custom
 renai process "C:/Path/To/Books" --mode rename --provider custom --model mistral
 ```
 
-## Controlling Text Length for Local Models
+## Controlling Extraction Length & Chunking
 
-When running local models on consumer hardware, you can reduce the text length sent to the LLM to decrease memory usage and improve performance:
+When running local models on consumer hardware, or to save tokens, you can control how much text is extracted and sent to the LLM:
 
 ```bash
 # Reduce text length to 5000 characters (default: 10000)
@@ -261,11 +300,16 @@ renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 5
 
 # Increase for better context if your model can handle it
 renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 20000
+
+# Regular mode: Stop reading after 5 pages, no skipping
+renai process "C:/Path/To/Books" --mode rename --text-extraction regular --extraction-pages 5
 ```
 
 | Option | Description | Default |
 | :--- | :--- | :--- |
 | `--text-length` | Target text length sent to LLM | 10000 |
+| `--text-extraction` | Extraction chunking logic (`mixed` or `regular`) | `regular` |
+| `--extraction-pages` | Target pages to process from the document | 10 |
 
 ### Environment Variables for Custom Provider
 
@@ -318,20 +362,24 @@ Compare the performance and accuracy of different PDF extraction libraries on yo
 renai process "C:/Path/To/Books" --benchmark
 ```
 
-#### LLM Model Evaluation
+#### Advanced Model Evaluation
 
-Test multiple models from a provider to find the best balance between cost and accuracy for your specific document collection.
+The `evaluate` command performs a competitive test:
+1. It takes the first few files from your directory.
+2. It processes them using **every** model listed in your `eval_models.toml`.
+3. It logs the extracted metadata and a confidence score for each attempt.
 
-```bash
-renai process "C:/Path/To/Books" --eval-model --provider deepinfra
+**Configuration:**
+Models are loaded from `eval_models.toml` (User > Default > Internal). 
+
+Example `eval_models.toml`:
+```toml
+[deepinfra]
+models = ["meta-llama/Llama-3.2-90B-Vision-Instruct", "meta-llama/Llama-3.1-405B-Instruct"]
+
+[openai]
+models = ["gpt-4o", "gpt-4o-mini"]
 ```
-
-**How it works:**
-
-- Models are loaded from provider-specific configuration files: `eval_models_deepinfra.txt`, `eval_models_openai.txt`, or `eval_models_openrouter.txt`.
-- Each file should contain a list of model names, one per line.
-- The tool processes the first 2 files in your directory using **all** listed models.
-- Results and confidence scores are logged to `evaluation.log` for detailed comparison.
 
 ### Cache Management
 
@@ -411,7 +459,7 @@ When using `--mode organize`:
 
 | Limitation | Description |
 | :--- | :--- |
-| **Text Length** | Up to 8000 characters sent to LLM per file |
+| **Text Length** | Configurable via `--text-length` (e.g., 10000 chars) |
 | **API Costs** | Each file processed sends text to an LLM API |
 | **Rate Limits** | Providers may enforce rate limits |
 | **OCR Quality** | Scanned documents require good quality scans |
@@ -510,9 +558,9 @@ Actual costs vary by provider and model. Vision mode may have different pricing 
 
 renAI now utilizes modern OS-agnostic path management via the `platformdirs` library.
 
-- **Cache Data:** Managed in the OS cache directory.
-- **Log and Debug Data:** Managed in the OS user data directory.
-- **Configuration (like `categories.txt`):** Managed in the OS config directory.
+- **Cache Data**: Managed in `%LOCALAPPDATA%\renAI\Cache` (Windows) or `~/.cache/renAI` (Linux).
+- **Log and Debug Data**: Managed in the OS user data directory.
+- **Configuration**: Managed via `config.toml`, `secrets.toml`, and `categories.toml` in the flat OS config directory (no nested folders).
 
 ### Defining Custom Categories
 
@@ -549,10 +597,15 @@ categories = [
 | `--no-recursive` | Process root only |
 | `--exif` | Add EXIF date to image filenames when available |
 | `--text-length` | Target text length for LLM (default: 10000) |
+| `--text-extraction` | Extraction mode (`mixed` or `regular`) (default: `regular`) |
+| `--extraction-pages` | Pages to process per document |
 | `--update-metadata` | Force refresh metadata cache |
 | `--fallback-mode` | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`) |
 | `--move-scan-failures` | Move failed files to `Scan_Failures` folder |
-| `--clear-cache` | Clear cache and exit |
+| `cache` | Command to clear cache |
+| `init` | Command to start interactive setup wizard |
+| `providers` | Command to list configured providers |
+| `--version` | Show renAI version |
 
 > **Important:** When using `--fallback-mode vision` or `--rename-images`, you must use a vision-capable model. renAI does not validate vision capability - please ensure your model supports multimodal/vision input.
 
@@ -564,9 +617,8 @@ categories = [
 ├── src/
 │   └── renai/
 │       ├── cli.py               # CLI entry point (Typer)
-│       ├── settings.py          # Configuration & Pydantic settings
-│       ├── utils.py             # Helper functions
-│       ├── logging_config.py    # Structured logging
+│       ├── settings.py          # Configuration & Pydantic settings loading
+│       ├── config/              # [NEW] Factory default TOML files
 │       ├── prompts/             # Modular .txt prompt templates
 │       ├── models/              # SSoT Pydantic Schemas (Book, Image)
 │       ├── engines/             # Vision & OCR engines
@@ -574,14 +626,13 @@ categories = [
 │       ├── processors/          # Core processing logic
 │       │   ├── book.py
 │       │   ├── orchestrator.py  # Pipeline orchestration
+│       │   ├── setup.py         # [NEW] Interactive Init Wizard
 │       │   ├── text_extractor.py
 │       │   └── visual.py
-│       ├── file_ops/            # File manipulation logic
-│       └── filename/            # Naming conventions
-├── tests/                       # Synchronized unit tests (320+)
-├── scripts/                     # Benchmark & Utility scripts
+│       └── ...
+├── tests/                       # Synchronized unit tests
 ├── pyproject.toml               # Package metadata & dependencies
-└── requirements.txt             # Dependency list
+└── ...
 ```
 
 ---

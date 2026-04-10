@@ -2,7 +2,7 @@
 # Default Categories Configuration for renAI
 # =============================================================================
 # This file is shipped with the package
-# User can override by creating categories.txt in config directory
+# User can override by creating categories.toml in config directory
 
 [en]
 categories = [

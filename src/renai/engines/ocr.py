@@ -9,13 +9,13 @@ import numpy as np
 import pymupdf
 import pytesseract  # type: ignore[import-untyped]
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional
 
 from ..settings import (
     CACHE_DIR,
     DEBUG_DIR,
-    OCR_LANG,
-    SUBPROCESS_TIMEOUT,
+    get_ocr_lang,
+    get_subprocess_timeout,
     TESSERACT_PATH,
 )
 from ..utils import ensure_secure_dir, sanitize_filename
@@ -309,7 +309,7 @@ class OCREngine:
                 cmd,
                 check=True,
                 capture_output=True,
-                timeout=SUBPROCESS_TIMEOUT,
+                timeout=get_subprocess_timeout(),
                 **kwargs,
             )
 
@@ -370,7 +370,7 @@ class OCREngine:
                     cmd,
                     check=True,
                     capture_output=True,
-                    timeout=SUBPROCESS_TIMEOUT,
+                    timeout=get_subprocess_timeout(),
                     **kwargs,
                 )
                 image = Image.open(temp_img)
@@ -434,9 +434,9 @@ class OCREngine:
         try:
             page_text = pytesseract.image_to_string(
                 image,
-                lang=OCR_LANG,
+                lang=get_ocr_lang(),
                 config=r"--oem 3 --psm 3",
-                timeout=SUBPROCESS_TIMEOUT,
+                timeout=get_subprocess_timeout(),
             )
             return page_text
         except RuntimeError as e:

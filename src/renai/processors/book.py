@@ -3,7 +3,6 @@ BookProcessor - Main orchestrator for document and image processing.
 Unified and refactored to eliminate redundancy between text, vision, and image modes.
 """
 
-import json
 import logging
 import threading
 from pathlib import Path
@@ -25,7 +24,7 @@ from ..filename.builder import (
 )
 from ..models import ProcessingResult
 from ..models.schemas import BookMetadata, ImageMetadata
-from ..settings import IMAGE_EXTENSIONS, CACHE_DIR
+from ..settings import get_image_extensions, CACHE_DIR, PROVIDERS, EVAL_LOG_FILE
 from ..utils import get_file_hash
 from .text_extractor import TextExtractor, FallbackMode
 from .visual import VisualProcessor
@@ -40,16 +39,18 @@ class BookProcessor:
     def __init__(
         self,
         ocr_engine: OCREngine,
-        llm_engine: LLMEngine,
+        llm_engine: Optional[LLMEngine] = None,
         extractor_name: str = "pymupdf",
         provider: str = "deepinfra",
         model: str = "",
         target_length: int = 10000,
+        text_extraction: str = "mixed",
+        extraction_pages: int = 10,
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
         self.provider = provider
-        self.model = model or getattr(llm_engine, "model_name", "")
+        self.model = model or getattr(llm_engine, "model_name", "") if llm_engine else ""
         self.target_length = target_length
         self.extractor_name = extractor_name
 
@@ -57,6 +58,8 @@ class BookProcessor:
             ocr_engine=ocr_engine,
             extractor_name=extractor_name,
             target_length=target_length,
+            text_extraction=text_extraction,
+            extraction_pages=extraction_pages,
         )
         self.visual_processor = VisualProcessor(llm_engine=llm_engine)
         self.file_operation_lock = threading.Lock()
@@ -108,7 +111,7 @@ class BookProcessor:
                 return ProcessingResult(success=False, error="Symlink skipped")
 
             file_hash = get_file_hash(file_path)
-            is_image = file_path.suffix.lower() in IMAGE_EXTENSIONS
+            is_image = file_path.suffix.lower() in get_image_extensions()
 
             # Determine cache mode and vision usage
             cache_mode = "img" if (is_image and rename_images) else "doc"
@@ -223,7 +226,7 @@ class BookProcessor:
             file_path, fallback=fallback_mode, file_hash=file_hash
         )
 
-        if text.strip():
+        if self.llm_engine and text.strip():
             return self.llm_engine.get_book_metadata(text)
 
         # 2. Handle Fallback if Text Extraction Failed
@@ -273,7 +276,7 @@ class BookProcessor:
         self, file_path: Path, provider: str, model_names: list[str]
     ) -> None:
         """Evaluate multiple LLM models for a single file."""
-        from ..settings import PROVIDERS, EVAL_LOG_FILE
+        # Use existing globals imported from settings
 
         if file_path.is_symlink():
             logging.warning(f"Skipping symlink for evaluation: {file_path.name}")
@@ -328,4 +331,4 @@ class BookProcessor:
         return list(self.scan_failed_files)
 
     def is_image_file(self, file_path: Path) -> bool:
-        return file_path.suffix.lower() in IMAGE_EXTENSIONS
+        return file_path.suffix.lower() in get_image_extensions()

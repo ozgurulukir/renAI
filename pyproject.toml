@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "renai"
-version = "1.5.1"
+version = "1.6.2"
 description = "AI-Powered Book Renamer and Organizer"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -38,6 +38,7 @@ dependencies = [
     "platformdirs",
     "colorama",
     "tomli; python_version < '3.11'",
+    "tomli-w",
 ]
 
 [project.urls]

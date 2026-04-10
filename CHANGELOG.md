@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-04-10
+
+### Added
+- **Heuristic Parameterization**: Migrated 12+ hardcoded magic numbers (DPI, Quality, Thresholds) to `AppSettings`, allowing full user control via `settings.toml`.
+- **Configurable Sanitization**: Added `max_filename_length` to settings, preventing path length issues while allowing flexibility for long titles.
+- **Benchmark & Eval Sampling**: Centralized sampling counts for non-bulk modes and benchmarks to `benchmark_sample_count`.
+
+### Changed
+- **Default Extraction Mode**: Switched default `text_extraction` from `mixed` to `regular`. This prioritizes the first N pages for faster, more predictable extraction on standard documents.
+- **Simplified LLM Truncation**: Unified `llm_truncation_limit` and `text_length` into a single setting to reduce configuration redundancy.
+
+### Fixed
+- **Docstring Integrity**: Resolved a syntax error in `text_extractor.py` caused by an unterminated docstring during extraction logic refactoring.
+- **Circular Import Safety**: Implemented lazy imports and `TYPE_CHECKING` guards in `utils.py` to ensure stable initialization during `renai init`.
+
+## [1.6.1] - 2026-04-10
+
+### Added
+- **Standalone Evaluation Command**: Replaced legacy `--eval-model` flag with a dedicated `renai evaluate` command for multi-provider testing.
+- **Layered Configuration Architecture**: Formalized the 3-tier loading strategy (Internal -> Physical Default -> User) for categories and evaluation models to ensure maximum flexibility.
+- **Unified Provider Registry**: Consolidated all provider settings into a structured `ProviderConfig` model within `AppSettings`.
+- **Optional Chunking & Text Extraction**: Added `--text-extraction` (`mixed` or `regular`) and `--extraction-pages` to allow users to override hardcoded extraction depth and configure chunking semantics across all supported file types.
+
+### Fixed
+- **Test Suite Stability**: Resolved 30+ regressions in the configuration test suite by aligning mocks with the new tiered resolution logic.
+- **Robust Accessors**: Hardened `get_default_model` and `get_api_key` to safely handle missing or partial provider data.
+- **Initialization Ordering**: Fixed `NameError` risks in `settings.py` by reordering global instance creation.
+
+## [1.6.0] - 2026-04-10
+
+### Added
+- **Zero-Code Defaults**: Implemented a dynamic configuration system where all baseline settings are stored in internal TOML files rather than hardcoded in Python.
+- **Interactive Initializer**: New `renai init` command with a `rich`-powered interactive wizard for easy first-time setup.
+- **Factory Default Pool**: Added `settings.default.toml`, `providers.default.toml`, and `eval_models.default.toml` to the package.
+- **Standardized Windows Structure**: Enforced a flat `%LOCALAPPDATA%\renAI` path (removing nested `renAI/renAI` folders) by setting `appauthor=False`.
+
+### Changed
+- Migrated `AppSettings` and `ProviderSettings` to `pydantic-settings` with multiple source support (TOML, Env, Secrets).
+- Refactored core engines (OCR, Vision, BookProcessor) to use dynamic setting accessors instead of static constants.
+- Updated documentation (README.md and okubeni.md) to reflect the new configuration model.
+
 ## [1.5.1] - 2026-04-10
 
 ### [Added]

@@ -1,0 +1,71 @@
+# renAI Factory Defaults
+# This file contains the baseline configuration for the application.
+# Do NOT modify this file. Use 'renai init' or edit 'settings.toml' instead.
+# All fields are flat for Pydantic-Settings compatibility.
+
+# App Settings
+provider = "deepinfra"
+workers = 4
+text_length = 10000
+text_extraction = "regular"
+extraction_pages = 10
+extractor = "pymupdf"
+show_warnings = true
+recursive = true
+
+# Text and Content heuristics
+min_sufficient_text = 100
+mixed_chunk_count = 10
+max_filename_length = 200
+
+# LLM extraction parameters
+llm_max_tokens = 1024
+llm_temperature = 0.3
+llm_temperature_retry = 0.5
+llm_max_retries = 2
+
+# Vision and Image settings
+rename_images = false
+exif = false
+vision_image_max_size = 1024
+vision_image_quality = 85
+vision_dpi = 150
+
+# Fallback and Error Handling
+fallback_mode = "none"
+move_scan_failures = false
+ocr_enhanced = false
+skip_needs_ocr = false
+move_ocr_failures = false
+
+# Tool settings
+use_mutool = false
+mutool_path = "mutool"
+benchmark_sample_count = 3
+debug_ocr = false
+
+# Processing Settings
+ocr_lang = "tur+eng"
+max_text_read_size = 1000000
+subprocess_timeout = 60
+
+# Custom Provider Settings (Override defaults here or in settings.toml)
+custom_api_base_url = "http://localhost:8000/v1"
+custom_api_key = "not-required"
+custom_model = "llama3"
+
+# =============================================================================
+# Provider Registry (Standard configurations)
+# =============================================================================
+
+[providers.deepinfra]
+base_url = "https://api.deepinfra.com/v1/openai"
+default_model = "meta-llama/Llama-3.3-70B-Instruct"
+
+[providers.openrouter]
+base_url = "https://openrouter.ai/api/v1"
+default_model = "google/gemini-2.0-flash-exp:free"
+
+[providers.openai]
+base_url = "https://api.openai.com/v1"
+default_model = "gpt-4o-mini"

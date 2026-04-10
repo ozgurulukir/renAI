@@ -9,8 +9,9 @@ from PIL.ExifTags import TAGS
 
 from ..engines.llm import LLMEngine
 from ..models.schemas import BookMetadata, ImageMetadata
+from ..settings import app_settings
 
-# Image optimization settings
+# Constants (deprecated, used as fallbacks)
 MULTIMODAL_IMAGE_MAX_SIZE = 1024
 MULTIMODAL_IMAGE_QUALITY = 85
 
@@ -23,15 +24,15 @@ class VisualProcessor:
 
     def __init__(
         self,
-        llm_engine: LLMEngine,
+        llm_engine: Optional[LLMEngine] = None,
         provider: str = "deepinfra",
         model: str = "",
     ):
         self.llm_engine = llm_engine
         self.provider = provider
         self.model = model or getattr(llm_engine, "model_name", "")
-        self.image_max_size = MULTIMODAL_IMAGE_MAX_SIZE
-        self.image_quality = MULTIMODAL_IMAGE_QUALITY
+        self.image_max_size = app_settings.vision_image_max_size
+        self.image_quality = app_settings.vision_image_quality
 
     def extract_metadata_from_pdf(self, file_path: Path) -> Optional[BookMetadata]:
         """Extract metadata from PDF by sampling pages and using vision model."""
@@ -46,6 +47,9 @@ class VisualProcessor:
                     file_path, page_number=page_num
                 )
                 if not img_bytes:
+                    continue
+
+                if not self.llm_engine:
                     continue
 
                 metadata = self.llm_engine.get_book_metadata_from_image(
@@ -65,6 +69,9 @@ class VisualProcessor:
         """Extract metadata from a direct image file."""
         try:
             image_bytes = file_path.read_bytes()
+            if not self.llm_engine:
+                return None
+
             metadata = self.llm_engine.get_image_metadata(file_path, image_bytes)
 
             if metadata and add_exif_date:
@@ -101,9 +108,11 @@ class VisualProcessor:
         return [0, 1, 2, total_pages // 2, total_pages - 1]
 
     def _convert_pdf_page_to_image(
-        self, file_path: Path, page_number: int = 0, dpi: int = 150
+        self, file_path: Path, page_number: int = 0, dpi: Optional[int] = None
     ) -> Optional[bytes]:
         """Convert a PDF page to optimized image bytes."""
+        if dpi is None:
+            dpi = app_settings.vision_dpi
         try:
             with pymupdf.open(str(file_path)) as doc:
                 if page_number >= len(doc):

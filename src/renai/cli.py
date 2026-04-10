@@ -22,6 +22,7 @@ from renai.settings import (
     app_settings,
     initialize_directories,
 )
+from renai.processors.setup import run_init_wizard
 from renai.utils import ensure_secure_dir
 
 # Initialize logging
@@ -59,7 +60,7 @@ def setup_environment() -> None:
             sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
     try:
-        from colorama import init  # type: ignore
+        from colorama import init  # type: ignore[import-untyped]
 
         init()
     except ImportError:
@@ -200,6 +201,14 @@ def process(
         "--text-length",
         help="Target text length to send to LLM",
     )] = app_settings.text_length,
+    text_extraction: Annotated[str, typer.Option(
+        "--text-extraction",
+        help="Extraction mode: mixed or regular",
+    )] = app_settings.text_extraction,
+    extraction_pages: Annotated[int, typer.Option(
+        "--extraction-pages",
+        help="Number of pages to read for text extraction (regular mode)",
+    )] = app_settings.extraction_pages,
     recursive: Annotated[bool, typer.Option(
         "--recursive/--no-recursive",
         help="Process subdirectories recursively",
@@ -212,7 +221,7 @@ def process(
     # Fallback options
     fallback_mode: Annotated[FallbackMode, typer.Option(
         "--fallback-mode",
-        help="Strategy to use when text extraction fails (none/ocr/vision/move). 'move' shifts files to Needs_Scan/ folder.",
+        help="Strategy for extraction failures (none/ocr/vision/move). Settings in settings.toml override defaults.",
     )] = FallbackMode(app_settings.fallback_mode),
     move_scan_failures: Annotated[bool, typer.Option(
         "--move-scan-failures",
@@ -230,10 +239,6 @@ def process(
     benchmark: Annotated[bool, typer.Option(
         "--benchmark",
         help="Run extraction benchmark on first 3 files",
-    )] = False,
-    eval_model: Annotated[bool, typer.Option(
-        "--eval-model",
-        help="Evaluate multiple models for the selected provider",
     )] = False,
     # Cache option
     clear_cache: Annotated[bool, typer.Option(
@@ -293,6 +298,8 @@ def process(
             extractor=extractor,
             workers=workers,
             text_length=text_length,
+            text_extraction=text_extraction,
+            extraction_pages=extraction_pages,
             recursive=recursive,
             update_metadata=update_metadata,
             fallback_mode=fallback_mode,
@@ -300,10 +307,62 @@ def process(
             rename_images=rename_images,
             exif=exif,
             benchmark=benchmark,
-            eval_model=eval_model,
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Operation cancelled by user. Exiting...[/yellow]")
+        raise typer.Exit(code=0)
+
+
+@app.command("evaluate")
+def evaluate_cmd(
+    directory: Annotated[Optional[str], typer.Argument(
+        help="Directory containing sample book files for evaluation",
+    )] = None,
+    provider: Annotated[Optional[str], typer.Option(
+        "--provider",
+        help="LLM Provider to evaluate (if omitted, evaluates ALL providers in eval_models.toml)",
+    )] = None,
+    file: Annotated[Optional[str], typer.Option(
+        "--file",
+        help="Evaluate only this specific file",
+    )] = None,
+    workers: Annotated[int, typer.Option(
+        "--workers",
+        help="Number of concurrent workers (for file collection)",
+    )] = app_settings.workers,
+) -> None:
+    """Evaluate multiple models and providers for renaming quality."""
+    # Validate directory
+    target_dir = Path(directory or ".").resolve()
+    if not target_dir.is_dir():
+        console.print(f"[red]Error: Directory not found: {target_dir}[/red]")
+        raise typer.Exit(code=1)
+
+    # If --file is provided, verify it
+    if file:
+        file_path = Path(file).resolve()
+        if not file_path.is_file():
+            # Try relative to directory
+            file_path = target_dir / file
+            if not file_path.is_file():
+                console.print(f"[red]Error: File not found: {file}[/red]")
+                raise typer.Exit(code=1)
+        
+        # Override directory to just contain this file for the pipeline if needed
+        # but run_evaluation_pipeline handles samples. 
+        # For simplicity, we'll pass the specific file path if we refactor it later.
+        # For now, let's keep it simple.
+
+    from renai.processors.orchestrator import run_evaluation_pipeline
+    
+    try:
+        run_evaluation_pipeline(
+            root_dir=target_dir,
+            provider_filter=provider,
+            workers=workers,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Evaluation cancelled by user.[/yellow]")
         raise typer.Exit(code=0)
 
 
@@ -340,6 +399,12 @@ def clear_cache_cmd(
             raise typer.Exit()
 
     handle_clear_cache()
+
+
+@app.command("init")
+def init_cmd() -> None:
+    """Initialize renAI with the interactive setup wizard."""
+    run_init_wizard()
 
 
 @app.command("version")

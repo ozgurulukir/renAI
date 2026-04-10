@@ -8,12 +8,12 @@ from .base import BaseExtractor
 
 
 class PyMuPDFExtractor(BaseExtractor):
-    def extract_text(self, file_path: Path) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
         try:
             with pymupdf.open(str(file_path)) as doc:
                 text_parts = []
-                # Extract first 10 pages for metadata (consistent with previous logic)
-                for i in range(min(10, len(doc))):
+                # Extract up to 'pages' pages for metadata (configurable)
+                for i in range(min(pages, len(doc))):
                     page_text = doc[i].get_text()
                     if isinstance(page_text, str):
                         text_parts.append(page_text)
@@ -29,13 +29,13 @@ class PyMuPDFExtractor(BaseExtractor):
 
 
 class PDFPlumberExtractor(BaseExtractor):
-    def extract_text(self, file_path: Path) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
         try:
             import pdfplumber  # type: ignore[import-untyped]
 
             text_parts = []
             with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages[:10]:
+                for page in pdf.pages[:pages]:
                     text_parts.append(page.extract_text() or "")
             return "".join(text_parts).strip()
         except ImportError:
@@ -51,14 +51,14 @@ class PDFPlumberExtractor(BaseExtractor):
 
 
 class PyPDFExtractor(BaseExtractor):
-    def extract_text(self, file_path: Path) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
         try:
             from pypdf import PdfReader  # type: ignore[import-untyped]
 
             text_parts = []
             with open(file_path, "rb") as f:
                 reader = PdfReader(f)
-                for page in reader.pages[:10]:
+                for page in reader.pages[:pages]:
                     text_parts.append(page.extract_text() or "")
             return "".join(text_parts).strip()
         except ImportError:
@@ -74,14 +74,14 @@ class PyPDFExtractor(BaseExtractor):
 
 
 class PyPdfium2Extractor(BaseExtractor):
-    def extract_text(self, file_path: Path) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
         try:
             import pypdfium2 as pdfium  # type: ignore[import-untyped]
 
             text_parts = []
             with pdfium.PdfDocument(file_path) as pdf:
-                # Extract first 10 pages for metadata
-                for i in range(min(10, len(pdf))):
+                # Extract up to 'pages' pages for metadata
+                for i in range(min(pages, len(pdf))):
                     page = pdf[i]
                     textpage = page.get_textpage()
                     text_parts.append(textpage.get_text_bounded() or "")

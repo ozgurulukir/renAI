@@ -17,10 +17,13 @@ from renai.models import ProcessingResult
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
 from renai.settings import (
-    IMAGE_EXTENSIONS,
+    get_image_extensions,
     PROVIDERS,
     get_api_key,
     get_effective_model,
+    load_eval_models,
+    load_all_eval_models,
+    EVAL_LOG_FILE,
 )
 
 console = Console()
@@ -35,6 +38,8 @@ def setup_engines(
     mutool_path: str,
     extractor: str,
     text_length: int,
+    text_extraction: str,
+    extraction_pages: int,
 ) -> Tuple[OCREngine, LLMEngine, BookProcessor]:
     """Initialize OCR, LLM, and book processor engines."""
     # Initialize OCR engine
@@ -78,6 +83,8 @@ def setup_engines(
         provider=provider,
         model=model_name,
         target_length=text_length,
+        text_extraction=text_extraction,
+        extraction_pages=extraction_pages,
     )
 
     return ocr_engine, llm_engine, processor
@@ -109,39 +116,86 @@ def collect_image_files(
         if (
             entry.is_file()
             and not entry.is_symlink()
-            and entry.suffix.lower() in IMAGE_EXTENSIONS
+            and entry.suffix.lower() in get_image_extensions()
         ):
             file_paths.append(entry)
     return file_paths
 
 
 def run_benchmark(processor: BookProcessor, file_paths: list[Path]) -> None:
-    """Run extraction benchmark on first 3 files."""
+    """Run extraction benchmark on sampled files."""
+    from renai.settings import app_settings
     console.print("[cyan]Starting Benchmark Mode...[/cyan]")
-    for p in file_paths[:3]:
+    for p in file_paths[:app_settings.benchmark_sample_count]:
         processor.benchmark_extractors(p)
     console.print("[green]Benchmark complete![/green]")
 
 
-def run_model_eval(
-    processor: BookProcessor,
-    file_paths: list[Path],
-    provider: str,
+def run_evaluation_pipeline(
+    root_dir: Path,
+    provider_filter: str | None,
+    workers: int,
 ) -> None:
-    """Run model evaluation on first 2 files."""
-    from renai.settings import EVAL_MODELS
+    """
+    Dedicated evaluation pipeline that supports multiple providers and models.
+    """
+    # 1. Load targets
+    if provider_filter:
+        eval_data = {provider_filter: load_eval_models(provider_filter)}
+    else:
+        eval_data = load_all_eval_models()
 
-    eval_models = EVAL_MODELS.get(provider, [])
-    if not eval_models:
-        console.print(
-            f"[red]No evaluation models defined for provider: {provider}[/red]"
-        )
+    if not eval_data:
+        console.print("[yellow]No evaluation models found in configuration.[/yellow]")
+        return
+
+    # 2. Pre-flight API Key Check
+    missing_keys = []
+    for provider in eval_data:
+        if not get_api_key(provider):
+            missing_keys.append(provider.upper())
+    
+    if missing_keys:
+        console.print(f"[red]CRITICAL: Missing API keys for evaluation providers: {', '.join(missing_keys)}[/red]")
+        console.print("[yellow]Please set the environment variables or update secrets.toml before running evaluate.[/yellow]")
         raise typer.Exit(code=1)
 
-    console.print("[cyan]Starting Model Evaluation Mode...[/cyan]")
-    for p in file_paths[:2]:
-        processor.evaluate_models(p, provider, eval_models)
-    console.print("[green]Evaluation complete![/green]")
+    # 3. Setup minimal engine (OCR only, LLM will be dynamic)
+    # We use default settings for OCR during evaluate
+    from renai.settings import app_settings
+    ocr_engine = OCREngine(
+        enhanced=app_settings.ocr_enhanced,
+        debug=app_settings.debug_ocr,
+        use_mutool=app_settings.use_mutool,
+        mutool_path=app_settings.mutool_path,
+        silent=True,
+    )
+    
+    processor = BookProcessor(
+        ocr_engine,
+        llm_engine=None, # Will be set per-model
+        extractor_name=app_settings.extractor,
+        target_length=app_settings.text_length,
+    )
+
+    # 4. Collect Sample Files
+    file_paths = collect_files(root_dir, processor, recursive=False)
+    if not file_paths:
+        console.print("[yellow]No files found in directory to evaluate.[/yellow]")
+        return
+    
+    samples = file_paths[:app_settings.benchmark_sample_count]
+    console.print(f"[cyan]Starting Multi-Provider Evaluation on {len(samples)} sample files...[/cyan]")
+    
+    # 5. Execute Evaluation Loop
+    for p in samples:
+        for provider, models in eval_data.items():
+            if not models:
+                continue
+            console.print(f"[magenta]Evaluating {provider.capitalize()} models for: {p.name}[/magenta]")
+            processor.evaluate_models(p, provider, models)
+
+    console.print(f"\n[green]Evaluation complete! Results appended to {EVAL_LOG_FILE}[/green]")
 
 
 def process_files(
@@ -264,6 +318,8 @@ def run_pipeline(
     extractor: str,
     workers: int,
     text_length: int,
+    text_extraction: str,
+    extraction_pages: int,
     recursive: bool,
     update_metadata: bool,
     fallback_mode: FallbackMode,
@@ -271,7 +327,6 @@ def run_pipeline(
     rename_images: bool,
     exif: bool,
     benchmark: bool = False,
-    eval_model: bool = False,
 ) -> None:
     """
     Main entry point for processing.
@@ -287,6 +342,8 @@ def run_pipeline(
         mutool_path=mutool_path,
         extractor=extractor,
         text_length=text_length,
+        text_extraction=text_extraction,
+        extraction_pages=extraction_pages,
     )
 
     # 2. Configure fallback folders
@@ -308,10 +365,6 @@ def run_pipeline(
     # 4. Handle Special Modes
     if benchmark:
         run_benchmark(processor, file_paths)
-        return
-
-    if eval_model:
-        run_model_eval(processor, file_paths, provider)
         return
 
     # 5. Execute core processing

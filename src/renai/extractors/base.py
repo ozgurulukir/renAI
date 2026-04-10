@@ -7,7 +7,7 @@ class BaseExtractor(ABC):
     """Base class for all text extractors."""
 
     @abstractmethod
-    def extract_text(self, file_path: Path) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
         """Extract text from the given file."""
         pass
 

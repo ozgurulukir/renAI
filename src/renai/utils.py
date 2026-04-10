@@ -5,7 +5,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .settings import AppSettings
 
 # Pre-compiled regular expressions for filename sanitization
 RE_INVALID_CHARS = re.compile(r'[<>:"/\\|?*]')
@@ -48,11 +51,17 @@ def get_provider_model_key(provider: str, model: str) -> str:
 
 
 
-def sanitize_filename(filename: str, max_length: int = 200) -> str:
+def sanitize_filename(filename: str, max_length: Optional[int] = None) -> str:
     """
     Replace invalid characters and remove all control characters.
     Limits length to stay within Windows path limits.
     """
+    if max_length is None:
+        try:
+            from .settings import app_settings
+            max_length = app_settings.max_filename_length
+        except (ImportError, AttributeError, NameError):
+            max_length = 200  # Fallback
     # Remove invalid characters for Windows paths: < > : " / \ | ? *
     sanitized = RE_INVALID_CHARS.sub("", filename)
 

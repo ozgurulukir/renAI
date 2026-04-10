@@ -97,7 +97,8 @@ from typing import Optional, Set
 
 from ..settings import (
     CACHE_DIR,
-    MAX_TEXT_READ_SIZE,
+    get_max_text_read_size,
+    app_settings,
 )
 from ..extractors import get_extractor
 from ..engines.ocr import OCREngine
@@ -152,6 +153,8 @@ class TextExtractor:
         ocr_engine: OCREngine,
         extractor_name: str = "pymupdf",
         target_length: int = 10000,
+        text_extraction: str = "mixed",
+        extraction_pages: int = 10,
     ):
         """
         Initialize the text extractor.
@@ -165,6 +168,8 @@ class TextExtractor:
         self.extractor_name = extractor_name
         self.extractor = get_extractor(extractor_name)
         self.target_length = target_length
+        self.text_extraction_mode = text_extraction
+        self.extraction_pages = extraction_pages
         self.office_extensions = OFFICE_EXTENSIONS
         self.plain_text_extensions = PLAIN_TEXT_EXTENSIONS
         # Move to folder management
@@ -266,7 +271,10 @@ class TextExtractor:
 
             md = MarkItDown()
             result = md.convert(str(file_path))
-            return proportional_chunk_trim(result.text_content, target_length, 10)
+
+            if self.text_extraction_mode == "mixed":
+                return proportional_chunk_trim(result.text_content, target_length, app_settings.mixed_chunk_count)
+            return result.text_content[:target_length]
         except Exception as e:
             logging.error(f"MarkItDown failed for {file_path.name}: {e}")
             return ""
@@ -294,8 +302,11 @@ class TextExtractor:
             - Different trim ratio (1) for plain text vs documents (10)
         """
         try:
-            content = read_text_limited(file_path, MAX_TEXT_READ_SIZE)
-            return proportional_chunk_trim(content, target_length, 1)
+            content = read_text_limited(file_path, get_max_text_read_size())
+
+            if self.text_extraction_mode == "mixed":
+                return proportional_chunk_trim(content, target_length, app_settings.mixed_chunk_count)
+            return content[:target_length]
         except Exception as e:
             logging.error(f"Text read failed for {file_path.name}: {e}")
             return ""
@@ -319,19 +330,15 @@ class TextExtractor:
 
         Returns:
             Extracted text trimmed to target length, or empty string on failure.
-
-        Heuristics:
-            Text is considered "insufficient" if it has fewer than 100 characters
-            after stripping whitespace. This is a heuristic and may need tuning
-            for specific use cases.
         """
-        logging.info(f"Using extractor: {self.extractor_name} for {file_path.name}")
-
-        full_text = self.extractor.extract_text(file_path) or ""
+        full_text = self.extractor.extract_text(file_path, pages=self.extraction_pages) or ""
+        sufficient_threshold = app_settings.min_sufficient_text
 
         # Check if we got meaningful text
-        if len(full_text.strip()) > 100:  # Heuristic for meaningful text
-            return proportional_chunk_trim(full_text, target_length, 10)
+        if len(full_text.strip()) > sufficient_threshold:  # Heuristic for meaningful text
+            if self.text_extraction_mode == "mixed":
+                return proportional_chunk_trim(full_text, target_length, app_settings.mixed_chunk_count)
+            return full_text[:target_length]
 
         # Insufficient text - Apply fallback strategy
         match fallback:
@@ -382,7 +389,7 @@ class TextExtractor:
         try:
             ocr_text = self.ocr_engine.extract_text(file_path)
             if ocr_text.strip():
-                return proportional_chunk_trim(ocr_text, target_length, 10)
+                return proportional_chunk_trim(ocr_text, target_length, app_settings.mixed_chunk_count)
         except Exception as e:
             logging.error(f"OCR failed for {file_path.name}: {e}")
 
@@ -468,7 +475,7 @@ class TextExtractor:
         logging.info("=" * (52 + len(file_path.name)))
 
 
-def has_sufficient_text(text: str, min_length: int = 100) -> bool:
+def has_sufficient_text(text: str, min_length: Optional[int] = None) -> bool:
     """
     Check if extracted text is sufficient for processing.
 
@@ -477,19 +484,8 @@ def has_sufficient_text(text: str, min_length: int = 100) -> bool:
 
     Args:
         text: The extracted text to check.
-        min_length: Minimum required character count (default: 100).
-
-    Returns:
-        True if text length > min_length, False otherwise.
-
-    Example:
-        >>> has_sufficient_text("  Hello world  ")
-        True
-
-        >>> has_sufficient_text("  Hi  ")
-        False
-
-        >>> has_sufficient_text("", min_length=10)
-        False
+        min_length: Minimum required character count (default: app_settings.min_sufficient_text).
     """
+    if min_length is None:
+        min_length = app_settings.min_sufficient_text
     return len(text.strip()) > min_length
