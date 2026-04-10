@@ -390,14 +390,11 @@ models = ["gpt-4o", "gpt-4o-mini"]
 ### Önbellek Yönetimi
 
 ```bash
-# Tüm önbelleği temizle
+# Tüm önbelleği temizle (metin, metadata ve ocr_debug)
 uv run renai cache
 
-# Veya process komutu ile temizle
-uv run renai process --clear-cache
-
-# Belirli dizin için önbelleği temizle
-uv run renai process "C:/Kitaplar/Yolu" --clear-cache
+# Onay almadan temizle
+uv run renai cache --yes
 ```
 
 ---
@@ -490,7 +487,7 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 4. **Önbellekleme Kullanın**: Gerekmedikçe `--update-metadata` kullanmaktan kaçının
 5. **Akıllı OCR Seçimi**: Taranmış belgeler için yalnızca `--ocr-enhanced --use-mutool` kullanın
 6. **Sağlayıcıları Karşılaştırın**: OpenRouter genellikle rekabetçi fiyatlar sunar
-7. **Önbelleği Temizleyin**: Modelleri veya ayarları değiştirdiğinde `--clear-cache` kullanın
+7. **Önbelleği Temizleyin**: Modelleri veya ayarları değiştirdiğinde `renai cache` kullanın
 8. **Gizliliği Koruyun**: Hassas veya özel belgeler için yerel bir LLM (Ollama, LM Studio) kullanarak `custom` sağlayıcısını tercih edin. Bu, belge içeriğinizi bulut hizmetlerine göndermek yerine makinenizde tutar.
 
 ### Önbellek Stratejisi
@@ -530,11 +527,8 @@ uv run renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 **Önbelleği Temizle:**
 
 ```bash
-# Tüm önbelleği temizle
+# Tüm önbelleği temizle (metadata, metin ve ocr_debug)
 uv run renai cache
-
-# Belirli dizin için önbelleği temizle
-uv run renai process "C:/Kitaplar/Yolu" --clear-cache
 ```
 
 ### Gizlilik Değerlendirmeleri

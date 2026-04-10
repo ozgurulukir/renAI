@@ -71,23 +71,19 @@ def setup_environment() -> None:
 
 
 def handle_clear_cache() -> None:
-    """Clear extracted text cache and metadata."""
+    """Clear extracted text cache, metadata, and OCR debug files."""
     from renai.settings import CACHE_DIR
+    from renai.cache.manager import clear_all_cache
 
     ensure_secure_dir(CACHE_DIR)
-    cache_files = list(CACHE_DIR.iterdir())
-    if cache_files:
-        for cache_file in cache_files:
-            try:
-                if cache_file.is_file():
-                    cache_file.unlink()
-            except Exception as e:
-                console.print(
-                    f"[yellow]Warning: Failed to delete {cache_file.name}: {e}[/yellow]"
-                )
-        console.print(f"[green]Cache cleared: {len(cache_files)} files removed[/green]")
+    results = clear_all_cache(CACHE_DIR)
+    
+    total = sum(results.values())
+    if total > 0:
+        details = ", ".join([f"{count} {ctype}" for ctype, count in results.items() if count > 0])
+        console.print(f"[green]Cache cleared: {total} items removed ({details})[/green]")
     else:
-        console.print("[green]Cache directory is empty. Nothing to clear.[/green]")
+        console.print("[green]Cache is already empty. Nothing to clear.[/green]")
 
 
 def display_warnings(mode: str, recursive: bool) -> None:
@@ -155,7 +151,7 @@ def display_warnings(mode: str, recursive: bool) -> None:
 @app.command()
 def process(
     directory: Annotated[Optional[str], typer.Argument(
-        help="Directory containing book files (required unless using --clear-cache)",
+        help="Directory containing book files to process.",
     )] = None,
     # Mode options
     mode: Annotated[str, typer.Option(
@@ -240,22 +236,14 @@ def process(
         "--benchmark",
         help="Run extraction benchmark on first 3 files",
     )] = False,
-    # Cache option
-    clear_cache: Annotated[bool, typer.Option(
-        "--clear-cache",
-        help="Clear cache and exit",
-    )] = False,
+
 ) -> None:
     """Process files in a directory."""
-    # Handle clear-cache first
-    if clear_cache:
-        handle_clear_cache()
-        raise typer.Exit()
 
     # Validate directory
     if not directory:
         console.print(
-            "[red]Error: Directory is required (use --clear-cache to clear cache only)[/red]"
+            "[red]Error: Directory argument is required.[/red]"
         )
         raise typer.Exit(code=1)
 

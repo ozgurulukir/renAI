@@ -391,11 +391,11 @@ models = ["gpt-4o", "gpt-4o-mini"]
 ### Cache Management
 
 ```bash
-# Clear all cache
-renai process --clear-cache
+# Clear all cache (text, metadata, and ocr_debug)
+renai cache
 
-# Clear cache for specific directory
-renai process "C:/Path/To/Books" --clear-cache
+# Clear cache without confirmation
+renai cache --yes
 ```
 
 ---
@@ -489,7 +489,7 @@ When using `--mode organize`:
 5. **Choose OCR Wisely**: Use `--ocr-enhanced --use-mutool` only for scanned documents
 6. **Vision for PDFs**: Use `--fallback-mode vision` for text-based PDFs (faster, more accurate)
 7. **Compare Providers**: OpenRouter often offers competitive pricing
-8. **Clear Cache**: Use `--clear-cache` when switching models or settings
+8. **Clear Cache**: Use `renai cache` when switching models or settings
 9. **Protect Privacy**: For sensitive or private documents, use a local LLM (Ollama, LM Studio) with the `custom` provider. This keeps your document content on your machine rather than sending it to cloud services.
 
 ### Caching Strategy
@@ -529,11 +529,8 @@ renai process "C:/Books" --provider deepinfra --update-metadata
 **Clear Cache:**
 
 ```bash
-# Clear all cache (metadata and text)
+# Clear all cache (metadata, text, and ocr_debug)
 renai cache
-
-# Or clear with the process command
-renai process --clear-cache
 ```
 
 ### Privacy Considerations

@@ -105,19 +105,14 @@ Cache entries are automatically invalidated when:
 | Text Cache | File content changes, OCR mode changes (enhanced/basic), mutool usage changes |
 | Metadata Cache | File content changes, provider changes, model changes, processing mode changes (Text vs Vision) |
 
-### Manual Invalidation
-
-Use these commands to manually clear cache:
+### Cache Management
 
 ```bash
-# Clear all cache
-renai --clear-cache
+# Clear all cache (text, metadata, and ocr_debug)
+renai cache
 
-# Clear cache for specific directory
-renai "C:/Path/To/Books" --clear-cache
-
-# Clear cache for single file
-renai "C:/Path/To/Books/book.pdf" --clear-cache
+# Use --yes to skip confirmation
+renai cache --yes
 ```
 
 ### Force Refresh
@@ -307,16 +302,11 @@ If cache is not being used:
 3. Check if file content has changed (new hash)
 4. Review logs for cache invalidation messages
 
-### Old Cache Entries
-
 To clean up old cache entries, use the built-in CLI command:
 
 ```bash
-# Clear all cache (metadata and text)
+# Clear all cache (metadata, text, and ocr_debug)
 renai cache
-
-# Or use the flag with any process command
-renai process --clear-cache
 ```
 
 > [!TIP]

@@ -32,6 +32,7 @@ from renai.cache.manager import (  # noqa: E402
     write_metadata_cache,
     invalidate_cache_for_provider_model,
     get_metadata_cache_path,
+    clear_all_cache,
 )
 from renai.models.schemas import BookMetadata  # noqa: E402
 
@@ -139,3 +140,31 @@ def test_invalidate_cache_for_provider_model_empty(tmp_path):
     metadata_dir.mkdir()
     count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
     assert count == 0
+def test_clear_all_cache(tmp_path):
+    """Test clearing all cache types including ocr_debug."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    
+    text_dir = cache_dir / "text"
+    text_dir.mkdir()
+    (text_dir / "t1.txt").write_text("text")
+    
+    metadata_dir = cache_dir / "metadata"
+    metadata_dir.mkdir()
+    (metadata_dir / "m1.json").write_text("{}")
+    
+    # Mock DEBUG_DIR in settings to use tmp_path
+    debug_dir = tmp_path / "ocr_debug"
+    debug_dir.mkdir()
+    (debug_dir / "d1.png").write_text("debug")
+    
+    with patch("renai.cache.manager.DEBUG_DIR", debug_dir):
+        results = clear_all_cache(cache_dir=cache_dir)
+        
+        assert results["text"] == 1
+        assert results["metadata"] == 1
+        assert results["ocr_debug"] == 1
+        
+        assert not text_dir.exists()
+        assert not metadata_dir.exists()
+        assert not debug_dir.exists()

@@ -171,23 +171,36 @@ def invalidate_cache_for_provider_model(cache_dir: Optional[Path] = None) -> int
     return count
 
 
+from ..settings import CACHE_DIR, DEBUG_DIR
+
 def clear_all_cache(cache_dir: Optional[Path] = None) -> Dict[str, int]:
-    """Clear all caches (text and metadata)."""
+    """Clear all caches (text, metadata, and ocr_debug)."""
     import shutil
 
     if cache_dir is None:
         cache_dir = CACHE_DIR
 
-    results = {"text": 0, "metadata": 0}
+    results = {"text": 0, "metadata": 0, "ocr_debug": 0}
 
-    for cache_type in ["text", "metadata"]:
-        cache_path = cache_dir / cache_type
-        if cache_path.exists():
+    # Define targets
+    targets = [
+        ("text", cache_dir / "text"),
+        ("metadata", cache_dir / "metadata"),
+        ("ocr_debug", DEBUG_DIR),
+    ]
+
+    for cache_type, target_path in targets:
+        if target_path.exists():
             try:
-                count = len(list(cache_path.glob("*")))
-                shutil.rmtree(cache_path)
+                # Count files for reporting
+                if target_path.is_dir():
+                    count = len(list(target_path.glob("*")))
+                    shutil.rmtree(target_path)
+                else:
+                    count = 1
+                    target_path.unlink()
                 results[cache_type] = count
             except Exception as e:
-                logging.warning(f"Failed to clear {cache_type} cache: {e}")
+                logging.warning(f"Failed to clear {cache_type} cache at {target_path}: {e}")
 
     return results

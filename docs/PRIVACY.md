@@ -111,11 +111,8 @@ Cache/
 ### Cache Management
 
 ```bash
-# Clear all cache
-uv run renai process --clear-cache
-
-# Clear cache for specific directory
-uv run renai process "C:/Path/To/Books" --clear-cache
+# Clear all cache (text, metadata, and ocr_debug)
+renai cache
 ```
 
 ### Cache Security Recommendations
@@ -216,8 +213,7 @@ renai process "C:/Sensitive/Files" --mode rename --provider custom
 
 ```bash
 # Immediately clear cache after processing
-renai process "C:/Sensitive/Files" --mode rename --provider custom
-renai process "C:/Sensitive/Files" --clear-cache
+renai cache
 ```
 
 ### 3. Review Provider Terms of Service
