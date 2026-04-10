@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-04-10
+
+### [Added]
+
+- **Robust Metadata Validation**: Implemented `field_validator` in `BookMetadata` to automatically sanitize noisy LLM outputs. It extracts digits from messy years (e.g., "2024 (E-book)") and converts placeholders like "Unknown", "N/A", or empty strings into proper `None` values.
+- **Graceful Metadata Fallback**: Made the `title` field optional in the schema, allowing renaming to proceed with partial data (Author, Year) instead of failing the entire validation pass.
+
+### [Changed]
+
+- **Refined Filename Building**: Overhauled `build_book_filename` to dynamically assemble filename parts, ensuring that missing metadata fields do not result in dangling separators (e.g., `Title -- -- .pdf`) or empty parentheses.
+- **Standardized missing data instructions**: Updated base and refinement prompts to explicitly instruct models to use JSON `null` for unknown fields, reducing schema validation failures.
+
 ## [1.5.0] - 2026-04-10
 
 ### [Added]
