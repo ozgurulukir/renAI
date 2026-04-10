@@ -10,8 +10,9 @@ Ensure the metadata is accurate, complete, standardized, and professional.
 3. **Standardization:**
     - Ensure Title and Author use proper capitalization and punctuation.
     - Standardize Edition format (e.g., '2. Baskı' or '2nd Edition').
-4. **Category Validation:** Verify the 'category' field. If the content clearly belongs to a more specific valid category from the allowed list, update it.
-5. **Language Verification:** Ensure the 'language' field reflects the metadata language ("tr" or "en").
+4. **Category Validation**: Verify the 'category' field. If the content clearly belongs to a more specific valid category from the allowed list, update it.
+5. **Handling Missing Data**: If a field remains unknown or cannot be verified after your review, ensure it is set to JSON `null`. Do not leave placeholder text like "Unknown" or empty strings.
+6. **Language Verification**: Ensure the 'language' field reflects the metadata language ("tr" or "en").
 
 {category_rules}
 

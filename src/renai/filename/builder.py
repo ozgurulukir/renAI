@@ -21,13 +21,13 @@ def build_book_filename(
         subtitle = (book_data.subtitle or "").strip()
         edition = (book_data.edition or "").strip()
         author = (book_data.author or "").strip()
-        year = str(book_data.year or "").strip()
+        year_val = book_data.year
     else:
         title = (book_data.get("title") or "").strip()
         subtitle = (book_data.get("subtitle") or "").strip()
         edition = (book_data.get("edition") or "").strip()
         author = (book_data.get("author") or "").strip()
-        year = str(book_data.get("year") or "").strip()
+        year_val = book_data.get("year")
 
     name_parts = []
 
@@ -38,9 +38,20 @@ def build_book_filename(
     if edition:
         name_parts.append(f"'{edition}'")
     if author:
+        # Standardize author name by trimming and removing potential placeholder strings
         name_parts.append(author)
-    if year and year.isdigit():
-        name_parts.append(f"({year})")
+    
+    # Handle year separately to ensure correct formatting
+    if year_val:
+        try:
+            year_int = int(year_val)
+            if 1000 <= year_int <= 2100: # Sanity check for year
+                name_parts.append(f"({year_int})")
+        except (ValueError, TypeError):
+            pass
+
+    if not name_parts:
+        return f"Unknown_Document{original_extension}"
 
     new_name_base = " -- ".join(name_parts)
     return f"{sanitize_filename(new_name_base)}{original_extension}"

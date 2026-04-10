@@ -1,5 +1,6 @@
-from typing import Optional
-from pydantic import BaseModel, Field
+import re
+from typing import Optional, Any
+from pydantic import BaseModel, Field, field_validator
 
 
 class BaseMetadata(BaseModel):
@@ -29,8 +30,8 @@ class BaseMetadata(BaseModel):
 class BookMetadata(BaseMetadata):
     """Metadata schema for documents (PDF, EPUB, etc.)."""
     
-    title: str = Field(
-        ..., 
+    title: Optional[str] = Field(
+        None, 
         description="The full, official title of the document. Do not truncate."
     )
     subtitle: Optional[str] = Field(
@@ -49,6 +50,41 @@ class BookMetadata(BaseMetadata):
         None, 
         description="The 4-digit publication year."
     )
+
+    @field_validator("year", mode="before")
+    @classmethod
+    def sanitize_year(cls, v: Any) -> Optional[int]:
+        """Convert empty, placeholder, or messy year strings to a valid integer or None."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            # Handle empty strings or typical "unknown" strings
+            if not v or v.lower() in ("unknown", "n/a", "-", "null", "none"):
+                return None
+            # Try to extract the first 4-digit number (e.g. "2024 (E-book)")
+            match = re.search(r"\b(1\d{3}|20\d{2})\b", v)
+            if match:
+                return int(match.group(1))
+            # If no 4-digit year found, return None instead of failing
+            return None
+        # Handle cases where LLM sends float as int
+        if isinstance(v, (int, float)):
+            return int(v)
+        return None
+
+    @field_validator("author", "title", mode="before")
+    @classmethod
+    def sanitize_strings(cls, v: Any) -> Optional[str]:
+        """Convert empty or placeholder strings in text fields to None or clean strings."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() in ("unknown", "n/a", "-"):
+                return None
+            return v
+        return str(v)
 
 
 class ImageMetadata(BaseMetadata):
