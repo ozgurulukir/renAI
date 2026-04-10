@@ -1,5 +1,4 @@
 from unittest.mock import MagicMock, patch
-from pathlib import Path
 
 # Mock rich before importing renai.cli if it's not available
 try:

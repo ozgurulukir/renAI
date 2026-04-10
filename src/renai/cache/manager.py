@@ -1,11 +1,12 @@
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, TypeVar, Union
 
 from pydantic import BaseModel
 
-from ..settings import CACHE_DIR
+from ..settings import CACHE_DIR, DEBUG_DIR
 from ..utils import (
     get_provider_model_key,
 )
@@ -171,11 +172,8 @@ def invalidate_cache_for_provider_model(cache_dir: Optional[Path] = None) -> int
     return count
 
 
-from ..settings import CACHE_DIR, DEBUG_DIR
-
 def clear_all_cache(cache_dir: Optional[Path] = None) -> Dict[str, int]:
     """Clear all caches (text, metadata, and ocr_debug)."""
-    import shutil
 
     if cache_dir is None:
         cache_dir = CACHE_DIR
