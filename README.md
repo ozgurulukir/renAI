@@ -119,11 +119,13 @@ renai init
 ```
 
 This will create your configuration files in the appropriate OS directory:
+
 - **Windows**: `%LOCALAPPDATA%\renAI`
 - **Linux**: `~/.config/renAI`
 - **macOS**: `~/Library/Application Support/renAI`
 
 The wizard helps you configure:
+
 - **LLM Provider**: DeepInfra (default), OpenRouter, OpenAI, or Custom
 - **API Keys**: Stored securely in `secrets.toml`
 - **General Settings**: Concurrent workers, fallback strategies, etc.
@@ -136,7 +138,8 @@ renAI uses a robust, layered configuration system:
 2. **Physical Defaults**: `settings.default.toml` (auto-generated reference).
 3. **Internal Defaults**: Hardcoded baseline settings for zero-setup operation.
 
-#### Essential Files:
+#### Essential Files
+
 - `settings.toml`: Customize application behavior and override provider defaults.
 - `secrets.toml`: Sensitive API keys. **Never share this file!**
 - `providers.toml`: Register custom LLM providers or override endpoints.
@@ -148,6 +151,7 @@ Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrou
 ### Environment Variables
 
 You can also configure renAI using environment variables (prefixed with `RENAI_`):
+
 - `RENAI_PROVIDER`: e.g., `openai`
 - `RENAI_MODEL`: e.g., `gpt-4o`
 - `RENAI_WORKERS`: e.g., `8`
@@ -157,6 +161,7 @@ You can also configure renAI using environment variables (prefixed with `RENAI_`
 renAI follows a "Zero-Code Defaults" philosophy. You don't *need* to edit configuration files to start. Baseline factory defaults are included within the package, allowing it to "just work" after simple initialization.
 
 Override options are available via:
+
 1. Environment variables (prefixed with `RENAI_`)
 2. `settings.toml` in your user config directory
 3. `settings.default.toml` (Global baseline)
@@ -365,14 +370,16 @@ renai process "C:/Path/To/Books" --benchmark
 #### Advanced Model Evaluation
 
 The `evaluate` command performs a competitive test:
+
 1. It takes the first few files from your directory.
 2. It processes them using **every** model listed in your `eval_models.toml`.
 3. It logs the extracted metadata and a confidence score for each attempt.
 
 **Configuration:**
-Models are loaded from `eval_models.toml` (User > Default > Internal). 
+Models are loaded from `eval_models.toml` (User > Default > Internal).
 
 Example `eval_models.toml`:
+
 ```toml
 [deepinfra]
 models = ["meta-llama/Llama-3.2-90B-Vision-Instruct", "meta-llama/Llama-3.1-405B-Instruct"]

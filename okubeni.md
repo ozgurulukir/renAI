@@ -119,11 +119,13 @@ renai init
 ```
 
 Bu komut, işletim sisteminize uygun dizinde yapılandırma dosyalarınızı oluşturacaktır:
+
 - **Windows**: `%LOCALAPPDATA%\renAI`
 - **Linux**: `~/.config/renAI`
 - **macOS**: `~/Library/Application Support/renAI`
 
 Sihirbaz şu konularda size yardımcı olur:
+
 - **LLM Sağlayıcısı**: DeepInfra (varsayılan), OpenRouter, OpenAI veya Özel
 - **API Anahtarları**: `secrets.toml` dosyasında güvenli bir şekilde saklanır
 - **Genel Ayarlar**: Eşzamanlı çalışan sayısı, fallback stratejileri vb.
@@ -136,7 +138,8 @@ renAI sağlam ve katmanlı bir yapılandırma sistemi kullanır:
 2. **Fiziksel Varsayılanlar**: `settings.default.toml` (otomatik oluşturulan referans).
 3. **Dahili Varsayılanlar**: Sıfır kurulum operasyonu için paket içine gömülü temel ayarlar.
 
-#### Önemli Dosyalar:
+#### Önemli Dosyalar
+
 - `settings.toml`: Uygulama davranışını özelleştirin ve sağlayıcı varsayılanlarını ezin.
 - `secrets.toml`: Hassas API anahtarları. **Bu dosyayı asla paylaşmayın!**
 - `providers.toml`: Özel LLM sağlayıcılarını kaydedin veya uç noktaları (endpoint) değiştirin.
@@ -148,6 +151,7 @@ Anahtarları şuradan alın: [DeepInfra](https://deepinfra.com) | [OpenRouter](h
 ### Ortam Değişkenleri
 
 renAI'yi ortam değişkenlerini (`RENAI_` ön eki ile) kullanarak da yapılandırabilirsiniz:
+
 - `RENAI_PROVIDER`: örn. `openai`
 - `RENAI_MODEL`: örn. `gpt-4o`
 - `RENAI_WORKERS`: örn. `8`
@@ -157,6 +161,7 @@ renAI'yi ortam değişkenlerini (`RENAI_` ön eki ile) kullanarak da yapılandı
 renAI, "Sıfır Kodlu Varsayılanlar" felsefesini izler. Başlamak için yapılandırma dosyalarını düzenlemenize *gerek yoktur*. Temel fabrika varsayılanları paketle birlikte gelir, böylece basit bir ilklendirmeden sonra "direkt çalışır".
 
 Özelleştirme seçenekleri hiyerarşisi:
+
 1. Ortam değişkenleri (`RENAI_` ön eki ile)
 2. Kullanıcı dizininizdeki `settings.toml` dosyası
 3. `settings.default.toml` (Global temel ayarlar)
@@ -364,6 +369,7 @@ uv run renai process "C:/Kitaplar/Yolu" --benchmark
 #### Gelişmiş Model Değerlendirme
 
 `evaluate` komutu rekabetçi bir test gerçekleştirir:
+
 1. Dizininizdeki ilk birkaç dosyayı alır.
 2. Bunları `eval_models.toml` dosyanızda listelenen **her** modeli kullanarak işler.
 3. Her deneme için çıkarılan meta verileri ve bir güven puanını günlüğe kaydeder.
@@ -372,6 +378,7 @@ uv run renai process "C:/Kitaplar/Yolu" --benchmark
 Modeller `eval_models.toml` dosyasından yüklenir (Kullanıcı > Varsayılan > Dahili).
 
 Örnek `eval_models.toml`:
+
 ```toml
 [deepinfra]
 models = ["meta-llama/Llama-3.2-90B-Vision-Instruct", "meta-llama/Llama-3.1-405B-Instruct"]
