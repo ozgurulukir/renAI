@@ -9,7 +9,7 @@ import numpy as np
 import pymupdf
 import pytesseract  # type: ignore[import-untyped]
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional
 
 from ..settings import (
     CACHE_DIR,

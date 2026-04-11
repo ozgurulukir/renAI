@@ -7,7 +7,6 @@ from typing import Any, Dict, Optional, Type, TypeVar
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
-from pydantic import BaseModel
 
 from ..settings import get_allowed_categories, get_image_categories
 from ..models.schemas import BookMetadata, ImageMetadata, BaseMetadata

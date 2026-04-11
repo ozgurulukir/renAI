@@ -3,7 +3,6 @@ BookProcessor - Main orchestrator for document and image processing.
 Unified and refactored to eliminate redundancy between text, vision, and image modes.
 """
 
-import json
 import logging
 import threading
 from pathlib import Path
@@ -291,36 +290,38 @@ class BookProcessor:
             logging.error(f"Invalid provider: {provider}")
             return
 
+        log_lines = [
+            f"\n{'=' * 80}\n",
+            f"EVALUATION: {file_path.name} ({provider})\n",
+            f"{'=' * 80}\n"
+        ]
+
+        for model_name in model_names:
+            try:
+                if not config.api_key:
+                    logging.error(f"API Key for {provider} not found.")
+                    continue
+
+                temp_engine = LLMEngine(
+                    provider=provider,
+                    api_key=config.api_key,
+                    base_url=config.base_url,
+                    model_name=model_name,
+                )
+                metadata = temp_engine.get_book_metadata(text)
+                status = "SUCCESS"
+                logging.info(
+                    f"{model_name:25} | {status} | {str(metadata)[:50]}..."
+                )
+                # model_dump_json for logging
+                dump = metadata.model_dump_json(ensure_ascii=False) if metadata else "{}"
+                log_lines.append(f"[{model_name}] -> {dump}\n")
+            except Exception as e:
+                logging.error(f"{model_name:25} | ERROR: {str(e)[:25]}")
+                log_lines.append(f"[{model_name}] -> ERROR: {str(e)}\n")
+
         with open(EVAL_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(f"\n{'=' * 80}\n")
-            f.write(f"EVALUATION: {file_path.name} ({provider})\n")
-            f.write(f"{'=' * 80}\n")
-
-            for model_name in model_names:
-                try:
-                    if not config.api_key:
-                        logging.error(f"API Key for {provider} not found.")
-                        continue
-
-                    temp_engine = LLMEngine(
-                        provider=provider,
-                        api_key=config.api_key,
-                        base_url=config.base_url,
-                        model_name=model_name,
-                    )
-                    metadata = temp_engine.get_book_metadata(text)
-                    status = "SUCCESS"
-                    logging.info(
-                        f"{model_name:25} | {status} | {str(metadata)[:50]}..."
-                    )
-                    # model_dump_json for logging
-                    dump = metadata.model_dump_json(ensure_ascii=False) if metadata else "{}"
-                    f.write(
-                        f"[{model_name}] -> {dump}\n"
-                    )
-                except Exception as e:
-                    logging.error(f"{model_name:25} | ERROR: {str(e)[:25]}")
-                    f.write(f"[{model_name}] -> ERROR: {str(e)}\n")
+            f.write("".join(log_lines))
 
         logging.info("=" * (46 + len(file_path.name)))
 
