@@ -1,6 +1,7 @@
 import sys
 from unittest.mock import MagicMock
 
+
 def mock_if_missing(module_name):
     """
     Conditionally mock a module if it's not available in the environment.

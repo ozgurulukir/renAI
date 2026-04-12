@@ -2,7 +2,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional, Type, TypeVar, Union
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
@@ -19,7 +19,7 @@ def get_text_cache_path(
     *,
     ocr_enabled: bool = False,
     use_mutool: bool = False,
-    cache_dir: Optional[Path] = None,
+    cache_dir: Path | None = None,
 ) -> Path:
     """Get the cache file path for extracted text."""
     if cache_dir is None:
@@ -39,7 +39,7 @@ def get_metadata_cache_path(
     model: str,
     *,
     mode: str = "doc",
-    cache_dir: Optional[Path] = None,
+    cache_dir: Path | None = None,
     use_vision: bool = False,
 ) -> Path:
     """Get the cache file path for metadata."""
@@ -53,7 +53,7 @@ def get_metadata_cache_path(
     return cache_dir / "metadata" / cache_key
 
 
-def read_text_cache(file_path: Path) -> Optional[str]:
+def read_text_cache(file_path: Path) -> str | None:
     """Read cached text content."""
     try:
         if file_path.exists():
@@ -78,8 +78,8 @@ def read_metadata_cache(
     cache_path: Path,
     provider: str,
     model: str,
-    model_class: Optional[Type[T]] = None,
-) -> Union[Optional[Dict[str, Any]], Optional[T]]:
+    model_class: type[T] | None = None,
+) -> dict[str, Any] | None | T | None:
     """
     Read cached metadata with provider-model validation.
     If model_class is provided, returns a validated Pydantic model instance.
@@ -99,7 +99,7 @@ def read_metadata_cache(
             # Remove internal cache fields
             cache_data.pop("_provider", None)
             cache_data.pop("_model", None)
-            
+
             if model_class:
                 try:
                     return model_class(**cache_data)
@@ -120,7 +120,7 @@ def read_metadata_cache(
 
 def write_metadata_cache(
     cache_path: Path,
-    metadata: Union[BaseModel, Dict[str, Any]],
+    metadata: BaseModel | dict[str, Any],
     provider: str,
     model: str,
 ) -> bool:
@@ -153,7 +153,7 @@ def write_metadata_cache(
         return False
 
 
-def invalidate_cache_for_provider_model(cache_dir: Optional[Path] = None) -> int:
+def invalidate_cache_for_provider_model(cache_dir: Path | None = None) -> int:
     """Clear metadata cache when switching providers/models."""
     if cache_dir is None:
         cache_dir = CACHE_DIR
@@ -172,7 +172,7 @@ def invalidate_cache_for_provider_model(cache_dir: Optional[Path] = None) -> int
     return count
 
 
-def clear_all_cache(cache_dir: Optional[Path] = None) -> Dict[str, int]:
+def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
     """Clear all caches (text, metadata, and ocr_debug)."""
 
     if cache_dir is None:

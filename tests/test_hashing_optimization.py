@@ -1,6 +1,8 @@
-from unittest.mock import MagicMock, patch
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 from renai.processors.text_extractor import TextExtractor
+
 
 class TestHashingOptimization:
     def test_extract_uses_provided_hash(self):

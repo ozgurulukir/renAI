@@ -1,9 +1,10 @@
 """Tests for structured logging configuration."""
 
-import sys
 import logging
 import os
+import sys
 from unittest.mock import MagicMock, call, patch
+
 import pytest
 import structlog
 

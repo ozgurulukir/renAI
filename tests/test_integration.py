@@ -2,12 +2,13 @@
 
 """Integration test for the main functionality"""
 
-import tempfile  # noqa: E402
-import shutil  # noqa: E402
-from pathlib import Path  # noqa: E402
-from unittest.mock import Mock  # noqa: E402
-from renai.processors.book import BookProcessor  # noqa: E402
+import shutil
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock
+
 from renai.models import ProcessingResult
+from renai.processors.book import BookProcessor
 
 
 def test_file_processing_integration():

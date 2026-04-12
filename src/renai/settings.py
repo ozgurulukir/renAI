@@ -21,7 +21,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     import tomllib
@@ -180,7 +180,7 @@ class ProviderConfig(BaseModel):
     """Provider configuration model."""
 
     base_url: str
-    api_key: Optional[str] = None
+    api_key: str | None = None
     default_model: str
 
 
@@ -189,7 +189,7 @@ class AppSettings(BaseSettings):
 
     # Provider settings
     provider: str = Field(default="deepinfra", description="LLM provider")
-    model: Optional[str] = Field(default=None, description="Default model name override")
+    model: str | None = Field(default=None, description="Default model name override")
 
     # Processing settings
     workers: int = Field(default=4, ge=1, le=32, description="Number of concurrent workers")
@@ -240,7 +240,7 @@ class AppSettings(BaseSettings):
     debug_ocr: bool = Field(default=False, description="Save OCR debug images")
 
     # Provider Registry
-    providers: Dict[str, ProviderConfig] = Field(default_factory=dict, description="Standard provider definitions")
+    providers: dict[str, ProviderConfig] = Field(default_factory=dict, description="Standard provider definitions")
 
     model_config = SettingsConfigDict(
         env_prefix="RENAI_",
@@ -269,14 +269,14 @@ class ProviderSettings(BaseSettings):
     """Provider-specific API settings."""
 
     # API Keys
-    deepinfra_api_key: Optional[str] = None
-    openrouter_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
+    deepinfra_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    openai_api_key: str | None = None
 
     # Provider-specific models
-    deepinfra_model: Optional[str] = None
-    openrouter_model: Optional[str] = None
-    openai_model: Optional[str] = None
+    deepinfra_model: str | None = None
+    openrouter_model: str | None = None
+    openai_model: str | None = None
 
     # Custom provider settings
     custom_api_base_url: str = Field(default="http://localhost:8000/v1", description="Custom provider base URL")
@@ -318,7 +318,7 @@ provider_settings = ProviderSettings()
 # Settings Accessor Functions
 # =============================================================================
 
-def get_api_key(provider: str) -> Optional[str]:
+def get_api_key(provider: str) -> str | None:
     """Get API key for the specified provider."""
     # This must handle a circular situation where provider_settings might not be fully loaded
     # but FACTORY_DEFAULTS are always available.
@@ -350,7 +350,7 @@ def get_base_url(provider: str) -> str:
             return app_settings.providers[provider].base_url
     except (NameError, KeyError):
         pass
-    
+
     try:
         return provider_settings.custom_api_base_url or os.getenv(
             "CUSTOM_API_BASE_URL", "http://localhost:8000/v1"
@@ -365,12 +365,12 @@ def get_default_model(provider: str) -> str:
         model = app_settings.providers[provider].default_model
         if model:
             return model
-            
+
     # Check for CUSTOM_MODEL env var or fallback to llama3
     custom_model = os.getenv("CUSTOM_MODEL")
     if custom_model:
         return custom_model
-        
+
     return "llama3"
 
 def get_effective_model(provider: str) -> str:
@@ -378,7 +378,7 @@ def get_effective_model(provider: str) -> str:
     try:
         if app_settings.model:
             return app_settings.model
-        
+
         provider_model_map = {
             "deepinfra": provider_settings.deepinfra_model,
             "openrouter": provider_settings.openrouter_model,
@@ -389,7 +389,7 @@ def get_effective_model(provider: str) -> str:
             return selected_model
     except NameError:
         pass
-    
+
     return get_default_model(provider) or ""
 
 
@@ -511,9 +511,9 @@ def get_tesseract_path() -> Path:
 TESSERACT_PATH = get_tesseract_path()
 
 
-def load_all_eval_models() -> Dict[str, List[str]]:
+def load_all_eval_models() -> dict[str, list[str]]:
     """Load all evaluation models from layered TOML configs across all providers."""
-    all_models: Dict[str, List[str]] = {}
+    all_models: dict[str, list[str]] = {}
 
     def _merge_data(path: Path):
         if not path.exists():
@@ -533,7 +533,7 @@ def load_all_eval_models() -> Dict[str, List[str]]:
     _merge_data(PACKAGE_CONFIG_DIR / "eval_models.default.toml")
     _merge_data(EVAL_MODELS_DEFAULT_FILE)
     _merge_data(EVAL_MODELS_USER_FILE)
-    
+
     return all_models
 
 

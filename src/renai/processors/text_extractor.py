@@ -93,25 +93,23 @@ Module Functions:
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Set
-
-from ..settings import (
-    CACHE_DIR,
-    get_max_text_read_size,
-    app_settings,
-)
-from ..extractors import get_extractor
-from ..engines.ocr import OCREngine
-from ..utils import (
-    get_file_hash,
-    proportional_chunk_trim,
-    read_text_limited,
-)
 
 from ..cache.manager import (
     get_text_cache_path,
     read_text_cache,
     write_text_cache,
+)
+from ..engines.ocr import OCREngine
+from ..extractors import get_extractor
+from ..settings import (
+    CACHE_DIR,
+    app_settings,
+    get_max_text_read_size,
+)
+from ..utils import (
+    get_file_hash,
+    proportional_chunk_trim,
+    read_text_limited,
 )
 
 
@@ -125,9 +123,9 @@ class FallbackMode(Enum):
 
 
 # Supported extensions
-OFFICE_EXTENSIONS: Set[str] = {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
-PLAIN_TEXT_EXTENSIONS: Set[str] = {".txt", ".md"}
-SUPPORTED_EXTENSIONS: Set[str] = {
+OFFICE_EXTENSIONS: set[str] = {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
+PLAIN_TEXT_EXTENSIONS: set[str] = {".txt", ".md"}
+SUPPORTED_EXTENSIONS: set[str] = {
     ".pdf",
     ".epub",
     ".mobi",
@@ -145,8 +143,8 @@ class TextExtractor:
 
     Handles caching, format detection, and extraction fallback strategies.
     """
-    needs_scan_dir: Optional[Path]
-    scan_failures_dir: Optional[Path]
+    needs_scan_dir: Path | None
+    scan_failures_dir: Path | None
 
     def __init__(
         self,
@@ -181,9 +179,9 @@ class TextExtractor:
     def extract(
         self,
         file_path: Path,
-        target_length: Optional[int] = None,
+        target_length: int | None = None,
         fallback: FallbackMode = FallbackMode.OCR,
-        file_hash: Optional[str] = None,
+        file_hash: str | None = None,
     ) -> str:
         """
         Extract text from a file with caching.
@@ -447,8 +445,8 @@ class TextExtractor:
         """Run extraction benchmark for a single file."""
         if not hasattr(self, "_benchmark_extractors_list"):
             from ..extractors import (
-                PyMuPDFExtractor,
                 PDFPlumberExtractor,
+                PyMuPDFExtractor,
                 PyPDFExtractor,
                 PyPdfium2Extractor,
             )
@@ -475,7 +473,7 @@ class TextExtractor:
         logging.info("=" * (52 + len(file_path.name)))
 
 
-def has_sufficient_text(text: str, min_length: Optional[int] = None) -> bool:
+def has_sufficient_text(text: str, min_length: int | None = None) -> bool:
     """
     Check if extracted text is sufficient for processing.
 

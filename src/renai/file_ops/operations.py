@@ -30,12 +30,11 @@ Thread Safety:
 import logging
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from ..utils import get_file_hash
 
 
-def ensure_unique_path(dest_path: Path, source_hash: Optional[str] = None) -> Path:
+def ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path:
     """
     Ensure the destination path is unique by appending a UUID if needed.
 
@@ -84,7 +83,7 @@ def safe_move_file(
     dest_path: Path,
     operation_type: str = "move",
     ensure_dirs: bool = True,
-    source_hash: Optional[str] = None,
+    source_hash: str | None = None,
 ) -> Path:
     """
     Safely move a file with duplicate detection and error handling.

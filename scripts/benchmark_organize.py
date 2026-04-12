@@ -1,6 +1,5 @@
 import sys
 import time
-import shutil
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -10,8 +9,9 @@ if (Path.cwd() / "src").exists():
 elif (Path.cwd().parent / "src").exists():
     sys.path.insert(0, str(Path.cwd().parent / "src"))
 
-from renai.processors.book import BookProcessor
 from renai.models import ProcessingResult
+from renai.processors.book import BookProcessor
+
 
 def setup_files(tmp_path, num_files, file_size_mb):
     """Creates a source directory and destination directory with large files to test hash collision speed."""

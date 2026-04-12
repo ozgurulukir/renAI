@@ -4,6 +4,8 @@ Handles environment setup, provider configuration, and configuration file creati
 """
 
 
+import shutil
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
@@ -11,15 +13,13 @@ from rich.theme import Theme
 
 from ..settings import (
     CONFIG_DIR,
-    SETTINGS_USER_FILE,
-    SECRETS_FILE,
     PACKAGE_CONFIG_DIR,
-    FACTORY_DEFAULTS,
     PROVIDERS,
+    SECRETS_FILE,
+    SETTINGS_USER_FILE,
     app_settings,
     initialize_directories,
 )
-import shutil
 
 # Custom theme for a premium look
 custom_theme = Theme({
@@ -69,7 +69,7 @@ def run_init_wizard():
         # Suggest default model from provider pool
         default_model = PROVIDERS.get(provider).default_model if provider in PROVIDERS else ""
         config["model"] = Prompt.ask(f"Default Model for {provider.capitalize()}", default=default_model)
-        
+
         api_key = Prompt.ask(f"Enter your {provider.capitalize()} API Key", password=True)
         secrets[f"{provider}_api_key"] = api_key
 
@@ -87,10 +87,10 @@ def run_init_wizard():
 
     # 5. Save Files
     console.print("\n[highlight]Step 3: Saving Configuration[/highlight]")
-    
+
     try:
-        import tomli_w # type: ignore
-        
+        import tomli_w  # type: ignore
+
         # A. Propagate default files (Physical copy of all package defaults)
         console.print("[info]Propagating default configuration files...[/info]")
         for default_file in PACKAGE_CONFIG_DIR.glob("*.default.toml"):
@@ -101,11 +101,11 @@ def run_init_wizard():
         # B. Save settings.toml (User overrides)
         with open(SETTINGS_USER_FILE, "wb") as f:
             tomli_w.dump(config, f)
-        
+
         # C. Save secrets.toml
         with open(SECRETS_FILE, "wb") as f:
             tomli_w.dump(secrets, f)
-            
+
         # Ensure secure permissions on secrets
         if hasattr(SECRETS_FILE, "chmod"):
             SECRETS_FILE.chmod(0o600)
@@ -114,7 +114,7 @@ def run_init_wizard():
         console.print(f"[info]  - User Settings: {SETTINGS_USER_FILE.name}[/info]")
         console.print(f"[info]  - Secrets (Keys): {SECRETS_FILE.name}[/info]")
         console.print("[info]  - Default files are also available for reference.[/info]")
-        
+
     except ImportError:
         console.print("[error]Missing 'tomli-w' dependency. Please install it using 'uv sync' or 'pip install tomli-w'.[/error]")
         return

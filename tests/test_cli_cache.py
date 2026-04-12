@@ -12,6 +12,7 @@ except (ImportError, ValueError):
 
 import renai.cli as cli
 
+
 def test_handle_clear_cache_empty():
     # Test when cache directory is empty
     with patch("renai.cli.ensure_secure_dir"), \
@@ -34,17 +35,16 @@ def test_handle_clear_cache_with_files():
     with patch("renai.cli.ensure_secure_dir"), \
          patch("renai.cache.manager.clear_all_cache") as mock_clear, \
          patch("renai.cli.console") as mock_console:
-        
+
         mock_clear.return_value = {"text": 5, "metadata": 2, "ocr_debug": 1}
 
         cli.handle_clear_cache()
 
         found = False
         for call in mock_console.print.call_args_list:
-            if "Cache cleared: 8 items removed" in str(call):
-                if "5 text, 2 metadata, 1 ocr_debug" in str(call):
-                    found = True
-                    break
+            if "Cache cleared: 8 items removed" in str(call) and "5 text, 2 metadata, 1 ocr_debug" in str(call):
+                found = True
+                break
         assert found
 
 def test_clear_cache_command_confirm():
@@ -63,6 +63,7 @@ def test_clear_cache_command_confirm():
 
 def test_clear_cache_command_cancel():
     import typer
+
     import renai.cli as cli_module
     with patch("renai.cli.handle_clear_cache") as mock_handle, \
          patch("renai.cli.console"), \

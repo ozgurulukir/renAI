@@ -8,12 +8,13 @@ Tests the TOML-based configuration system:
 - Default fallbacks
 """
 
+import builtins
 from pathlib import Path
 from unittest.mock import patch
-import builtins
 
 import pytest
 
+from renai.cli import display_warnings
 from renai.settings import (
     DEFAULT_CATEGORIES,
     get_allowed_categories,
@@ -21,7 +22,6 @@ from renai.settings import (
     initialize_directories,
     load_eval_models,
 )
-from renai.cli import display_warnings
 
 
 class TestLoadCategories:
@@ -298,26 +298,23 @@ class TestDisplayWarnings:
 
     def test_enabled_shown(self):
         """Warnings should be shown when setting is True."""
-        with patch("builtins.input", return_value=""):
-            with patch("logging.warning") as mock:
-                display_warnings("rename", False)
-                mock.assert_called()
+        with patch("builtins.input", return_value=""), patch("logging.warning") as mock:
+            display_warnings("rename", False)
+            mock.assert_called()
 
     def test_display_warnings_organize_mode(self):
         """Warnings should include directory layout warning when mode is organize."""
-        with patch("builtins.input", return_value=""):
-            with patch("logging.warning") as mock:
-                display_warnings("organize", False)
-                mock.assert_called()
-                assert "📁 DIRECTORY LAYOUT WARNING:" in mock.call_args[0][0]
+        with patch("builtins.input", return_value=""), patch("logging.warning") as mock:
+            display_warnings("organize", False)
+            mock.assert_called()
+            assert "📁 DIRECTORY LAYOUT WARNING:" in mock.call_args[0][0]
 
     def test_display_warnings_recursive_true(self):
         """Warnings should include recursive mode warning when recursive is True."""
-        with patch("builtins.input", return_value=""):
-            with patch("logging.warning") as mock:
-                display_warnings("rename", True)
-                mock.assert_called()
-                assert "🔄 RECURSIVE MODE:" in mock.call_args[0][0]
+        with patch("builtins.input", return_value=""), patch("logging.warning") as mock:
+            display_warnings("rename", True)
+            mock.assert_called()
+            assert "🔄 RECURSIVE MODE:" in mock.call_args[0][0]
 
     def test_display_warnings_cancel_keyboard_interrupt(self):
         """Should log cancellation and exit when KeyboardInterrupt is raised."""
@@ -589,12 +586,12 @@ class TestGetDefaultModel:
 
     def test_known_provider(self):
         """Should return default model for known providers."""
-        from renai.settings import get_default_model, app_settings, ProviderConfig
-        
+        from renai.settings import ProviderConfig, app_settings, get_default_model
+
         # Ensure they exist in the registry for this test
         app_settings.providers["openai"] = ProviderConfig(default_model="gpt-4", base_url="https://api.openai.com/v1")
         app_settings.providers["deepinfra"] = ProviderConfig(default_model="llama3-70b", base_url="https://api.deepinfra.com/v1")
-        
+
         assert get_default_model("openai") == "gpt-4"
         assert get_default_model("deepinfra") == "llama3-70b"
         assert get_default_model("unknown-at-all") == "llama3" # Fallback since not in mocked providers
@@ -637,12 +634,12 @@ class TestSettingsAccessorFunctions:
 
     def test_get_base_url(self):
         """Should return correct base URL for provider."""
-        from renai.settings import get_base_url, app_settings, ProviderConfig
-        
+        from renai.settings import ProviderConfig, app_settings, get_base_url
+
         # Setup registry
         app_settings.providers["deepinfra"] = ProviderConfig(default_model="some-model", base_url="https://api.deepinfra.com/v1")
         app_settings.providers["custom"] = ProviderConfig(default_model="some-model", base_url="http://localhost:8000/v1")
-        
+
         assert get_base_url("deepinfra") == "https://api.deepinfra.com/v1"
         assert get_base_url("custom") == "http://localhost:8000/v1"
 
@@ -655,8 +652,8 @@ class TestSettingsAccessorFunctions:
 
     def test_get_default_model(self):
         """Should return correct default model for provider."""
-        from renai.settings import get_default_model, app_settings, ProviderConfig
- 
+        from renai.settings import ProviderConfig, app_settings, get_default_model
+
         app_settings.providers["deepinfra"] = ProviderConfig(default_model="llama3", base_url="https://api.deepinfra.com/v1")
         assert get_default_model("deepinfra") == "llama3"
 
@@ -776,8 +773,8 @@ class TestGetBaseUrl:
 
     def test_get_base_url_known_provider(self):
         """Should return correct base url for known providers."""
-        from renai.settings import get_base_url, app_settings, ProviderConfig
- 
+        from renai.settings import ProviderConfig, app_settings, get_base_url
+
         app_settings.providers["openai"] = ProviderConfig(default_model="gpt-4", base_url="https://api.openai.com/v1")
         assert get_base_url("openai") == "https://api.openai.com/v1"
 

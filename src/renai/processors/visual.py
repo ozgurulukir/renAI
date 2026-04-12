@@ -1,7 +1,6 @@
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional
 
 import pymupdf
 from PIL import Image
@@ -24,7 +23,7 @@ class VisualProcessor:
 
     def __init__(
         self,
-        llm_engine: Optional[LLMEngine] = None,
+        llm_engine: LLMEngine | None = None,
         provider: str = "deepinfra",
         model: str = "",
     ):
@@ -34,7 +33,7 @@ class VisualProcessor:
         self.image_max_size = app_settings.vision_image_max_size
         self.image_quality = app_settings.vision_image_quality
 
-    def extract_metadata_from_pdf(self, file_path: Path) -> Optional[BookMetadata]:
+    def extract_metadata_from_pdf(self, file_path: Path) -> BookMetadata | None:
         """Extract metadata from PDF by sampling pages and using vision model."""
         try:
             with pymupdf.open(str(file_path)) as doc:
@@ -65,7 +64,7 @@ class VisualProcessor:
 
     def extract_metadata_from_image(
         self, file_path: Path, add_exif_date: bool = False
-    ) -> Optional[ImageMetadata]:
+    ) -> ImageMetadata | None:
         """Extract metadata from a direct image file."""
         try:
             image_bytes = file_path.read_bytes()
@@ -84,7 +83,7 @@ class VisualProcessor:
             logging.error(f"Vision extraction failed for image {file_path.name}: {e}")
             return None
 
-    def get_exif_date(self, file_path: Path) -> Optional[str]:
+    def get_exif_date(self, file_path: Path) -> str | None:
         """Extract date from EXIF metadata."""
         try:
             with Image.open(file_path) as img:
@@ -101,15 +100,15 @@ class VisualProcessor:
             logging.debug(f"Failed to extract EXIF data from {file_path.name}: {e}")
         return None
 
-    def _select_pages(self, total_pages: int) -> List[int]:
+    def _select_pages(self, total_pages: int) -> list[int]:
         """Select pages to process based on document length."""
         if total_pages <= 5:
             return list(range(total_pages))
         return [0, 1, 2, total_pages // 2, total_pages - 1]
 
     def _convert_pdf_page_to_image(
-        self, file_path: Path, page_number: int = 0, dpi: Optional[int] = None
-    ) -> Optional[bytes]:
+        self, file_path: Path, page_number: int = 0, dpi: int | None = None
+    ) -> bytes | None:
         """Convert a PDF page to optimized image bytes."""
         if dpi is None:
             dpi = app_settings.vision_dpi

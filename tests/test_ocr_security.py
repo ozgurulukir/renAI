@@ -1,7 +1,9 @@
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 from renai.engines.ocr import OCREngine
+
 
 class TestOCREngineSecurity:
 

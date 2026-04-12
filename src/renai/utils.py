@@ -5,10 +5,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .settings import AppSettings
 
 # Pre-compiled regular expressions for filename sanitization
 RE_INVALID_CHARS = re.compile(r'[<>:"/\\|?*]')
@@ -22,7 +18,7 @@ def get_file_hash(file_path: Path) -> str:
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
-def generate_cache_key(*args: Optional[str]) -> str:
+def generate_cache_key(*args: str | None) -> str:
     """Generate a unique cache key from multiple string components.
 
     Args:
@@ -51,7 +47,7 @@ def get_provider_model_key(provider: str, model: str) -> str:
 
 
 
-def sanitize_filename(filename: str, max_length: Optional[int] = None) -> str:
+def sanitize_filename(filename: str, max_length: int | None = None) -> str:
     """
     Replace invalid characters and remove all control characters.
     Limits length to stay within Windows path limits.
@@ -148,7 +144,7 @@ def read_text_limited(file_path: Path, max_chars: int) -> str:
     Uses a stream to avoid loading the entire file into memory.
     """
     try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore", newline=None) as f:
+        with open(file_path, encoding="utf-8", errors="ignore", newline=None) as f:
             return f.read(max_chars)
     except Exception as e:
         logging.error(f"Error reading {file_path}: {e}")

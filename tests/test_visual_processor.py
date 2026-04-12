@@ -2,8 +2,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from renai.processors.visual import VisualProcessor
 from renai.models.schemas import BookMetadata, ImageMetadata
+from renai.processors.visual import VisualProcessor
 
 
 class TestVisualProcessor:

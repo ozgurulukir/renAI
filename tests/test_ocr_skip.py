@@ -1,11 +1,12 @@
-import pytest
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
-import tempfile
 
+import pytest
 
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
+
 
 def test_ocr_skip_functionality():
     """Test that files requiring scan are moved to Needs_Scan folder when skip_ocr_files is enabled"""

@@ -6,7 +6,7 @@ Unified and refactored to eliminate redundancy between text, vision, and image m
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, cast
 
 from ..cache.manager import (
     get_metadata_cache_path,
@@ -24,9 +24,9 @@ from ..filename.builder import (
 )
 from ..models import ProcessingResult
 from ..models.schemas import BookMetadata, ImageMetadata
-from ..settings import get_image_extensions, CACHE_DIR, PROVIDERS, EVAL_LOG_FILE
+from ..settings import CACHE_DIR, EVAL_LOG_FILE, PROVIDERS, get_image_extensions
 from ..utils import get_file_hash
-from .text_extractor import TextExtractor, FallbackMode
+from .text_extractor import FallbackMode, TextExtractor
 from .visual import VisualProcessor
 
 
@@ -39,7 +39,7 @@ class BookProcessor:
     def __init__(
         self,
         ocr_engine: OCREngine,
-        llm_engine: Optional[LLMEngine] = None,
+        llm_engine: LLMEngine | None = None,
         extractor_name: str = "pymupdf",
         provider: str = "deepinfra",
         model: str = "",
@@ -171,7 +171,7 @@ class BookProcessor:
                 )
             else:
                 # Explicitly cast to satisfy mypy (we know it's not ImageMetadata here)
-                new_name = build_book_filename(cast(Union[BookMetadata, Dict[str, Any]], metadata), file_path.suffix)
+                new_name = build_book_filename(cast("BookMetadata | dict[str, Any]", metadata), file_path.suffix)
 
             category = extract_category_from_metadata(metadata)
 
@@ -212,7 +212,7 @@ class BookProcessor:
         rename_images: bool,
         add_exif_date: bool,
         file_hash: str,
-    ) -> Optional[Union[BookMetadata, ImageMetadata]]:
+    ) -> BookMetadata | ImageMetadata | None:
         """Dispatcher for different extraction strategies returning typed models."""
         if is_image:
             if not rename_images:
@@ -242,7 +242,7 @@ class BookProcessor:
 
     def organize_files(
         self,
-        processed_info: List[ProcessingResult],
+        processed_info: list[ProcessingResult],
         root_dir: Path,
     ):
         """Moves renamed files into category folders."""
@@ -323,11 +323,11 @@ class BookProcessor:
                     )
                 except Exception as e:
                     logging.error(f"{model_name:25} | ERROR: {str(e)[:25]}")
-                    f.write(f"[{model_name}] -> ERROR: {str(e)}\n")
+                    f.write(f"[{model_name}] -> ERROR: {e!s}\n")
 
         logging.info("=" * (46 + len(file_path.name)))
 
-    def get_scan_failed_files(self) -> List[Path]:
+    def get_scan_failed_files(self) -> list[Path]:
         return list(self.scan_failed_files)
 
     def is_image_file(self, file_path: Path) -> bool:

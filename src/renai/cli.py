@@ -8,7 +8,7 @@ original main.py has been migrated here.
 import logging
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -16,13 +16,13 @@ from rich.table import Table
 
 from renai.logging_config import configure_logging
 from renai.processors.orchestrator import run_pipeline
+from renai.processors.setup import run_init_wizard
 from renai.processors.text_extractor import FallbackMode
 from renai.settings import (
     PROVIDERS,
     app_settings,
     initialize_directories,
 )
-from renai.processors.setup import run_init_wizard
 from renai.utils import ensure_secure_dir
 
 # Initialize logging
@@ -72,12 +72,12 @@ def setup_environment() -> None:
 
 def handle_clear_cache() -> None:
     """Clear extracted text cache, metadata, and OCR debug files."""
-    from renai.settings import CACHE_DIR
     from renai.cache.manager import clear_all_cache
+    from renai.settings import CACHE_DIR
 
     ensure_secure_dir(CACHE_DIR)
     results = clear_all_cache(CACHE_DIR)
-    
+
     total = sum(results.values())
     if total > 0:
         details = ", ".join([f"{count} {ctype}" for ctype, count in results.items() if count > 0])
@@ -150,7 +150,7 @@ def display_warnings(mode: str, recursive: bool) -> None:
 
 @app.command()
 def process(
-    directory: Annotated[Optional[str], typer.Argument(
+    directory: Annotated[str | None, typer.Argument(
         help="Directory containing book files to process.",
     )] = None,
     # Mode options
@@ -180,7 +180,7 @@ def process(
         "--provider",
         help="LLM Provider (deepinfra/openrouter/openai/custom)",
     )] = "deepinfra",
-    model: Annotated[Optional[str], typer.Option(
+    model: Annotated[str | None, typer.Option(
         "--model",
         help="LLM Model name (overrides default)",
     )] = None,
@@ -303,14 +303,14 @@ def process(
 
 @app.command("evaluate")
 def evaluate_cmd(
-    directory: Annotated[Optional[str], typer.Argument(
+    directory: Annotated[str | None, typer.Argument(
         help="Directory containing sample book files for evaluation",
     )] = None,
-    provider: Annotated[Optional[str], typer.Option(
+    provider: Annotated[str | None, typer.Option(
         "--provider",
         help="LLM Provider to evaluate (if omitted, evaluates ALL providers in eval_models.toml)",
     )] = None,
-    file: Annotated[Optional[str], typer.Option(
+    file: Annotated[str | None, typer.Option(
         "--file",
         help="Evaluate only this specific file",
     )] = None,
@@ -335,14 +335,14 @@ def evaluate_cmd(
             if not file_path.is_file():
                 console.print(f"[red]Error: File not found: {file}[/red]")
                 raise typer.Exit(code=1)
-        
+
         # Override directory to just contain this file for the pipeline if needed
-        # but run_evaluation_pipeline handles samples. 
+        # but run_evaluation_pipeline handles samples.
         # For simplicity, we'll pass the specific file path if we refactor it later.
         # For now, let's keep it simple.
 
     from renai.processors.orchestrator import run_evaluation_pipeline
-    
+
     try:
         run_evaluation_pipeline(
             root_dir=target_dir,

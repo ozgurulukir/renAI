@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import Optional
 
 import pymupdf
 
@@ -8,7 +7,7 @@ from .base import BaseExtractor
 
 
 class PyMuPDFExtractor(BaseExtractor):
-    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> str | None:
         try:
             with pymupdf.open(str(file_path)) as doc:
                 text_parts = []
@@ -29,7 +28,7 @@ class PyMuPDFExtractor(BaseExtractor):
 
 
 class PDFPlumberExtractor(BaseExtractor):
-    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> str | None:
         try:
             import pdfplumber  # type: ignore[import-untyped]
 
@@ -51,7 +50,7 @@ class PDFPlumberExtractor(BaseExtractor):
 
 
 class PyPDFExtractor(BaseExtractor):
-    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> str | None:
         try:
             from pypdf import PdfReader  # type: ignore[import-untyped]
 
@@ -74,7 +73,7 @@ class PyPDFExtractor(BaseExtractor):
 
 
 class PyPdfium2Extractor(BaseExtractor):
-    def extract_text(self, file_path: Path, pages: int = 10) -> Optional[str]:
+    def extract_text(self, file_path: Path, pages: int = 10) -> str | None:
         try:
             import pypdfium2 as pdfium  # type: ignore[import-untyped]
 

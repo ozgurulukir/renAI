@@ -13,10 +13,10 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from renai.file_ops import safe_move_file, safe_copy_file
+from renai.file_ops import safe_copy_file, safe_move_file
+from renai.models import ProcessingResult
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
-from renai.models import ProcessingResult
 
 
 class TestSafeCopyFile:
@@ -448,7 +448,7 @@ class TestScanTracking:
         failed_file1 = tmp_path / "failed1.pdf"
         failed_file2 = tmp_path / "failed2.pdf"
         processor.scan_failed_files = {failed_file1, failed_file2}
-        
+
         result = processor.get_scan_failed_files()
         assert len(result) == 2
         assert failed_file1 in result
@@ -479,7 +479,7 @@ class TestProcessSingleBookVision:
         # Create a real file
         real_file = tmp_path / "real.pdf"
         real_file.write_text("test")
-        
+
         # Test BookProcessor symlink skipping
         mock_ocr = MagicMock()
         mock_llm = MagicMock()

@@ -1,13 +1,13 @@
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
+from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
 from ..utils import sanitize_filename
-from ..models.schemas import BookMetadata, ImageMetadata, BaseMetadata
 
 
 def build_book_filename(
-    book_data: Union[BookMetadata, Dict[str, Any]],
+    book_data: BookMetadata | dict[str, Any],
     original_extension: str,
 ) -> str:
     """
@@ -40,7 +40,7 @@ def build_book_filename(
     if author:
         # Standardize author name by trimming and removing potential placeholder strings
         name_parts.append(author)
-    
+
     # Handle year separately to ensure correct formatting
     if year_val:
         try:
@@ -58,9 +58,9 @@ def build_book_filename(
 
 
 def build_image_filename(
-    image_data: Union[ImageMetadata, Dict[str, Any]],
+    image_data: ImageMetadata | dict[str, Any],
     original_extension: str,
-    exif_date: Optional[str] = None,
+    exif_date: str | None = None,
     add_exif_date: bool = False,
 ) -> str:
     """
@@ -100,7 +100,7 @@ def build_image_filename(
 
 
 def extract_category_from_metadata(
-    data: Union[BaseMetadata, Dict[str, Any]],
+    data: BaseMetadata | dict[str, Any],
     default: str = "Uncategorized",
 ) -> str:
     """Extract and sanitize category from any metadata source."""
@@ -127,7 +127,7 @@ def is_filename_changed(
 
 
 def build_vision_filename(
-    book_data: Union[BookMetadata, Dict[str, Any]],
+    book_data: BookMetadata | dict[str, Any],
     original_extension: str,
 ) -> str:
     """

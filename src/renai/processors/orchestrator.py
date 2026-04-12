@@ -5,7 +5,6 @@ Extracts heavy workflow logic from CLI parameters.
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Tuple
 
 import typer
 from rich.console import Console
@@ -17,13 +16,13 @@ from renai.models import ProcessingResult
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode
 from renai.settings import (
-    get_image_extensions,
+    EVAL_LOG_FILE,
     PROVIDERS,
     get_api_key,
     get_effective_model,
-    load_eval_models,
+    get_image_extensions,
     load_all_eval_models,
-    EVAL_LOG_FILE,
+    load_eval_models,
 )
 
 console = Console()
@@ -40,7 +39,7 @@ def setup_engines(
     text_length: int,
     text_extraction: str,
     extraction_pages: int,
-) -> Tuple[OCREngine, LLMEngine, BookProcessor]:
+) -> tuple[OCREngine, LLMEngine, BookProcessor]:
     """Initialize OCR, LLM, and book processor engines."""
     # Initialize OCR engine
     ocr_engine = OCREngine(
@@ -154,7 +153,7 @@ def run_evaluation_pipeline(
     for provider in eval_data:
         if not get_api_key(provider):
             missing_keys.append(provider.upper())
-    
+
     if missing_keys:
         console.print(f"[red]CRITICAL: Missing API keys for evaluation providers: {', '.join(missing_keys)}[/red]")
         console.print("[yellow]Please set the environment variables or update secrets.toml before running evaluate.[/yellow]")
@@ -170,7 +169,7 @@ def run_evaluation_pipeline(
         mutool_path=app_settings.mutool_path,
         silent=True,
     )
-    
+
     processor = BookProcessor(
         ocr_engine,
         llm_engine=None, # Will be set per-model
@@ -183,10 +182,10 @@ def run_evaluation_pipeline(
     if not file_paths:
         console.print("[yellow]No files found in directory to evaluate.[/yellow]")
         return
-    
+
     samples = file_paths[:app_settings.benchmark_sample_count]
     console.print(f"[cyan]Starting Multi-Provider Evaluation on {len(samples)} sample files...[/cyan]")
-    
+
     # 5. Execute Evaluation Loop
     for p in samples:
         for provider, models in eval_data.items():
@@ -293,7 +292,7 @@ def _configure_fallback_folders(
 
 def _collect_all_processing_files(
     root_dir: Path, processor: BookProcessor, recursive: bool, rename_images: bool
-) -> List[Path]:
+) -> list[Path]:
     """Collect all files to be processed, including images if requested."""
     file_paths = collect_files(root_dir, processor, recursive)
     if rename_images:
