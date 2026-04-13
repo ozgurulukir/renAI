@@ -215,17 +215,17 @@ def process(
         help="Force update metadata from LLM (ignore cache)",
     )] = False,
     # Fallback options
-    fallback_mode: Annotated[FallbackMode, typer.Option(
+    fallback_mode: Annotated[FallbackMode | None, typer.Option(
         "--fallback-mode",
-        help="Strategy for extraction failures (none/ocr/vision/move). Settings in settings.toml override defaults.",
-    )] = FallbackMode(app_settings.fallback_mode),
+        help="Strategy for extraction failures (none/ocr/vision/move). See settings.toml.",
+    )] = None,
     move_scan_failures: Annotated[bool, typer.Option(
         "--move-scan-failures",
-        help="Move files that fail all extraction attempts (including fallback) to Scan_Failures folder",
+        help="Move files that fail all extraction attempts to Scan_Failures folder",
     )] = app_settings.move_scan_failures,
     rename_images: Annotated[bool, typer.Option(
         "--rename-images",
-        help="Rename image files using vision model. Also processes non-images with selected fallback.",
+        help="Rename image files using vision model. Processes non-images with selected fallback.",
     )] = app_settings.rename_images,
     exif: Annotated[bool, typer.Option(
         "--exif",
@@ -239,6 +239,8 @@ def process(
 
 ) -> None:
     """Process files in a directory."""
+    # Handle dynamic defaults
+    final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
 
     # Validate directory
     if not directory:
@@ -264,9 +266,10 @@ def process(
     console.print()
 
     # Vision mode warnings
-    if fallback_mode == FallbackMode.VISION or rename_images:
+    if final_fallback == FallbackMode.VISION or rename_images:
         console.print(
-            "[yellow]Note: vision fallback and --rename-images require a vision-capable model. Please ensure your model supports vision.[/yellow]\n"
+            "[yellow]Note: vision fallback and --rename-images require a vision-capable model. "
+            "Please ensure your model supports vision.[/yellow]\n"
         )
 
     # Display warnings
@@ -290,7 +293,7 @@ def process(
             extraction_pages=extraction_pages,
             recursive=recursive,
             update_metadata=update_metadata,
-            fallback_mode=fallback_mode,
+            fallback_mode=final_fallback,
             move_scan_failures=move_scan_failures,
             rename_images=rename_images,
             exif=exif,
@@ -298,7 +301,7 @@ def process(
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Operation cancelled by user. Exiting...[/yellow]")
-        raise typer.Exit(code=0)
+        raise typer.Exit(code=0) from None
 
 
 @app.command("evaluate")
@@ -351,7 +354,7 @@ def evaluate_cmd(
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Evaluation cancelled by user.[/yellow]")
-        raise typer.Exit(code=0)
+        raise typer.Exit(code=0) from None
 
 
 @app.command("providers")

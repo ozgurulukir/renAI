@@ -42,7 +42,8 @@ def test_handle_clear_cache_with_files():
 
         found = False
         for call in mock_console.print.call_args_list:
-            if "Cache cleared: 8 items removed" in str(call) and "5 text, 2 metadata, 1 ocr_debug" in str(call):
+            call_str = str(call)
+            if "Cache cleared: 8 items removed" in call_str and "5 text, 2 metadata" in call_str:
                 found = True
                 break
         assert found

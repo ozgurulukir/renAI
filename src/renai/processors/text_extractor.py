@@ -94,19 +94,19 @@ import logging
 from enum import Enum
 from pathlib import Path
 
-from ..cache.manager import (
+from renai.cache.manager import (
     get_text_cache_path,
     read_text_cache,
     write_text_cache,
 )
-from ..engines.ocr import OCREngine
-from ..extractors import get_extractor
-from ..settings import (
+from renai.engines.ocr import OCREngine
+from renai.extractors import get_extractor
+from renai.settings import (
     CACHE_DIR,
     app_settings,
     get_max_text_read_size,
 )
-from ..utils import (
+from renai.utils import (
     get_file_hash,
     proportional_chunk_trim,
     read_text_limited,
@@ -271,7 +271,9 @@ class TextExtractor:
             result = md.convert(str(file_path))
 
             if self.text_extraction_mode == "mixed":
-                return proportional_chunk_trim(result.text_content, target_length, app_settings.mixed_chunk_count)
+                return proportional_chunk_trim(
+                    result.text_content, target_length, app_settings.mixed_chunk_count
+                )
             return result.text_content[:target_length]
         except Exception as e:
             logging.error(f"MarkItDown failed for {file_path.name}: {e}")
@@ -303,7 +305,9 @@ class TextExtractor:
             content = read_text_limited(file_path, get_max_text_read_size())
 
             if self.text_extraction_mode == "mixed":
-                return proportional_chunk_trim(content, target_length, app_settings.mixed_chunk_count)
+                return proportional_chunk_trim(
+                    content, target_length, app_settings.mixed_chunk_count
+                )
             return content[:target_length]
         except Exception as e:
             logging.error(f"Text read failed for {file_path.name}: {e}")
@@ -335,7 +339,9 @@ class TextExtractor:
         # Check if we got meaningful text
         if len(full_text.strip()) > sufficient_threshold:  # Heuristic for meaningful text
             if self.text_extraction_mode == "mixed":
-                return proportional_chunk_trim(full_text, target_length, app_settings.mixed_chunk_count)
+                return proportional_chunk_trim(
+                    full_text, target_length, app_settings.mixed_chunk_count
+                )
             return full_text[:target_length]
 
         # Insufficient text - Apply fallback strategy
@@ -387,7 +393,9 @@ class TextExtractor:
         try:
             ocr_text = self.ocr_engine.extract_text(file_path)
             if ocr_text.strip():
-                return proportional_chunk_trim(ocr_text, target_length, app_settings.mixed_chunk_count)
+                return proportional_chunk_trim(
+                    ocr_text, target_length, app_settings.mixed_chunk_count
+                )
         except Exception as e:
             logging.error(f"OCR failed for {file_path.name}: {e}")
 
@@ -395,7 +403,7 @@ class TextExtractor:
 
     def set_needs_scan_folder(self, root_dir: Path, skip: bool = False) -> None:
         """Configure folder for files that need scanning/additional processing."""
-        from ..utils import ensure_secure_dir
+        from renai.utils import ensure_secure_dir
 
         self.needs_scan_dir = root_dir / "Needs_Scan"
         ensure_secure_dir(self.needs_scan_dir)
@@ -403,7 +411,7 @@ class TextExtractor:
 
     def set_scan_failures_folder(self, root_dir: Path, enabled: bool = True) -> None:
         """Configure folder for files that failed both standard extraction and fallbacks."""
-        from ..utils import ensure_secure_dir
+        from renai.utils import ensure_secure_dir
 
         self.scan_failures_dir = root_dir / "Scan_Failures"
         ensure_secure_dir(self.scan_failures_dir)
@@ -444,7 +452,7 @@ class TextExtractor:
     def benchmark_extractors(self, file_path: Path) -> None:
         """Run extraction benchmark for a single file."""
         if not hasattr(self, "_benchmark_extractors_list"):
-            from ..extractors import (
+            from renai.extractors import (
                 PDFPlumberExtractor,
                 PyMuPDFExtractor,
                 PyPDFExtractor,

@@ -6,8 +6,8 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
-from ..settings import CACHE_DIR, DEBUG_DIR
-from ..utils import (
+from renai.settings import CACHE_DIR, DEBUG_DIR
+from renai.utils import (
     get_provider_model_key,
 )
 
@@ -74,12 +74,12 @@ def write_text_cache(file_path: Path, content: str) -> bool:
         return False
 
 
-def read_metadata_cache(
+def read_metadata_cache[T: BaseModel](
     cache_path: Path,
     provider: str,
     model: str,
     model_class: type[T] | None = None,
-) -> dict[str, Any] | None | T | None:
+) -> dict[str, Any] | T | None:
     """
     Read cached metadata with provider-model validation.
     If model_class is provided, returns a validated Pydantic model instance.
@@ -104,7 +104,9 @@ def read_metadata_cache(
                 try:
                     return model_class(**cache_data)
                 except Exception as e:
-                    logging.warning(f"Failed to validate cached metadata against {model_class.__name__}: {e}")
+                    logging.warning(
+                        f"Failed to validate cached metadata against {model_class.__name__}: {e}"
+                    )
                     return None
             return cache_data
         else:
@@ -125,16 +127,13 @@ def write_metadata_cache(
     model: str,
 ) -> bool:
     """
-    Write metadata to cache. 
+    Write metadata to cache.
     Supports both Pydantic models (recommended) and dictionaries.
     """
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if isinstance(metadata, BaseModel):
-            data = metadata.model_dump()
-        else:
-            data = metadata
+        data = metadata.model_dump() if isinstance(metadata, BaseModel) else metadata
 
         # Add provider-model info for validation
         cache_data = {

@@ -22,14 +22,14 @@ Both cache layers use content-based addressing combined with configuration-aware
 The text cache key is generated using:
 
 ```text
-{file_hash}_{quality}_{method}.txt
+{file_hash}[_ocr][_mutool].txt
 ```
 
 | Component | Description | Example |
 | :--- | :--- | :--- |
 | `file_hash` | SHA256 hash of file content | `abc123def456` |
-| `quality` | OCR quality (`basic` or `enhanced`) | `enhanced` |
-| `method` | Extraction method (`_mutool` or empty) | `_mutool` |
+| `_ocr` | OCR fallback was used | `_ocr` |
+| `_mutool` | mutool was used for PDF conversion | `_mutool` |
 
 **Examples:**
 
@@ -42,7 +42,7 @@ The text cache key is generated using:
 The metadata cache key is generated using:
 
 ```text
-{file_hash}_{provider_model_hash}[_vision]_metadata.json
+{mode}_{file_hash}_{provider_model_hash}[_vision].json
 ```
 
 | Component | Description | Example |
@@ -53,9 +53,9 @@ The metadata cache key is generated using:
 
 **Examples:**
 
-- `abc123def456_deepinfra_metadata.json` - Standard metadata cache
-- `abc123def456_openai_vision_metadata.json` - Vision-based metadata cache
-- `abc123def456_custom_metadata.json` - Custom provider cache
+- `doc_abc123def456_a1b2c3d4.json` - Standard metadata cache for document
+- `img_abc123def456_a1b2c3d4_vision.json` - Vision-based metadata cache for image
+- `doc_abc123def456_e5f6g7h8_vision.json` - Vision-based fallback cache for document
 
 ---
 
@@ -72,8 +72,8 @@ The cache key includes a hash of the provider-model pair:
 ```python
 def get_provider_model_key(provider: str, model: str) -> str:
     """Generate a cache key for provider-model pairing."""
-    combined = f"{provider}:{model}".lower()
-    return hashlib.sha256(combined.encode()).hexdigest()[:8]
+    combined = "|".join([provider, model])
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 ```
 
 ### Cache Validation
