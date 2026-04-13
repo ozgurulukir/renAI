@@ -3,14 +3,13 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Type, TypeVar
+from typing import Any, TypeVar
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
-from pydantic import BaseModel
 
-from ..settings import get_allowed_categories, get_image_categories
-from ..models.schemas import BookMetadata, ImageMetadata, BaseMetadata
+from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
+from ..settings import app_settings, get_allowed_categories, get_image_categories
 
 T = TypeVar("T", bound=BaseMetadata)
 
@@ -24,20 +23,20 @@ class LLMEngine:
         self.allowed_categories = get_allowed_categories()
         # Path to the prompts directory within the package
         self.prompts_dir = Path(__file__).parent.parent / "prompts"
-        
+
         # Load templates once
         self._templates = self._load_all_templates()
 
-    def _load_all_templates(self) -> Dict[str, str]:
+    def _load_all_templates(self) -> dict[str, str]:
         """Load all prompt templates from the prompts directory."""
         templates = {}
         template_names = ["system_base", "book_extractor", "refinement", "image_analyzer"]
-        
+
         for name in template_names:
             path = self.prompts_dir / f"{name}.txt"
             try:
                 if path.exists():
-                    with open(path, "r", encoding="utf-8") as f:
+                    with open(path, encoding="utf-8") as f:
                         templates[name] = f.read()
                 else:
                     logging.error(f"Prompt template not found: {path}")
@@ -47,21 +46,21 @@ class LLMEngine:
                 templates[name] = ""
         return templates
 
-    def _format_category_table(self, categories: Dict[str, list]) -> str:
+    def _format_category_table(self, categories: dict[str, list]) -> str:
         """Format a category dictionary into a markdown table for prompts."""
         tr_cats = ", ".join(categories.get("tr", []))
         en_cats = ", ".join(categories.get("en", []))
         return f"| **Turkish (tr)** | {tr_cats} |\n| **English/Other (en)** | {en_cats} |"
 
-    def _get_system_role(self, template_name: str, model_class: Type[BaseMetadata], is_image_mode: bool = False) -> str:
+    def _get_system_role(self, template_name: str, model_class: type[BaseMetadata], is_image_mode: bool = False) -> str:
         """Compose a full system role prompt using templates and schema injection."""
         base = self._templates.get("system_base", "")
         template = self._templates.get(template_name, "")
-        
+
         # Determine which categories to inject
         cats = get_image_categories() if is_image_mode else self.allowed_categories
         category_table = self._format_category_table(cats)
-        
+
         # Generate JSON schema example from Pydantic model
         schema_dict = model_class.model_json_schema()
         # Create a simplified example for the LLM
@@ -70,12 +69,12 @@ class LLMEngine:
             for prop, info in schema_dict.get("properties", {}).items()
             if prop != "exif_date" # Hide internal fields
         }
-        
+
         formatted_base = base.format(category_table=category_table)
-        
+
         # Handle cases where templates might have slightly different placeholders or combined needs
         security_warning = formatted_base.split("### **Guidelines:**")[0].strip()
-        
+
         return template.format(
             system_base=formatted_base,
             security_warning=security_warning,
@@ -84,13 +83,13 @@ class LLMEngine:
             json_schema=json.dumps(example_json, indent=4, ensure_ascii=False)
         )
 
-    def get_book_metadata(self, text: str) -> Optional[BookMetadata]:
+    def get_book_metadata(self, text: str) -> BookMetadata | None:
         """Generate book metadata from text using SSoT models and modular prompts."""
         if not self.client.api_key:
             logging.error(f"API Key for {self.provider} not found.")
             return None
 
-        truncated_text = text[:8000]
+        truncated_text = text[:app_settings.text_length]
         system_role = self._get_system_role("book_extractor", BookMetadata)
 
         # 1. Initial Extraction
@@ -109,7 +108,7 @@ class LLMEngine:
     def _refine_metadata(self, initial_model: BookMetadata) -> BookMetadata:
         """Refine extracted metadata using the editor persona and SSoT schema."""
         logging.info("Refining metadata using SSoT-based validation pass...")
-        
+
         system_role = self._get_system_role("refinement", BookMetadata)
         refinement_prompt = f"<initial_metadata>\n{initial_model.model_dump_json(ensure_ascii=False)}\n</initial_metadata>"
 
@@ -121,7 +120,7 @@ class LLMEngine:
 
         return refined_model if refined_model else initial_model
 
-    def get_book_metadata_from_image(self, image_path: Path, image_data: bytes) -> Optional[BookMetadata]:
+    def get_book_metadata_from_image(self, image_path: Path, image_data: bytes) -> BookMetadata | None:
         """Extract book metadata via vision using modular prompts."""
         if not self.client.api_key:
             logging.error(f"API Key for {self.provider} not found.")
@@ -146,7 +145,7 @@ class LLMEngine:
             logging.error(f"Vision book extraction failed for {image_path.name}: {e}")
             return None
 
-    def get_image_metadata(self, image_path: Path, image_data: bytes) -> Optional[ImageMetadata]:
+    def get_image_metadata(self, image_path: Path, image_data: bytes) -> ImageMetadata | None:
         """Extract image metadata for renaming using image analyzer SSoT."""
         if not self.client.api_key:
             logging.error(f"API Key for {self.provider} not found.")
@@ -166,7 +165,7 @@ class LLMEngine:
             logging.error(f"Vision image extraction failed for {image_path.name}: {e}")
             return None
 
-    def _call_vision_llm(self, image_base64: str, system_role: str, file_name: str, model_class: Type[T]) -> Optional[T]:
+    def _call_vision_llm(self, image_base64: str, system_role: str, file_name: str, model_class: type[T]) -> T | None:
         """Helper for vision calls with type-safe model validation."""
         image_format = Path(file_name).suffix.lower().replace(".", "") or "jpeg"
         if image_format not in ("jpeg", "png", "gif", "webp"):
@@ -184,7 +183,7 @@ class LLMEngine:
         ]
         return self._generate_json_completion(messages, model_class, file_name)
 
-    def _call_llm(self, prompt: str, system_role: str, model_class: Type[T]) -> Optional[T]:
+    def _call_llm(self, prompt: str, system_role: str, model_class: type[T]) -> T | None:
         """Helper for text calls with type-safe model validation."""
         messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": system_role},
@@ -195,32 +194,32 @@ class LLMEngine:
     def _generate_json_completion(
         self,
         messages: list[ChatCompletionMessageParam],
-        model_class: Type[T],
+        model_class: type[T],
         context_name: str = "document",
-    ) -> Optional[T]:
+    ) -> T | None:
         """Unified LLM caller returning typed Pydantic models with SSoT enforcement."""
         headers = {"HTTP-Referer": "https://github.com/renAI", "X-Title": "renAI"} if self.provider == "openrouter" else None
         last_parsed_data: dict[str, Any] | None = None
 
-        for attempt in range(2):
+        for attempt in range(app_settings.llm_max_retries):
             try:
                 completion = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    max_tokens=1024,
-                    temperature=0.3 if attempt == 0 else 0.5,
+                    max_tokens=app_settings.llm_max_tokens,
+                    temperature=app_settings.llm_temperature if attempt == 0 else app_settings.llm_temperature_retry,
                     extra_headers=headers,
                 )
 
                 content = completion.choices[0].message.content
                 if not content:
                     continue
-                
+
                 # Cleanup markdown and parse JSON
                 content = content.strip()
                 if content.startswith("```"):
                     content = re.sub(r"^```(?:json)?\n?|```$", "", content, flags=re.MULTILINE).strip()
-                
+
                 try:
                     raw_data = json.loads(content)
                     last_parsed_data = raw_data
@@ -232,7 +231,7 @@ class LLMEngine:
                     # Filter out fields not in model to handle LLM talkativeness
                     model_fields = model_class.model_fields.keys()
                     filtered_data = {k: v for k, v in raw_data.items() if k in model_fields}
-                    
+
                     validated_model = model_class(**filtered_data)
                 except Exception as e:
                     logging.warning(f"Schema validation failed for {context_name}: {e}")
@@ -243,10 +242,10 @@ class LLMEngine:
                 if lang not in self.allowed_categories:
                     # Don't mutate here yet, check allowed list
                     pass
-                
+
                 is_image = isinstance(validated_model, ImageMetadata)
                 allowed_dict = get_image_categories() if is_image else self.allowed_categories
-                
+
                 target_lang = lang if lang in allowed_dict else "en"
                 allowed = allowed_dict.get(target_lang, allowed_dict.get("en", []))
 

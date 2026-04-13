@@ -1,6 +1,7 @@
 import sys
 from unittest.mock import MagicMock
 
+
 # Mock missing dependencies before importing renai
 def pre_mock(module_name):
     if module_name not in sys.modules:
@@ -28,17 +29,27 @@ from pathlib import Path  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
 from renai.cache.manager import (  # noqa: E402
+    clear_all_cache,
+    get_metadata_cache_path,
+    invalidate_cache_for_provider_model,
     read_metadata_cache,
     write_metadata_cache,
-    invalidate_cache_for_provider_model,
-    get_metadata_cache_path,
 )
 from renai.models.schemas import BookMetadata  # noqa: E402
+
 
 def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
     """Test cache invalidation when provider or model doesn't match."""
     cache_path = tmp_path / "test_metadata.json"
-    metadata = BookMetadata(title="Test Book", author="Test Author", category="Other", language="en")
+    metadata = BookMetadata(
+        title="Test Book",
+        author="Test Author",
+        category="Other",
+        language="en",
+        subtitle=None,
+        edition=None,
+        year=None,
+    )
     provider = "test_provider"
     model = "test_model"
 
@@ -55,7 +66,15 @@ def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
 def test_read_metadata_cache_success(tmp_path):
     """Test successful metadata cache read with model validation."""
     cache_path = tmp_path / "success_metadata.json"
-    metadata = BookMetadata(title="Success Book", author="Success Author", category="Other", language="en")
+    metadata = BookMetadata(
+        title="Success Book",
+        author="Success Author",
+        category="Other",
+        language="en",
+        subtitle=None,
+        edition=None,
+        year=None,
+    )
     provider = "p1"
     model = "m1"
 
@@ -87,12 +106,14 @@ def test_read_metadata_cache_exception(tmp_path, caplog):
     cache_path = tmp_path / "error.json"
     cache_path.write_text("{}", encoding="utf-8")
 
-    with patch.object(Path, "read_text", side_effect=Exception("Read error")):
-        with caplog.at_level(logging.WARNING):
-            result = read_metadata_cache(cache_path, "p", "m")
-            assert result is None
-            assert "Failed to read metadata cache" in caplog.text
-            assert "Read error" in caplog.text
+    with (
+        patch.object(Path, "read_text", side_effect=Exception("Read error")),
+        caplog.at_level(logging.WARNING),
+    ):
+        result = read_metadata_cache(cache_path, "p", "m")
+        assert result is None
+        assert "Failed to read metadata cache" in caplog.text
+        assert "Read error" in caplog.text
 
 def test_get_metadata_cache_path():
     """Test generating metadata cache path with mode awareness."""
@@ -100,7 +121,7 @@ def test_get_metadata_cache_path():
     provider = "openai"
     model = "gpt-4"
     cache_dir = Path("/tmp/cache")
-    
+
     # Test default mode (doc)
     path = get_metadata_cache_path(file_hash, provider, model, cache_dir=cache_dir)
     assert "doc_abc123_" in path.name
@@ -116,11 +137,11 @@ def test_invalidate_cache_for_provider_model_basic(tmp_path):
     """Test basic clearing of metadata cache files for provider/model."""
     metadata_dir = tmp_path / "metadata"
     metadata_dir.mkdir()
-    
+
     (metadata_dir / "test1.json").write_text("{}")
     (metadata_dir / "test2.json").write_text("{}")
     (metadata_dir / "not_json.txt").write_text("")
-    
+
     count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
     assert count == 2
     assert not (metadata_dir / "test1.json").exists()
@@ -139,3 +160,31 @@ def test_invalidate_cache_for_provider_model_empty(tmp_path):
     metadata_dir.mkdir()
     count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
     assert count == 0
+def test_clear_all_cache(tmp_path):
+    """Test clearing all cache types including ocr_debug."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    text_dir = cache_dir / "text"
+    text_dir.mkdir()
+    (text_dir / "t1.txt").write_text("text")
+
+    metadata_dir = cache_dir / "metadata"
+    metadata_dir.mkdir()
+    (metadata_dir / "m1.json").write_text("{}")
+
+    # Mock DEBUG_DIR in settings to use tmp_path
+    debug_dir = tmp_path / "ocr_debug"
+    debug_dir.mkdir()
+    (debug_dir / "d1.png").write_text("debug")
+
+    with patch("renai.cache.manager.DEBUG_DIR", debug_dir):
+        results = clear_all_cache(cache_dir=cache_dir)
+
+        assert results["text"] == 1
+        assert results["metadata"] == 1
+        assert results["ocr_debug"] == 1
+
+        assert not text_dir.exists()
+        assert not metadata_dir.exists()
+        assert not debug_dir.exists()

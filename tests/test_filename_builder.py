@@ -52,9 +52,9 @@ class TestBuildImageFilename:
     def test_full_metadata_model(self):
         """Test image filename with ImageMetadata model."""
         data = ImageMetadata(
-            description="Sunset", 
-            category="Photo", 
-            language="en", 
+            description="Sunset",
+            category="Photo",
+            language="en",
             visual_context="Beach",
             exif_date="2024-07-15"
         )

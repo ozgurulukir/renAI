@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "renai"
-version = "1.5.1"
+version = "1.6.2"
 description = "AI-Powered Book Renamer and Organizer"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -38,6 +38,7 @@ dependencies = [
     "platformdirs",
     "colorama",
     "tomli; python_version < '3.11'",
+    "tomli-w",
 ]
 
 [project.urls]
@@ -66,5 +67,41 @@ dev = [
 
 [project.scripts]
 renai = "renai.cli:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "C90", # mccabe
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "T20", # flake8-print
+    "PLE", # pylint errors
+    "PLW", # pylint warnings
+    "SIM", # flake8-simplify
+    "TID", # flake8-tidy-imports
+    "TCH", # flake8-type-checking
+    "ARG", # flake8-unused-arguments
+    "PGH", # pygrep-hooks
+    "RUF", # ruff-specific rules
+]
+ignore = [
+    "T201", # print() is often used in CLI tools like this one
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+known-first-party = ["renai"]
 
 

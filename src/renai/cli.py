@@ -8,7 +8,7 @@ original main.py has been migrated here.
 import logging
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -16,6 +16,7 @@ from rich.table import Table
 
 from renai.logging_config import configure_logging
 from renai.processors.orchestrator import run_pipeline
+from renai.processors.setup import run_init_wizard
 from renai.processors.text_extractor import FallbackMode
 from renai.settings import (
     PROVIDERS,
@@ -59,7 +60,7 @@ def setup_environment() -> None:
             sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
     try:
-        from colorama import init  # type: ignore
+        from colorama import init  # type: ignore[import-untyped]
 
         init()
     except ImportError:
@@ -70,23 +71,19 @@ def setup_environment() -> None:
 
 
 def handle_clear_cache() -> None:
-    """Clear extracted text cache and metadata."""
+    """Clear extracted text cache, metadata, and OCR debug files."""
+    from renai.cache.manager import clear_all_cache
     from renai.settings import CACHE_DIR
 
     ensure_secure_dir(CACHE_DIR)
-    cache_files = list(CACHE_DIR.iterdir())
-    if cache_files:
-        for cache_file in cache_files:
-            try:
-                if cache_file.is_file():
-                    cache_file.unlink()
-            except Exception as e:
-                console.print(
-                    f"[yellow]Warning: Failed to delete {cache_file.name}: {e}[/yellow]"
-                )
-        console.print(f"[green]Cache cleared: {len(cache_files)} files removed[/green]")
+    results = clear_all_cache(CACHE_DIR)
+
+    total = sum(results.values())
+    if total > 0:
+        details = ", ".join([f"{count} {ctype}" for ctype, count in results.items() if count > 0])
+        console.print(f"[green]Cache cleared: {total} items removed ({details})[/green]")
     else:
-        console.print("[green]Cache directory is empty. Nothing to clear.[/green]")
+        console.print("[green]Cache is already empty. Nothing to clear.[/green]")
 
 
 def display_warnings(mode: str, recursive: bool) -> None:
@@ -153,8 +150,8 @@ def display_warnings(mode: str, recursive: bool) -> None:
 
 @app.command()
 def process(
-    directory: Annotated[Optional[str], typer.Argument(
-        help="Directory containing book files (required unless using --clear-cache)",
+    directory: Annotated[str | None, typer.Argument(
+        help="Directory containing book files to process.",
     )] = None,
     # Mode options
     mode: Annotated[str, typer.Option(
@@ -183,7 +180,7 @@ def process(
         "--provider",
         help="LLM Provider (deepinfra/openrouter/openai/custom)",
     )] = "deepinfra",
-    model: Annotated[Optional[str], typer.Option(
+    model: Annotated[str | None, typer.Option(
         "--model",
         help="LLM Model name (overrides default)",
     )] = None,
@@ -200,6 +197,14 @@ def process(
         "--text-length",
         help="Target text length to send to LLM",
     )] = app_settings.text_length,
+    text_extraction: Annotated[str, typer.Option(
+        "--text-extraction",
+        help="Extraction mode: mixed or regular",
+    )] = app_settings.text_extraction,
+    extraction_pages: Annotated[int, typer.Option(
+        "--extraction-pages",
+        help="Number of pages to read for text extraction (regular mode)",
+    )] = app_settings.extraction_pages,
     recursive: Annotated[bool, typer.Option(
         "--recursive/--no-recursive",
         help="Process subdirectories recursively",
@@ -210,17 +215,17 @@ def process(
         help="Force update metadata from LLM (ignore cache)",
     )] = False,
     # Fallback options
-    fallback_mode: Annotated[FallbackMode, typer.Option(
+    fallback_mode: Annotated[FallbackMode | None, typer.Option(
         "--fallback-mode",
-        help="Strategy to use when text extraction fails (none/ocr/vision/move). 'move' shifts files to Needs_Scan/ folder.",
-    )] = FallbackMode(app_settings.fallback_mode),
+        help="Strategy for extraction failures (none/ocr/vision/move). See settings.toml.",
+    )] = None,
     move_scan_failures: Annotated[bool, typer.Option(
         "--move-scan-failures",
-        help="Move files that fail all extraction attempts (including fallback) to Scan_Failures folder",
+        help="Move files that fail all extraction attempts to Scan_Failures folder",
     )] = app_settings.move_scan_failures,
     rename_images: Annotated[bool, typer.Option(
         "--rename-images",
-        help="Rename image files using vision model. Also processes non-images with selected fallback.",
+        help="Rename image files using vision model. Processes non-images with selected fallback.",
     )] = app_settings.rename_images,
     exif: Annotated[bool, typer.Option(
         "--exif",
@@ -231,26 +236,16 @@ def process(
         "--benchmark",
         help="Run extraction benchmark on first 3 files",
     )] = False,
-    eval_model: Annotated[bool, typer.Option(
-        "--eval-model",
-        help="Evaluate multiple models for the selected provider",
-    )] = False,
-    # Cache option
-    clear_cache: Annotated[bool, typer.Option(
-        "--clear-cache",
-        help="Clear cache and exit",
-    )] = False,
+
 ) -> None:
     """Process files in a directory."""
-    # Handle clear-cache first
-    if clear_cache:
-        handle_clear_cache()
-        raise typer.Exit()
+    # Handle dynamic defaults
+    final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
 
     # Validate directory
     if not directory:
         console.print(
-            "[red]Error: Directory is required (use --clear-cache to clear cache only)[/red]"
+            "[red]Error: Directory argument is required.[/red]"
         )
         raise typer.Exit(code=1)
 
@@ -271,9 +266,10 @@ def process(
     console.print()
 
     # Vision mode warnings
-    if fallback_mode == FallbackMode.VISION or rename_images:
+    if final_fallback == FallbackMode.VISION or rename_images:
         console.print(
-            "[yellow]Note: vision fallback and --rename-images require a vision-capable model. Please ensure your model supports vision.[/yellow]\n"
+            "[yellow]Note: vision fallback and --rename-images require a vision-capable model. "
+            "Please ensure your model supports vision.[/yellow]\n"
         )
 
     # Display warnings
@@ -293,18 +289,72 @@ def process(
             extractor=extractor,
             workers=workers,
             text_length=text_length,
+            text_extraction=text_extraction,
+            extraction_pages=extraction_pages,
             recursive=recursive,
             update_metadata=update_metadata,
-            fallback_mode=fallback_mode,
+            fallback_mode=final_fallback,
             move_scan_failures=move_scan_failures,
             rename_images=rename_images,
             exif=exif,
             benchmark=benchmark,
-            eval_model=eval_model,
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Operation cancelled by user. Exiting...[/yellow]")
-        raise typer.Exit(code=0)
+        raise typer.Exit(code=0) from None
+
+
+@app.command("evaluate")
+def evaluate_cmd(
+    directory: Annotated[str | None, typer.Argument(
+        help="Directory containing sample book files for evaluation",
+    )] = None,
+    provider: Annotated[str | None, typer.Option(
+        "--provider",
+        help="LLM Provider to evaluate (if omitted, evaluates ALL providers in eval_models.toml)",
+    )] = None,
+    file: Annotated[str | None, typer.Option(
+        "--file",
+        help="Evaluate only this specific file",
+    )] = None,
+    workers: Annotated[int, typer.Option(
+        "--workers",
+        help="Number of concurrent workers (for file collection)",
+    )] = app_settings.workers,
+) -> None:
+    """Evaluate multiple models and providers for renaming quality."""
+    # Validate directory
+    target_dir = Path(directory or ".").resolve()
+    if not target_dir.is_dir():
+        console.print(f"[red]Error: Directory not found: {target_dir}[/red]")
+        raise typer.Exit(code=1)
+
+    # If --file is provided, verify it
+    if file:
+        file_path = Path(file).resolve()
+        if not file_path.is_file():
+            # Try relative to directory
+            file_path = target_dir / file
+            if not file_path.is_file():
+                console.print(f"[red]Error: File not found: {file}[/red]")
+                raise typer.Exit(code=1)
+
+        # Override directory to just contain this file for the pipeline if needed
+        # but run_evaluation_pipeline handles samples.
+        # For simplicity, we'll pass the specific file path if we refactor it later.
+        # For now, let's keep it simple.
+
+    from renai.processors.orchestrator import run_evaluation_pipeline
+
+    try:
+        run_evaluation_pipeline(
+            root_dir=target_dir,
+            provider_filter=provider,
+            workers=workers,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Evaluation cancelled by user.[/yellow]")
+        raise typer.Exit(code=0) from None
 
 
 @app.command("providers")
@@ -340,6 +390,12 @@ def clear_cache_cmd(
             raise typer.Exit()
 
     handle_clear_cache()
+
+
+@app.command("init")
+def init_cmd() -> None:
+    """Initialize renAI with the interactive setup wizard."""
+    run_init_wizard()
 
 
 @app.command("version")

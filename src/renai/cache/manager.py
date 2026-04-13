@@ -1,12 +1,13 @@
 import json
 import logging
+import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional, Type, TypeVar, Union
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
-from ..settings import CACHE_DIR
-from ..utils import (
+from renai.settings import CACHE_DIR, DEBUG_DIR
+from renai.utils import (
     get_provider_model_key,
 )
 
@@ -18,7 +19,7 @@ def get_text_cache_path(
     *,
     ocr_enabled: bool = False,
     use_mutool: bool = False,
-    cache_dir: Optional[Path] = None,
+    cache_dir: Path | None = None,
 ) -> Path:
     """Get the cache file path for extracted text."""
     if cache_dir is None:
@@ -38,7 +39,7 @@ def get_metadata_cache_path(
     model: str,
     *,
     mode: str = "doc",
-    cache_dir: Optional[Path] = None,
+    cache_dir: Path | None = None,
     use_vision: bool = False,
 ) -> Path:
     """Get the cache file path for metadata."""
@@ -52,7 +53,7 @@ def get_metadata_cache_path(
     return cache_dir / "metadata" / cache_key
 
 
-def read_text_cache(file_path: Path) -> Optional[str]:
+def read_text_cache(file_path: Path) -> str | None:
     """Read cached text content."""
     try:
         if file_path.exists():
@@ -73,12 +74,12 @@ def write_text_cache(file_path: Path, content: str) -> bool:
         return False
 
 
-def read_metadata_cache(
+def read_metadata_cache[T: BaseModel](
     cache_path: Path,
     provider: str,
     model: str,
-    model_class: Optional[Type[T]] = None,
-) -> Union[Optional[Dict[str, Any]], Optional[T]]:
+    model_class: type[T] | None = None,
+) -> dict[str, Any] | T | None:
     """
     Read cached metadata with provider-model validation.
     If model_class is provided, returns a validated Pydantic model instance.
@@ -98,12 +99,14 @@ def read_metadata_cache(
             # Remove internal cache fields
             cache_data.pop("_provider", None)
             cache_data.pop("_model", None)
-            
+
             if model_class:
                 try:
                     return model_class(**cache_data)
                 except Exception as e:
-                    logging.warning(f"Failed to validate cached metadata against {model_class.__name__}: {e}")
+                    logging.warning(
+                        f"Failed to validate cached metadata against {model_class.__name__}: {e}"
+                    )
                     return None
             return cache_data
         else:
@@ -119,21 +122,18 @@ def read_metadata_cache(
 
 def write_metadata_cache(
     cache_path: Path,
-    metadata: Union[BaseModel, Dict[str, Any]],
+    metadata: BaseModel | dict[str, Any],
     provider: str,
     model: str,
 ) -> bool:
     """
-    Write metadata to cache. 
+    Write metadata to cache.
     Supports both Pydantic models (recommended) and dictionaries.
     """
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if isinstance(metadata, BaseModel):
-            data = metadata.model_dump()
-        else:
-            data = metadata
+        data = metadata.model_dump() if isinstance(metadata, BaseModel) else metadata
 
         # Add provider-model info for validation
         cache_data = {
@@ -152,7 +152,7 @@ def write_metadata_cache(
         return False
 
 
-def invalidate_cache_for_provider_model(cache_dir: Optional[Path] = None) -> int:
+def invalidate_cache_for_provider_model(cache_dir: Path | None = None) -> int:
     """Clear metadata cache when switching providers/models."""
     if cache_dir is None:
         cache_dir = CACHE_DIR
@@ -171,23 +171,33 @@ def invalidate_cache_for_provider_model(cache_dir: Optional[Path] = None) -> int
     return count
 
 
-def clear_all_cache(cache_dir: Optional[Path] = None) -> Dict[str, int]:
-    """Clear all caches (text and metadata)."""
-    import shutil
+def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
+    """Clear all caches (text, metadata, and ocr_debug)."""
 
     if cache_dir is None:
         cache_dir = CACHE_DIR
 
-    results = {"text": 0, "metadata": 0}
+    results = {"text": 0, "metadata": 0, "ocr_debug": 0}
 
-    for cache_type in ["text", "metadata"]:
-        cache_path = cache_dir / cache_type
-        if cache_path.exists():
+    # Define targets
+    targets = [
+        ("text", cache_dir / "text"),
+        ("metadata", cache_dir / "metadata"),
+        ("ocr_debug", DEBUG_DIR),
+    ]
+
+    for cache_type, target_path in targets:
+        if target_path.exists():
             try:
-                count = len(list(cache_path.glob("*")))
-                shutil.rmtree(cache_path)
+                # Count files for reporting
+                if target_path.is_dir():
+                    count = len(list(target_path.glob("*")))
+                    shutil.rmtree(target_path)
+                else:
+                    count = 1
+                    target_path.unlink()
                 results[cache_type] = count
             except Exception as e:
-                logging.warning(f"Failed to clear {cache_type} cache: {e}")
+                logging.warning(f"Failed to clear {cache_type} cache at {target_path}: {e}")
 
     return results

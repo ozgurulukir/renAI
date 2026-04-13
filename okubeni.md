@@ -70,7 +70,7 @@ Açıklama -- [Tarih] -- (Dil).uzantı
 - **`rename`**: Çıkarılan meta verilere göre dosyaları yeniden adlandırır
 - **`organize`**: Yeniden adlandırılmış dosyaları kategori klasörlerine taşır
 - **`benchmark`**: PDF çıkarma kütüphanesi performansını karşılaştırır
-- **`eval-model`**: Farklı LLM modellerini doğruluk açısından test eder
+- **`evaluate`**: Farklı LLM modellerini ve sağlayıcılarını doğruluk açısından test eder
 - **`--fallback-mode ocr`**: Önce metin çıkarmayı dener. Başarısız olursa Tesseract OCR kullanarak metin çıkarmaya çalışır (varsayılan davranış).
 - **`--fallback-mode vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Önce metin çıkarmayı dener (OCR kullanmaz). Başarısız olursa, vision modele fallback yapar.
 - **`--fallback-mode move`**: Metin çıkarma başarısız olan dosyaları `Needs_Scan/` klasörüne taşır.
@@ -104,39 +104,68 @@ cd renAI
 
 # uv kullanarak yükle ('renai' komutunu oluşturur)
 uv sync --all-extras
+
+# renAI'yi Hazırla (İnteraktif Sihirbaz)
+# Bu komut sağlayıcı ayarlarını yapar ve gerekli yapılandırma dosyalarını oluşturur
+renai init
 ```
 
-### API Anahtarları
+### Kurulum & API Anahtarları
 
-API anahtarlarınızı `.env` dosyasında ayarlayın:
+renAI, ilk kurulum için interaktif bir sihirbaz kullanır. Şu komutu çalıştırın:
 
 ```bash
-# Windows: %APPDATA%\renAI\renAI\.env
-# Linux/Mac: ~/.config/renAI/.env
-# Veya proje kök dizininden kopyalayın:
-cp .env.example .env
+renai init
 ```
 
-Ardından `.env` dosyasını API anahtarlarınızla düzenleyin:
+Bu komut, işletim sisteminize uygun dizinde yapılandırma dosyalarınızı oluşturacaktır:
 
-- `DEEPINFRA_API_KEY`
-- `OPENROUTER_API_KEY`
-- `OPENAI_API_KEY`
+- **Windows**: `%LOCALAPPDATA%\renAI`
+- **Linux**: `~/.config/renAI`
+- **macOS**: `~/Library/Application Support/renAI`
+
+Sihirbaz şu konularda size yardımcı olur:
+
+- **LLM Sağlayıcısı**: DeepInfra (varsayılan), OpenRouter, OpenAI veya Özel
+- **API Anahtarları**: `secrets.toml` dosyasında güvenli bir şekilde saklanır
+- **Genel Ayarlar**: Eşzamanlı çalışan sayısı, fallback stratejileri vb.
+
+### Yapılandırma Hiyerarşisi
+
+renAI sağlam ve katmanlı bir yapılandırma sistemi kullanır:
+
+1. **Kullanıcı Geçersiz Kılmaları**: Kullanıcı yapılandırma dizininizdeki `settings.toml`.
+2. **Fiziksel Varsayılanlar**: `settings.default.toml` (otomatik oluşturulan referans).
+3. **Dahili Varsayılanlar**: Sıfır kurulum operasyonu için paket içine gömülü temel ayarlar.
+
+#### Önemli Dosyalar
+
+- `settings.toml`: Uygulama davranışını özelleştirin ve sağlayıcı varsayılanlarını ezin.
+- `secrets.toml`: Hassas API anahtarları. **Bu dosyayı asla paylaşmayın!**
+- `providers.toml`: Özel LLM sağlayıcılarını kaydedin veya uç noktaları (endpoint) değiştirin.
+- `categories.toml`: Klasörleme düzeni için kendi kategorilerinizi tanımlayın (`--mode organize`).
+- `eval_models.toml`: `evaluate` komutu ile test edilecek modelleri listeleyin.
 
 Anahtarları şuradan alın: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrouter.ai) | [OpenAI](https://platform.openai.com/api-keys)
 
-### Yapılandırma
+### Ortam Değişkenleri
 
-`.env` dosyasındaki yapılandırma seçenekleri:
+renAI'yi ortam değişkenlerini (`RENAI_` ön eki ile) kullanarak da yapılandırabilirsiniz:
 
-- `RENAI_PROVIDER` - LLM sağlayıcısı (deepinfra, openrouter, openai, custom)
-- `RENAI_WORKERS` - Eşzamanlı çalışan sayısı (varsayılan: 4)
-- `RENAI_TEXT_LENGTH` - LLM için maksimum metin uzunluğu (varsayılan: 10000)
-- `RENAI_EXTRACTOR` - PDF çıkarıcı (pymupdf, pdfplumber, pypdf, pypdfium2)
+- `RENAI_PROVIDER`: örn. `openai`
+- `RENAI_MODEL`: örn. `gpt-4o`
+- `RENAI_WORKERS`: örn. `8`
 
-### Özel Kategoriler
+### Sıfır Kodlu Varsayılanlar (Zero-Code Defaults)
 
-Özel kategoriler artık `categories.toml` üzerinden yönetilmektedir. Detaylar için [Yapılandırma](#-yapılandırma) bölümüne bakın.
+renAI, "Sıfır Kodlu Varsayılanlar" felsefesini izler. Başlamak için yapılandırma dosyalarını düzenlemenize *gerek yoktur*. Temel fabrika varsayılanları paketle birlikte gelir, böylece basit bir ilklendirmeden sonra "direkt çalışır".
+
+Özelleştirme seçenekleri hiyerarşisi:
+
+1. Ortam değişkenleri (`RENAI_` ön eki ile)
+2. Kullanıcı dizininizdeki `settings.toml` dosyası
+3. `settings.default.toml` (Global temel ayarlar)
+4. CLI parametreleri (en yüksek öncelik)
 
 ---
 
@@ -154,6 +183,21 @@ uv run renai process "C:/Kitaplar/Yolu" --mode rename
 ```bash
 # Yeniden adlandır ve kategori klasörlerine düzenle
 renai process "C:/Kitaplar/Yolu" --mode organize
+```
+
+### Model Değerlendirme (Evaluation)
+
+En iyi sonuç veren modeli bulmak için birden fazla LLM sağlayıcısını ve modelini örnek dosyalarınız üzerinde test edin. Sonuçlar uygulama veri dizininizdeki `evaluation.log` dosyasına kaydedilir.
+
+```bash
+# eval_models.toml içinde tanımlanan TÜM sağlayıcıları ve modelleri test et
+renai evaluate "C:/Kitaplar/Ornekler"
+
+# Sadece belirli bir sağlayıcıyı test et
+renai evaluate "C:/Kitaplar/Ornekler" --provider deepinfra
+
+# Özel iş parçacığı (workers) sayısı ile test et
+renai evaluate "C:/Kitaplar/Ornekler" --workers 8
 ```
 
 ### Taranmış Belgeler için Yüksek Kaliteli OCR
@@ -250,9 +294,9 @@ uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom
 uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
 ```
 
-#### Yerel Modeller için Metin Uzunluğunu Kontrol Etme
+#### Çıkarım Uzunluğu ve Bölümlendirmeyi (Chunking) Kontrol Etme
 
-Tüketici donanımlarında yerel modeller çalıştırırken, bellek kullanımını azaltmak ve performansı artırmak için LLM'e gönderilen metin uzunluğunu azaltabilirsiniz:
+Tüketici donanımlarında yerel modeller çalıştırırken veya token tasarrufu sağlamak için LLM'e gönderilen metin uzunluğunu ve okuma mantığını ayarlayabilirsiniz:
 
 ```bash
 # Metin uzunluğunu 5000 karaktere azalt (varsayılan: 10000)
@@ -260,11 +304,16 @@ uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-l
 
 # Modeliniz kaldırabiliyorsa daha iyi bağlam için artırın
 uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
+
+# Düzenli (regular) mod: Sadece ilk 5 sayfayı okur ve boşluk atlamaz
+uv run renai process "C:/Kitaplar/Yolu" --text-extraction regular --extraction-pages 5
 ```
 
 | Seçenek | Açıklama | Varsayılan |
 | :--- | :--- | :--- |
 | `--text-length` | LLM'e gönderilen hedef metin uzunluğu | 10000 |
+| `--text-extraction` | Metin çıkarma bölümlendirme mantığı (`mixed` veya `regular`) | `regular` |
+| `--extraction-pages` | Belgeden işlenecek hedef sayfa sayısı | 10 |
 
 #### Özel Sağlayıcı için Ortam Değişkenleri
 
@@ -317,32 +366,35 @@ Farklı PDF çıkarma kütüphanelerinin belgeleriniz üzerindeki performansın�
 uv run renai process "C:/Kitaplar/Yolu" --benchmark
 ```
 
-#### LLM Model Değerlendirmesi
+#### Gelişmiş Model Değerlendirme
 
-Özel belge koleksiyonunuz için maliyet ve doğruluk arasındaki en iyi dengeyi bulmak amacıyla bir sağlayıcıdan birden fazla modeli test edin.
+`evaluate` komutu rekabetçi bir test gerçekleştirir:
 
-```bash
-uv run renai process "C:/Kitaplar/Yolu" --eval-model --provider deepinfra
+1. Dizininizdeki ilk birkaç dosyayı alır.
+2. Bunları `eval_models.toml` dosyanızda listelenen **her** modeli kullanarak işler.
+3. Her deneme için çıkarılan meta verileri ve bir güven puanını günlüğe kaydeder.
+
+**Yapılandırma:**
+Modeller `eval_models.toml` dosyasından yüklenir (Kullanıcı > Varsayılan > Dahili).
+
+Örnek `eval_models.toml`:
+
+```toml
+[deepinfra]
+models = ["meta-llama/Llama-3.2-90B-Vision-Instruct", "meta-llama/Llama-3.1-405B-Instruct"]
+
+[openai]
+models = ["gpt-4o", "gpt-4o-mini"]
 ```
-
-**Nasıl çalışır:**
-
-- Modeller sağlayıcıya özel yapılandırma dosyalarından yüklenir: `eval_models_deepinfra.txt`, `eval_models_openai.txt` veya `eval_models_openrouter.txt`.
-- Her dosya, her satırda bir model adı olacak şekilde bir model listesi içermelidir.
-- Araç, dizininizdeki ilk 2 dosyayı listedeki **tüm** modelleri kullanarak işler.
-- Sonuçlar ve güven puanları, ayrıntılı karşılaştırma için `evaluation.log` dosyasına kaydedilir.
 
 ### Önbellek Yönetimi
 
 ```bash
-# Tüm önbelleği temizle
+# Tüm önbelleği temizle (metin, metadata ve ocr_debug)
 uv run renai cache
 
-# Veya process komutu ile temizle
-uv run renai process --clear-cache
-
-# Belirli dizin için önbelleği temizle
-uv run renai process "C:/Kitaplar/Yolu" --clear-cache
+# Onay almadan temizle
+uv run renai cache --yes
 ```
 
 ---
@@ -371,7 +423,7 @@ uv run renai process "C:/Kitaplar/Yolu" --clear-cache
 
 | Sınırlama | Açıklama |
 | :--- | :--- |
-| **Metin Uzunluğu** | Dosya başına LLM'e en fazla 8000 karakter gönderilir |
+| **Metin Uzunluğu** | `--text-length` ile yapılandırılabilir (örn. 10000 karakter) |
 | **API Maliyetleri** | İşlenen her dosya metni bir LLM API'ye gönderir |
 | **Oran Sınırları** | Sağlayıcılar oran sınırları uygulayabilir |
 | **OCR Kalitesi** | Taranmış belgeler kaliteli taramalar gerektirir |
@@ -435,7 +487,7 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 4. **Önbellekleme Kullanın**: Gerekmedikçe `--update-metadata` kullanmaktan kaçının
 5. **Akıllı OCR Seçimi**: Taranmış belgeler için yalnızca `--ocr-enhanced --use-mutool` kullanın
 6. **Sağlayıcıları Karşılaştırın**: OpenRouter genellikle rekabetçi fiyatlar sunar
-7. **Önbelleği Temizleyin**: Modelleri veya ayarları değiştirdiğinde `--clear-cache` kullanın
+7. **Önbelleği Temizleyin**: Modelleri veya ayarları değiştirdiğinde `renai cache` kullanın
 8. **Gizliliği Koruyun**: Hassas veya özel belgeler için yerel bir LLM (Ollama, LM Studio) kullanarak `custom` sağlayıcısını tercih edin. Bu, belge içeriğinizi bulut hizmetlerine göndermek yerine makinenizde tutar.
 
 ### Önbellek Stratejisi
@@ -475,11 +527,8 @@ uv run renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 **Önbelleği Temizle:**
 
 ```bash
-# Tüm önbelleği temizle
+# Tüm önbelleği temizle (metadata, metin ve ocr_debug)
 uv run renai cache
-
-# Belirli dizin için önbelleği temizle
-uv run renai process "C:/Kitaplar/Yolu" --clear-cache
 ```
 
 ### Gizlilik Değerlendirmeleri
@@ -511,9 +560,9 @@ Gerçek maliyetler sağlayıcı ve modele göre değişir.
 
 renAI artık `platformdirs` kütüphanesi aracılığıyla modern ve işletim sisteminden bağımsız (OS-agnostic) bir yol yönetimi kullanmaktadır.
 
-- **Önbellek Verileri:** İşletim sisteminin önbellek dizininde yönetilir.
-- **Log ve Hata Ayıklama (Debug) Verileri:** İşletim sisteminin kullanıcı veri dizininde yönetilir.
-- **Yapılandırma (`categories.toml` gibi):** İşletim sisteminin yapılandırma dizininde yönetilir.
+- **Önbellek Verileri**: Windows'ta `%LOCALAPPDATA%\renAI\Cache` veya Linux'ta `~/.cache/renAI` dizininde yönetilir.
+- **Log ve Hata Ayıklama Verileri**: İşletim sisteminin kullanıcı veri dizininde yönetilir.
+- **Yapılandırma**: Düz işletim sistemi yapılandırma dizinindeki (iç içe klasörler olmadan) `config.toml`, `secrets.toml` ve `categories.toml` dosyaları aracılığıyla yönetilir.
 
 ### Özel Kategori Tanımlama
 
@@ -546,10 +595,16 @@ categories = [
 | `--use-mutool` | Çıkarma için mutool kullan |
 | `--debug-ocr` | Hata ayıklama görüntülerini kaydet |
 | `--recursive` | Alt dizinleri işle (varsayılan: True) |
-| `--no-recursive` | Yalnızca kök dizini işle |
+| `--text-length` | Hedef metin uzunluğu (varsayılan: 10000) |
+| `--text-extraction` | Metin okuma modu (`mixed` veya `regular`) (varsayılan: `regular`) |
+| `--extraction-pages` | Doküman başına işlenecek sayfa sayısı |
+| `--update-metadata` | Önbelleği zorla yenile |
 | `--fallback-mode` | Çıkarma başarısız olduğundaki strateji (`none`, `ocr`, `vision`, `move`) |
 | `--move-scan-failures` | Başarısız dosyaları `Scan_Failures` klasörüne taşı |
-| `--clear-cache` | Önbelleği temizle ve çık |
+| `cache` | Önbelleği temizleme komutu |
+| `init` | İnteraktif kurulum sihirbazını başlatma komutu |
+| `providers` | Yapılandırılmış sağlayıcıları listeleme komutu |
+| `--version` | renAI versiyonunu göster |
 
 ---
 
@@ -560,9 +615,8 @@ categories = [
 ├── src/
 │   └── renai/
 │       ├── cli.py               # CLI giriş noktası (Typer)
-│       ├── settings.py          # Yapılandırma ve Pydantic ayarları
-│       ├── utils.py             # Yardımcı fonksiyonlar
-│       ├── logging_config.py    # Yapılandırılmış günlükleme
+│       ├── settings.py          # Yapılandırma ve Pydantic ayarları yükleme
+│       ├── config/              # [YENİ] Fabrika varsayılan TOML dosyaları
 │       ├── prompts/             # Modüler .txt prompt şablonları
 │       ├── models/              # SSoT Pydantic Şemaları (Book, Image)
 │       ├── engines/             # Görüş ve OCR motorları
@@ -570,14 +624,13 @@ categories = [
 │       ├── processors/          # Çekirdek işleme mantığı
 │       │   ├── book.py
 │       │   ├── orchestrator.py  # Pipeline orkestrasyonu
+│       │   ├── setup.py         # [YENİ] İnteraktif Kurulum Sihirbazı
 │       │   ├── text_extractor.py
 │       │   └── visual.py
-│       ├── file_ops/            # Dosya işlem mantığı
-│       └── filename/            # İsimlendirme kuralları
-├── tests/                       # Senkronize edilmiş birim testleri (320+)
-├── scripts/                     # Benchmark ve yardımcı scriptler
+│       └── ...
+├── tests/                       # Senkronize edilmiş birim testleri
 ├── pyproject.toml               # Paket meta verileri ve bağımlılıklar
-└── requirements.txt             # Bağımlılık listesi
+└── ...
 
 ```text
 
@@ -598,6 +651,18 @@ Katkılar memnuniyetle karşılanır!
 ## 📝 Lisans
 
 MIT Lisansı - Ayrıntılar için [LICENSE](LICENSE) dosyasına bakın.
+
+### Gelişmiş Yapılandırma (Katmanlı Mimari)
+
+renAI, maksimum esneklik için katmanlı bir yapılandırma hiyerarşisi kullanır:
+
+1. **CLI Parametreleri**: En yüksek öncelik (örn: `--workers 8`).
+2. **Ortam Değişkenleri**: `RENAI_` ön eki ile (örn: `RENAI_PROVIDER=openai`).
+3. **Kullanıcı Ayarları**: `settings.toml` (İşletim sistemi ayar klasörünüzde saklanır).
+4. **Yerel Varsayılanlar**: `settings.default.toml` (`init` sırasında oluşturulan fiziksel kopya).
+5. **Fabrika Varsayılanları**: Paket içindeki gömülü temel ayarlar.
+
+Yeniden adlandırma davranışları, OCR ayarları ve diğer birçok parametre `settings.toml` dosyasından ayarlanabilir. Mevcut tüm ayarların listesi ve açıklamaları için yapılandırma dizininizdeki `settings.default.toml` dosyasına bakabilirsiniz.
 
 ---
 

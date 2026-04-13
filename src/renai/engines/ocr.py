@@ -5,18 +5,19 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pymupdf
 import pytesseract  # type: ignore[import-untyped]
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
-from typing import Any, Dict, Optional, Union
 
 from ..settings import (
     CACHE_DIR,
     DEBUG_DIR,
-    OCR_LANG,
-    SUBPROCESS_TIMEOUT,
     TESSERACT_PATH,
+    get_ocr_lang,
+    get_subprocess_timeout,
 )
 from ..utils import ensure_secure_dir, sanitize_filename
 
@@ -97,7 +98,7 @@ class OCREngine:
             kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         return kwargs
 
-    def _validate_mutool(self, path: str) -> Optional[str]:
+    def _validate_mutool(self, path: str) -> str | None:
         """
         Verify that the provided path points to a valid mutool executable.
         Returns the resolved absolute path if valid, otherwise None.
@@ -309,7 +310,7 @@ class OCREngine:
                 cmd,
                 check=True,
                 capture_output=True,
-                timeout=SUBPROCESS_TIMEOUT,
+                timeout=get_subprocess_timeout(),
                 **kwargs,
             )
 
@@ -331,10 +332,10 @@ class OCREngine:
         pno: int,
         file_path: Path,
         target_dpi: int,
-        pre_extracted_path: Optional[Path] = None,
-    ) -> tuple[Optional[Image.Image], Optional[Path]]:
+        pre_extracted_path: Path | None = None,
+    ) -> tuple[Image.Image | None, Path | None]:
         """Handles mutool or pymupdf fallback to extract an image from a page."""
-        image: Optional[Image.Image] = None
+        image: Image.Image | None = None
         if pre_extracted_path and pre_extracted_path.exists():
             try:
                 image = Image.open(pre_extracted_path)
@@ -370,7 +371,7 @@ class OCREngine:
                     cmd,
                     check=True,
                     capture_output=True,
-                    timeout=SUBPROCESS_TIMEOUT,
+                    timeout=get_subprocess_timeout(),
                     **kwargs,
                 )
                 image = Image.open(temp_img)
@@ -434,9 +435,9 @@ class OCREngine:
         try:
             page_text = pytesseract.image_to_string(
                 image,
-                lang=OCR_LANG,
+                lang=get_ocr_lang(),
                 config=r"--oem 3 --psm 3",
-                timeout=SUBPROCESS_TIMEOUT,
+                timeout=get_subprocess_timeout(),
             )
             return page_text
         except RuntimeError as e:

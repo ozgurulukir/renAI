@@ -5,13 +5,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from renai.utils import (
-    get_file_hash,
+    ensure_secure_dir,
     generate_cache_key,
+    get_file_hash,
     get_provider_model_key,
-    sanitize_filename,
     proportional_chunk_trim,
     read_text_limited,
-    ensure_secure_dir,
+    sanitize_filename,
 )
 
 
@@ -362,7 +362,7 @@ def test_ensure_secure_dir_unix_exception(mock_debug, mock_sys, tmp_path):
 
         # Exception should be caught and logged
         mock_debug.assert_called_once()
-        # Adjusted to match the log message in src/renai/utils.py if needed, 
+        # Adjusted to match the log message in src/renai/utils.py if needed,
         # but I'll stick to what was in main for now.
         assert "Failed to set secure permissions" in mock_debug.call_args[0][0]
 

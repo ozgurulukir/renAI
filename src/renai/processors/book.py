@@ -3,11 +3,10 @@ BookProcessor - Main orchestrator for document and image processing.
 Unified and refactored to eliminate redundancy between text, vision, and image modes.
 """
 
-import json
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, cast
 
 from ..cache.manager import (
     get_metadata_cache_path,
@@ -25,9 +24,9 @@ from ..filename.builder import (
 )
 from ..models import ProcessingResult
 from ..models.schemas import BookMetadata, ImageMetadata
-from ..settings import IMAGE_EXTENSIONS, CACHE_DIR
+from ..settings import CACHE_DIR, EVAL_LOG_FILE, PROVIDERS, get_image_extensions
 from ..utils import get_file_hash
-from .text_extractor import TextExtractor, FallbackMode
+from .text_extractor import FallbackMode, TextExtractor
 from .visual import VisualProcessor
 
 
@@ -40,16 +39,18 @@ class BookProcessor:
     def __init__(
         self,
         ocr_engine: OCREngine,
-        llm_engine: LLMEngine,
+        llm_engine: LLMEngine | None = None,
         extractor_name: str = "pymupdf",
         provider: str = "deepinfra",
         model: str = "",
         target_length: int = 10000,
+        text_extraction: str = "mixed",
+        extraction_pages: int = 10,
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
         self.provider = provider
-        self.model = model or getattr(llm_engine, "model_name", "")
+        self.model = model or getattr(llm_engine, "model_name", "") if llm_engine else ""
         self.target_length = target_length
         self.extractor_name = extractor_name
 
@@ -57,6 +58,8 @@ class BookProcessor:
             ocr_engine=ocr_engine,
             extractor_name=extractor_name,
             target_length=target_length,
+            text_extraction=text_extraction,
+            extraction_pages=extraction_pages,
         )
         self.visual_processor = VisualProcessor(llm_engine=llm_engine)
         self.file_operation_lock = threading.Lock()
@@ -108,7 +111,7 @@ class BookProcessor:
                 return ProcessingResult(success=False, error="Symlink skipped")
 
             file_hash = get_file_hash(file_path)
-            is_image = file_path.suffix.lower() in IMAGE_EXTENSIONS
+            is_image = file_path.suffix.lower() in get_image_extensions()
 
             # Determine cache mode and vision usage
             cache_mode = "img" if (is_image and rename_images) else "doc"
@@ -168,7 +171,7 @@ class BookProcessor:
                 )
             else:
                 # Explicitly cast to satisfy mypy (we know it's not ImageMetadata here)
-                new_name = build_book_filename(cast(Union[BookMetadata, Dict[str, Any]], metadata), file_path.suffix)
+                new_name = build_book_filename(cast("BookMetadata | dict[str, Any]", metadata), file_path.suffix)
 
             category = extract_category_from_metadata(metadata)
 
@@ -209,7 +212,7 @@ class BookProcessor:
         rename_images: bool,
         add_exif_date: bool,
         file_hash: str,
-    ) -> Optional[Union[BookMetadata, ImageMetadata]]:
+    ) -> BookMetadata | ImageMetadata | None:
         """Dispatcher for different extraction strategies returning typed models."""
         if is_image:
             if not rename_images:
@@ -223,7 +226,7 @@ class BookProcessor:
             file_path, fallback=fallback_mode, file_hash=file_hash
         )
 
-        if text.strip():
+        if self.llm_engine and text.strip():
             return self.llm_engine.get_book_metadata(text)
 
         # 2. Handle Fallback if Text Extraction Failed
@@ -239,7 +242,7 @@ class BookProcessor:
 
     def organize_files(
         self,
-        processed_info: List[ProcessingResult],
+        processed_info: list[ProcessingResult],
         root_dir: Path,
     ):
         """Moves renamed files into category folders."""
@@ -273,7 +276,7 @@ class BookProcessor:
         self, file_path: Path, provider: str, model_names: list[str]
     ) -> None:
         """Evaluate multiple LLM models for a single file."""
-        from ..settings import PROVIDERS, EVAL_LOG_FILE
+        # Use existing globals imported from settings
 
         if file_path.is_symlink():
             logging.warning(f"Skipping symlink for evaluation: {file_path.name}")
@@ -320,12 +323,12 @@ class BookProcessor:
                     )
                 except Exception as e:
                     logging.error(f"{model_name:25} | ERROR: {str(e)[:25]}")
-                    f.write(f"[{model_name}] -> ERROR: {str(e)}\n")
+                    f.write(f"[{model_name}] -> ERROR: {e!s}\n")
 
         logging.info("=" * (46 + len(file_path.name)))
 
-    def get_scan_failed_files(self) -> List[Path]:
+    def get_scan_failed_files(self) -> list[Path]:
         return list(self.scan_failed_files)
 
     def is_image_file(self, file_path: Path) -> bool:
-        return file_path.suffix.lower() in IMAGE_EXTENSIONS
+        return file_path.suffix.lower() in get_image_extensions()

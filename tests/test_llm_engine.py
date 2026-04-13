@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from openai import OpenAIError
+
 from renai.engines.llm import LLMEngine
 from renai.models.schemas import BookMetadata
 

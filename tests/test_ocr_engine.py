@@ -6,7 +6,8 @@ import cv2
 import numpy as np
 import pytest
 from PIL import Image, ImageDraw
-from renai.engines.ocr import OCREngine, OPENCV_AVAILABLE
+
+from renai.engines.ocr import OPENCV_AVAILABLE, OCREngine
 
 
 def test_get_page_source_dpi_no_images():

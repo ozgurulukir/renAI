@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from renai.processors.orchestrator import process_files, Progress, SpinnerColumn, TextColumn
+from renai.processors.orchestrator import Progress, SpinnerColumn, TextColumn, process_files
 from renai.processors.text_extractor import FallbackMode
 
 
