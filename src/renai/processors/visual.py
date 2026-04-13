@@ -29,7 +29,7 @@ class VisualProcessor:
     ):
         self.llm_engine = llm_engine
         self.provider = provider
-        self.model = model or getattr(llm_engine, "model_name", "")
+        self.model = model or (llm_engine.model_name if llm_engine else "")
         self.image_max_size = app_settings.vision_image_max_size
         self.image_quality = app_settings.vision_image_quality
 

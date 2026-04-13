@@ -395,13 +395,8 @@ def get_effective_model(provider: str) -> str:
 
 # =============================================================================
 # Global Settings Instances
-# =============================================================================
-
-app_settings = AppSettings(**FACTORY_DEFAULTS)
-provider_settings = ProviderSettings(**FACTORY_DEFAULTS)
-
-# Backward compatibility alias
-SHOW_WARNINGS = True  # Use app_settings.show_warnings in code
+# Backward compatibility aliases
+# Use app_settings.show_warnings in code
 
 # =============================================================================
 # Provider Configurations
