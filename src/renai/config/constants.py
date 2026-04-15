@@ -22,7 +22,7 @@ from platformdirs import user_data_dir
 # =============================================================================
 
 APP_NAME = "renAI"
-APP_AUTHOR = False  # Set to False to ensure flat directory structure (LocalAppData/renAI)
+APP_AUTHOR = None  # Set to None to ensure flat directory structure (LocalAppData/renAI)
 
 # Directory Configuration (using platformdirs for OS-agnostic paths)
 BASE_DIR = Path(__file__).parent.parent.resolve()
