@@ -53,10 +53,10 @@ SECRETS_FILE = CONFIG_DIR / "secrets.toml"
 
 PROVIDERS_USER_FILE = CONFIG_DIR / "providers.toml"
 
-CATEGORIES_DEFAULT_FILE = PACKAGE_CONFIG_DIR / "categories.default.toml"
+CATEGORIES_DEFAULT_FILE = CONFIG_DIR / "categories.default.toml"
 CATEGORIES_USER_FILE = CONFIG_DIR / "categories.toml"
 
-EVAL_MODELS_DEFAULT_FILE = PACKAGE_CONFIG_DIR / "eval_models.default.toml"
+EVAL_MODELS_DEFAULT_FILE = CONFIG_DIR / "eval_models.default.toml"
 EVAL_MODELS_USER_FILE = CONFIG_DIR / "eval_models.toml"
 
 # Backward compatibility aliases
