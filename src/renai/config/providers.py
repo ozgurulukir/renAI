@@ -44,9 +44,6 @@ def _get_settings() -> tuple:
 # Provider Registry
 # ---------------------------------------------------------------------------
 
-_PROVIDERS: dict | None = None
-
-
 def load_providers_config() -> dict:
     """Return provider configurations from unified app_settings."""
     app, _ = _get_settings()
@@ -54,17 +51,12 @@ def load_providers_config() -> dict:
 
 
 def get_providers() -> dict:
-    """Get provider registry (lazy-loaded)."""
-    global _PROVIDERS
-    if _PROVIDERS is None:
-        _PROVIDERS = load_providers_config()
-    return _PROVIDERS
+    """Get provider registry (freshly computed, never stale)."""
+    return load_providers_config()
 
 
-# Eagerly-available alias for backward compatibility.
-# On first attribute access by legacy code this resolves correctly because
-# the module-level call below triggers lazy init.
-PROVIDERS = load_providers_config()
+# PROVIDERS is resolved lazily via module-level __getattr__ (see end of file)
+# to avoid import-time side effects and stale snapshots.
 
 
 # ---------------------------------------------------------------------------
@@ -179,30 +171,35 @@ def load_categories_from_file() -> dict:
         return result
 
     # 2. Physical default in user dir
-    # 2. Package default
-    result = _try_load_categories(CATEGORIES_DEFAULT_FILE, "package")
+    result = _try_load_categories(CATEGORIES_DEFAULT_FILE, "default")
+    if result:
+        return result
+
+    # 3. Package-internal default
+    package_file = PACKAGE_CONFIG_DIR / "categories.default.toml"
+    result = _try_load_categories(package_file, "package")
     if result:
         return result
 
     return {"categories": {}, "image_categories": {}}
 
 
-# Load custom categories at module level for eager consumers.
-CUSTOM_CONFIG = load_categories_from_file()
+# CUSTOM_CONFIG is resolved lazily via module-level __getattr__ (see end of file)
+# to avoid import-time side effects.
 
 
 def get_allowed_categories() -> dict:
     """Get allowed categories for documents."""
     from renai.config.constants import DEFAULT_CATEGORIES
 
-    return CUSTOM_CONFIG.get("categories") or DEFAULT_CATEGORIES
+    return load_categories_from_file().get("categories") or DEFAULT_CATEGORIES
 
 
 def get_image_categories() -> dict:
     """Get allowed categories for images."""
     from renai.config.constants import IMAGE_CATEGORIES
 
-    return CUSTOM_CONFIG.get("image_categories") or IMAGE_CATEGORIES
+    return load_categories_from_file().get("image_categories") or IMAGE_CATEGORIES
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +227,7 @@ def load_all_eval_models() -> dict[str, list[str]]:
     all_models: dict[str, list[str]] = {}
 
     # Load in reverse priority (Internal -> Physical Default -> Physical User)
+    _merge_eval_models(PACKAGE_CONFIG_DIR / "eval_models.default.toml", all_models)
     _merge_eval_models(EVAL_MODELS_DEFAULT_FILE, all_models)
     _merge_eval_models(EVAL_MODELS_USER_FILE, all_models)
 
@@ -242,8 +240,38 @@ def load_eval_models(provider: str) -> list:
     return all_data.get(provider, [])
 
 
-EVAL_MODELS = {
-    "deepinfra": load_eval_models("deepinfra"),
-    "openrouter": load_eval_models("openrouter"),
-    "openai": load_eval_models("openai"),
-}
+# EVAL_MODELS is resolved lazily via module-level __getattr__ (see below).
+
+
+# ---------------------------------------------------------------------------
+# Lazy Module Attributes (PEP 562)
+# ---------------------------------------------------------------------------
+# PROVIDERS, CUSTOM_CONFIG, and EVAL_MODELS are resolved on first access
+# rather than at import time. This avoids:
+#   1. Circular import cycles during module initialization.
+#   2. Stale snapshots if app_settings is updated after import.
+#   3. Unnecessary I/O when only a subset of the module is used.
+# ---------------------------------------------------------------------------
+
+_LAZY_NAMES = {"PROVIDERS", "CUSTOM_CONFIG", "EVAL_MODELS"}
+
+
+def __getattr__(name: str):  # type: ignore[no-untyped-def]
+    """Lazily resolve heavy module attributes on first access (PEP 562)."""
+    if name == "PROVIDERS":
+        return load_providers_config()
+    if name == "CUSTOM_CONFIG":
+        return load_categories_from_file()
+    if name == "EVAL_MODELS":
+        return {
+            "deepinfra": load_eval_models("deepinfra"),
+            "openrouter": load_eval_models("openrouter"),
+            "openai": load_eval_models("openai"),
+        }
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:  # type: ignore[no-untyped-def]
+    """Include lazy attributes in dir() output for IDE discoverability."""
+    module_attrs = list(globals().keys())
+    return sorted(set(module_attrs) | _LAZY_NAMES)

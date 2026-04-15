@@ -19,18 +19,15 @@ from renai.config import (
     CONFIG_DIR,
     CONFIG_FILE,
     CUSTOM_CATEGORIES_FILE,
-    CUSTOM_CONFIG,
     DATA_DIR,
     DEBUG_DIR,
     DEFAULT_CATEGORIES,
     EVAL_LOG_FILE,
-    EVAL_MODELS,
     EVAL_MODELS_DEFAULT_FILE,
     EVAL_MODELS_USER_FILE,
     FACTORY_DEFAULTS,
     IMAGE_CATEGORIES,
     PACKAGE_CONFIG_DIR,
-    PROVIDERS,
     PROVIDERS_USER_FILE,
     SECRETS_FILE,
     SETTINGS_DEFAULT_FILE,
@@ -59,6 +56,9 @@ from renai.config import (
     provider_settings,
 )
 
+# PROVIDERS, CUSTOM_CONFIG, and EVAL_MODELS are resolved lazily via
+# module-level __getattr__ to avoid import-time side effects.
+
 __all__ = [
     "APP_DATA_DIR",
     # Constants
@@ -71,19 +71,19 @@ __all__ = [
     "CONFIG_DIR",
     "CONFIG_FILE",
     "CUSTOM_CATEGORIES_FILE",
-    "CUSTOM_CONFIG",
+    "CUSTOM_CONFIG",  # noqa: F822 - resolved via __getattr__
     "DATA_DIR",
     "DEBUG_DIR",
     "DEFAULT_CATEGORIES",
     "EVAL_LOG_FILE",
-    "EVAL_MODELS",
+    "EVAL_MODELS",  # noqa: F822 - resolved via __getattr__
     "EVAL_MODELS_DEFAULT_FILE",
     "EVAL_MODELS_USER_FILE",
     # Constants and helpers
     "FACTORY_DEFAULTS",
     "IMAGE_CATEGORIES",
     "PACKAGE_CONFIG_DIR",
-    "PROVIDERS",
+    "PROVIDERS",  # noqa: F822 - resolved via __getattr__
     "PROVIDERS_USER_FILE",
     "SECRETS_FILE",
     # Settings files
@@ -114,3 +114,27 @@ __all__ = [
     "load_providers_config",
     "provider_settings",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Lazy Module Attributes (PEP 562)
+# ---------------------------------------------------------------------------
+# Defer resolution of heavy/IO-bound attributes to first actual use.
+# ---------------------------------------------------------------------------
+
+_LAZY_NAMES = {"PROVIDERS", "CUSTOM_CONFIG", "EVAL_MODELS"}
+
+
+def __getattr__(name: str):  # type: ignore[no-untyped-def]
+    """Lazily resolve heavy module attributes on first access (PEP 562)."""
+    if name in _LAZY_NAMES:
+        import renai.config as _config
+
+        return getattr(_config, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:  # type: ignore[no-untyped-def]
+    """Include lazy attributes in dir() output for IDE discoverability."""
+    module_attrs = list(globals().keys())
+    return sorted(set(module_attrs) | _LAZY_NAMES)

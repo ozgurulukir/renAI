@@ -218,14 +218,20 @@ class TestCategories:
 
     def test_custom_categories_override_defaults(self):
         """Custom categories should override defaults."""
-        custom = {"categories": {"en": ["Custom1", "Custom2"]}}
-        with patch("renai.config.providers.CUSTOM_CONFIG", custom):
+        custom = {"categories": {"en": ["Custom1", "Custom2"]}, "image_categories": {}}
+        with patch(
+            "renai.config.providers.load_categories_from_file",
+            return_value=custom,
+        ):
             result = get_allowed_categories()
             assert result == custom["categories"]
 
     def test_no_custom_returns_default(self):
         """No custom categories should return defaults."""
-        with patch("renai.config.providers.CUSTOM_CONFIG", {}):
+        with patch(
+            "renai.config.providers.load_categories_from_file",
+            return_value={"categories": {}, "image_categories": {}},
+        ):
             result = get_allowed_categories()
             assert result == DEFAULT_CATEGORIES
 
@@ -350,13 +356,14 @@ class TestDirectories:
 
     def test_directories_created(self):
         """Required directories should be created on init."""
-        from renai.settings import CACHE_DIR, DEBUG_DIR
+        from renai.settings import APP_DATA_DIR, CACHE_DIR, DEBUG_DIR
 
         with patch("renai.config.directories.ensure_secure_dir") as mock_ensure:
             initialize_directories()
 
-            # Should call ensure for exactly CACHE_DIR and DEBUG_DIR
-            assert mock_ensure.call_count == 2
+            # Should call ensure for APP_DATA_DIR, CACHE_DIR and DEBUG_DIR
+            assert mock_ensure.call_count == 3
+            mock_ensure.assert_any_call(APP_DATA_DIR)
             mock_ensure.assert_any_call(CACHE_DIR)
             mock_ensure.assert_any_call(DEBUG_DIR)
 

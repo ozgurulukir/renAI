@@ -39,9 +39,6 @@ from renai.config.constants import (
 )
 from renai.config.directories import initialize_directories
 from renai.config.providers import (
-    CUSTOM_CONFIG,
-    EVAL_MODELS,
-    PROVIDERS,
     get_allowed_categories,
     get_api_key,
     get_base_url,
@@ -53,6 +50,9 @@ from renai.config.providers import (
     load_eval_models,
     load_providers_config,
 )
+
+# PROVIDERS, CUSTOM_CONFIG, and EVAL_MODELS are resolved lazily via
+# module-level __getattr__ to avoid import-time side effects.
 from renai.config.settings import (
     AppSettings,
     ProviderConfig,
@@ -116,3 +116,27 @@ __all__ = [
     "load_providers_config",
     "provider_settings",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Lazy Module Attributes (PEP 562)
+# ---------------------------------------------------------------------------
+# Defer resolution of heavy/IO-bound attributes to first actual use.
+# ---------------------------------------------------------------------------
+
+_LAZY_NAMES = {"PROVIDERS", "CUSTOM_CONFIG", "EVAL_MODELS"}
+
+
+def __getattr__(name: str):  # type: ignore[no-untyped-def]
+    """Lazily resolve heavy module attributes on first access (PEP 562)."""
+    if name in _LAZY_NAMES:
+        import renai.config.providers as _providers
+
+        return getattr(_providers, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:  # type: ignore[no-untyped-def]
+    """Include lazy attributes in dir() output for IDE discoverability."""
+    module_attrs = list(globals().keys())
+    return sorted(set(module_attrs) | _LAZY_NAMES)
