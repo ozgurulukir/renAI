@@ -179,13 +179,8 @@ def load_categories_from_file() -> dict:
         return result
 
     # 2. Physical default in user dir
-    result = _try_load_categories(CATEGORIES_DEFAULT_FILE, "default")
-    if result:
-        return result
-
-    # 3. Package-internal default
-    package_file = PACKAGE_CONFIG_DIR / "categories.default.toml"
-    result = _try_load_categories(package_file, "package")
+    # 2. Package default
+    result = _try_load_categories(CATEGORIES_DEFAULT_FILE, "package")
     if result:
         return result
 
