@@ -36,9 +36,9 @@ class TestLoadCategories:
             '[en]\ncategories = ["UserEn"]\n[tr]\ncategories = ["UserTr"]\n'
         )
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path / "nonexistent_pkg"):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path / "nonexistent_pkg"):
             result = load_categories_from_file()
             assert result["categories"] == {"en": ["UserEn"], "tr": ["UserTr"]}
 
@@ -52,9 +52,9 @@ class TestLoadCategories:
             '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
         )
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
                 result = load_categories_from_file()
                 assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
@@ -70,9 +70,9 @@ class TestLoadCategories:
             '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
         )
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
                 result = load_categories_from_file()
                 assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
@@ -88,9 +88,9 @@ class TestLoadCategories:
             '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
         )
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
                 with patch("logging.warning") as mock_warn:
                     result = load_categories_from_file()
                     assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
@@ -109,9 +109,9 @@ class TestLoadCategories:
             '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
         )
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
                 original_open = open
 
                 def mock_open(file, *args, **kwargs):
@@ -139,9 +139,9 @@ class TestLoadCategories:
             '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
         )
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
                 result = load_categories_from_file()
                 assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
@@ -154,9 +154,9 @@ class TestLoadCategories:
         package_file = tmp_path / "categories.default.toml"
         package_file.write_text("invalid toml = ")
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
                 with patch("logging.warning") as mock_warn:
                     result = load_categories_from_file()
 
@@ -173,9 +173,9 @@ class TestLoadCategories:
         package_file = tmp_path / "categories.default.toml"
         package_file.touch()
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", tmp_path):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
                 original_open = open
 
                 def mock_open(file, *args, **kwargs):
@@ -198,9 +198,9 @@ class TestLoadCategories:
         user_file = tmp_path / "nonexistent1.toml"
         package_dir = tmp_path / "nonexistent_dir"
 
-        with patch("renai.settings.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.settings.CATEGORIES_DEFAULT_FILE", package_dir / "nonexistent_default.toml"), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", package_dir):
+        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
+             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", package_dir / "nonexistent_default.toml"), \
+             patch("renai.config.providers.PACKAGE_CONFIG_DIR", package_dir):
                 result = load_categories_from_file()
                 assert result == {"categories": {}, "image_categories": {}}
 
@@ -219,13 +219,13 @@ class TestCategories:
     def test_custom_categories_override_defaults(self):
         """Custom categories should override defaults."""
         custom = {"categories": {"en": ["Custom1", "Custom2"]}}
-        with patch("renai.settings.CUSTOM_CONFIG", custom):
+        with patch("renai.config.providers.CUSTOM_CONFIG", custom):
             result = get_allowed_categories()
             assert result == custom["categories"]
 
     def test_no_custom_returns_default(self):
         """No custom categories should return defaults."""
-        with patch("renai.settings.CUSTOM_CONFIG", {}):
+        with patch("renai.config.providers.CUSTOM_CONFIG", {}):
             result = get_allowed_categories()
             assert result == DEFAULT_CATEGORIES
 
@@ -352,7 +352,7 @@ class TestDirectories:
         """Required directories should be created on init."""
         from renai.settings import CACHE_DIR, DEBUG_DIR
 
-        with patch("renai.utils.ensure_secure_dir") as mock_ensure:
+        with patch("renai.config.directories.ensure_secure_dir") as mock_ensure:
             initialize_directories()
 
             # Should call ensure for exactly CACHE_DIR and DEBUG_DIR
@@ -390,10 +390,9 @@ class TestLoadEvalModels:
         config_dir.mkdir()
         pkg_dir.mkdir()
 
-        with patch("renai.settings.CONFIG_DIR", config_dir), \
-             patch("renai.settings.PACKAGE_CONFIG_DIR", pkg_dir), \
-             patch("renai.settings.EVAL_MODELS_USER_FILE", config_dir / "eval_models.toml"), \
-             patch("renai.settings.EVAL_MODELS_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"):
+        with patch("renai.config.providers.PACKAGE_CONFIG_DIR", pkg_dir), \
+             patch("renai.config.providers.EVAL_MODELS_USER_FILE", config_dir / "eval_models.toml"), \
+             patch("renai.config.providers.EVAL_MODELS_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"):
             yield config_dir, pkg_dir
 
     def test_load_user_config_success(self, mock_dirs):
@@ -575,7 +574,7 @@ class TestGetEffectiveModel:
 
         with patch("renai.settings.app_settings.model", None):
             with patch("renai.settings.provider_settings.deepinfra_model", None):
-                with patch("renai.settings.get_default_model", return_value="default-model") as mock_get_default:
+                with patch("renai.config.providers.get_default_model", return_value="default-model") as mock_get_default:
                     result = get_effective_model("deepinfra")
                     assert result == "default-model"
                     mock_get_default.assert_called_once_with("deepinfra")
@@ -676,7 +675,7 @@ class TestSettingsAccessorFunctions:
         # 3. Default model
         with patch("renai.settings.app_settings.model", None):
             with patch("renai.settings.provider_settings.deepinfra_model", None):
-                with patch("renai.settings.get_default_model", return_value="default_model"):
+                with patch("renai.config.providers.get_default_model", return_value="default_model"):
                     assert get_effective_model("deepinfra") == "default_model"
 
 class TestGetApiKey:
@@ -754,7 +753,7 @@ class TestEffectiveModel:
 
         with patch("renai.settings.app_settings.model", None):
             with patch("renai.settings.provider_settings.deepinfra_model", None):
-                with patch("renai.settings.get_default_model", return_value="default-model"):
+                with patch("renai.config.providers.get_default_model", return_value="default-model"):
                     result = get_effective_model("deepinfra")
                     assert result == "default-model"
 
@@ -763,7 +762,7 @@ class TestEffectiveModel:
         from renai.settings import get_effective_model
 
         with patch("renai.settings.app_settings.model", None):
-            with patch("renai.settings.get_default_model", return_value="default-model"):
+            with patch("renai.config.providers.get_default_model", return_value="default-model"):
                 result = get_effective_model("unknown_provider")
                 assert result == "default-model"
 

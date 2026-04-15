@@ -10,10 +10,6 @@ from ..engines.llm import LLMEngine
 from ..models.schemas import BookMetadata, ImageMetadata
 from ..settings import app_settings
 
-# Constants (deprecated, used as fallbacks)
-MULTIMODAL_IMAGE_MAX_SIZE = 1024
-MULTIMODAL_IMAGE_QUALITY = 85
-
 
 class VisualProcessor:
     """
