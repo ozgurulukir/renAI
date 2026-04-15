@@ -184,7 +184,6 @@ class AppSettings(BaseSettings):
             env_settings,
             TomlConfigSettingsSource(settings_cls, SETTINGS_USER_FILE),
             TomlConfigSettingsSource(settings_cls, SETTINGS_DEFAULT_FILE),
-            InitSettingsSource(settings_cls, FACTORY_DEFAULTS),
         )
 
 
