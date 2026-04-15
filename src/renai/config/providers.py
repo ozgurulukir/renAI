@@ -230,7 +230,6 @@ def load_all_eval_models() -> dict[str, list[str]]:
     all_models: dict[str, list[str]] = {}
 
     # Load in reverse priority (Internal -> Physical Default -> Physical User)
-    _merge_eval_models(PACKAGE_CONFIG_DIR / "eval_models.default.toml", all_models)
     _merge_eval_models(EVAL_MODELS_DEFAULT_FILE, all_models)
     _merge_eval_models(EVAL_MODELS_USER_FILE, all_models)
 
