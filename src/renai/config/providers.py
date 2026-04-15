@@ -74,15 +74,14 @@ PROVIDERS = load_providers_config()
 
 def get_api_key(provider: str) -> str | None:
     """Get API key for the specified provider."""
-    _, prov = _get_settings()
+    app, prov = _get_settings()
+    if provider in app.providers and app.providers[provider].api_key:
+        return app.providers[provider].api_key
     key_map = {
-        "deepinfra": prov.deepinfra_api_key
-        or os.getenv("DEEPINFRA_API_KEY"),
-        "openrouter": prov.openrouter_api_key
-        or os.getenv("OPENROUTER_API_KEY"),
+        "deepinfra": prov.deepinfra_api_key or os.getenv("DEEPINFRA_API_KEY"),
+        "openrouter": prov.openrouter_api_key or os.getenv("OPENROUTER_API_KEY"),
         "openai": prov.openai_api_key or os.getenv("OPENAI_API_KEY"),
-        "custom": prov.custom_api_key
-        or os.getenv("CUSTOM_API_KEY", "not-required"),
+        "custom": prov.custom_api_key or os.getenv("CUSTOM_API_KEY", "not-required"),
     }
     return key_map.get(provider)
 
