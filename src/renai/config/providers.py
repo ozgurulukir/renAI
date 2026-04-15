@@ -179,8 +179,13 @@ def load_categories_from_file() -> dict:
         return result
 
     # 2. Physical default in user dir
-    # 2. Package default
-    result = _try_load_categories(CATEGORIES_DEFAULT_FILE, "package")
+    result = _try_load_categories(CATEGORIES_DEFAULT_FILE, "default")
+    if result:
+        return result
+
+    # 3. Package-internal default
+    package_file = PACKAGE_CONFIG_DIR / "categories.default.toml"
+    result = _try_load_categories(package_file, "package")
     if result:
         return result
 
@@ -230,6 +235,7 @@ def load_all_eval_models() -> dict[str, list[str]]:
     all_models: dict[str, list[str]] = {}
 
     # Load in reverse priority (Internal -> Physical Default -> Physical User)
+    _merge_eval_models(PACKAGE_CONFIG_DIR / "eval_models.default.toml", all_models)
     _merge_eval_models(EVAL_MODELS_DEFAULT_FILE, all_models)
     _merge_eval_models(EVAL_MODELS_USER_FILE, all_models)
 

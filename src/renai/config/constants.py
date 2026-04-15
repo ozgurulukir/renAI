@@ -28,9 +28,6 @@ APP_AUTHOR = None  # Set to None to ensure flat directory structure (LocalAppDat
 BASE_DIR = Path(__file__).parent.parent.resolve()
 PACKAGE_CONFIG_DIR = BASE_DIR / "config"
 
-# Export BASE_DIR for backward compatibility
-__all__ = ["BASE_DIR"]
-
 # Unified base directory for all app data
 # This resolves the nested renAI/renAI issue on Windows
 APP_DATA_DIR = Path(user_data_dir(APP_NAME, APP_AUTHOR))  # type: ignore[arg-type]
@@ -192,3 +189,42 @@ def get_tesseract_path() -> Path:
         return Path("/usr/bin/tesseract")
 
 TESSERACT_PATH = get_tesseract_path()
+
+
+# =============================================================================
+# Public API
+# =============================================================================
+
+__all__ = [
+    "APP_AUTHOR",
+    "APP_DATA_DIR",
+    "APP_NAME",
+    "BASE_DIR",
+    "CACHE_DIR",
+    "CATEGORIES_DEFAULT_FILE",
+    "CATEGORIES_FILE",
+    "CATEGORIES_USER_FILE",
+    "CONFIG_DIR",
+    "CONFIG_FILE",
+    "CUSTOM_CATEGORIES_FILE",
+    "DATA_DIR",
+    "DEBUG_DIR",
+    "DEFAULT_CATEGORIES",
+    "EVAL_LOG_FILE",
+    "EVAL_MODELS_DEFAULT_FILE",
+    "EVAL_MODELS_USER_FILE",
+    "FACTORY_DEFAULTS",
+    "IMAGE_CATEGORIES",
+    "PACKAGE_CONFIG_DIR",
+    "PROVIDERS_USER_FILE",
+    "SECRETS_FILE",
+    "SETTINGS_DEFAULT_FILE",
+    "SETTINGS_USER_FILE",
+    "TESSERACT_PATH",
+    "get_image_extensions",
+    "get_max_text_read_size",
+    "get_ocr_lang",
+    "get_subprocess_timeout",
+    "get_tesseract_path",
+    "load_factory_defaults",
+]

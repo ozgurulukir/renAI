@@ -14,7 +14,7 @@ from renai.utils import (
 
 T = TypeVar("T", bound=BaseModel)
 
-# Thread-safe lock for cache operations
+# Thread-safe lock for all cache operations (read + write + invalidate)
 _cache_lock = threading.Lock()
 
 
@@ -59,11 +59,12 @@ def get_metadata_cache_path(
 
 def read_text_cache(file_path: Path) -> str | None:
     """Read cached text content."""
-    try:
-        if file_path.exists():
-            return file_path.read_text(encoding="utf-8")
-    except Exception as e:
-        logging.warning(f"Failed to read text cache {file_path}: {e}")
+    with _cache_lock:
+        try:
+            if file_path.exists():
+                return file_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logging.warning(f"Failed to read text cache {file_path}: {e}")
     return None
 
 
@@ -89,40 +90,43 @@ def read_metadata_cache[T: BaseModel](
     Read cached metadata with provider-model validation.
     If model_class is provided, returns a validated Pydantic model instance.
     """
-    try:
-        if not cache_path.exists():
+    with _cache_lock:
+        try:
+            if not cache_path.exists():
+                return None
+
+            cache_content = cache_path.read_text(encoding="utf-8")
+            cache_data = json.loads(cache_content)
+
+            # Validate provider-model match
+            cached_provider = cache_data.get("_provider", "")
+            cached_model = cache_data.get("_model", "")
+
+            if cached_provider == provider and cached_model == model:
+                # Remove internal cache fields
+                cache_data.pop("_provider", None)
+                cache_data.pop("_model", None)
+
+                if model_class:
+                    try:
+                        return model_class(**cache_data)
+                    except Exception as e:
+                        logging.warning(
+                            f"Failed to validate cached metadata "
+                            f"against {model_class.__name__}: {e}"
+                        )
+                        return None
+                return cache_data
+            else:
+                logging.info(
+                    f"Cache invalidated (was {cached_provider}/{cached_model}, "
+                    f"now {provider}/{model})"
+                )
+                return None
+
+        except Exception as e:
+            logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
             return None
-
-        cache_content = cache_path.read_text(encoding="utf-8")
-        cache_data = json.loads(cache_content)
-
-        # Validate provider-model match
-        cached_provider = cache_data.get("_provider", "")
-        cached_model = cache_data.get("_model", "")
-
-        if cached_provider == provider and cached_model == model:
-            # Remove internal cache fields
-            cache_data.pop("_provider", None)
-            cache_data.pop("_model", None)
-
-            if model_class:
-                try:
-                    return model_class(**cache_data)
-                except Exception as e:
-                    logging.warning(
-                        f"Failed to validate cached metadata against {model_class.__name__}: {e}"
-                    )
-                    return None
-            return cache_data
-        else:
-            logging.info(
-                f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
-            )
-            return None
-
-    except Exception as e:
-        logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
-        return None
 
 
 def write_metadata_cache(
