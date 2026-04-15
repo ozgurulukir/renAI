@@ -18,14 +18,12 @@ API Keys (provider-specific):
 from pydantic import BaseModel, Field
 from pydantic_settings import (
     BaseSettings,
-    InitSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
 
 from renai.config.constants import (
-    FACTORY_DEFAULTS,
     SETTINGS_DEFAULT_FILE,
     SETTINGS_USER_FILE,
 )

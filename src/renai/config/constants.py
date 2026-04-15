@@ -63,9 +63,8 @@ EVAL_MODELS_USER_FILE = CONFIG_DIR / "eval_models.toml"
 CONFIG_FILE = SETTINGS_USER_FILE
 CATEGORIES_FILE = CATEGORIES_USER_FILE
 
-# Ensure essential directories exist
-for d in [CACHE_DIR, DATA_DIR, CONFIG_DIR, DEBUG_DIR]:
-    d.mkdir(parents=True, exist_ok=True)
+# Directory creation is deferred to initialize_directories() in directories.py
+# to avoid side effects at import time.
 
 # =============================================================================
 # Factory Defaults Loader
