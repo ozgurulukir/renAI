@@ -107,7 +107,7 @@ def extract_category_from_metadata(
     if isinstance(data, BaseMetadata):
         category_raw = data.safe_category
     else:
-        # Fallback for manual dicts or legacy cache
+        # Fallback for dict-based metadata
         category_raw = data.get("category", default)
         if category_raw:
             category_raw = category_raw.replace("/", "&").replace("\\", "&")

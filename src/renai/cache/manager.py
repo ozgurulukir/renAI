@@ -1,6 +1,7 @@
 import json
 import logging
 import shutil
+import threading
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -12,6 +13,9 @@ from renai.utils import (
 )
 
 T = TypeVar("T", bound=BaseModel)
+
+# Thread-safe lock for cache operations
+_cache_lock = threading.Lock()
 
 
 def get_text_cache_path(
@@ -65,13 +69,14 @@ def read_text_cache(file_path: Path) -> str | None:
 
 def write_text_cache(file_path: Path, content: str) -> bool:
     """Write text content to cache."""
-    try:
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
-        return True
-    except Exception as e:
-        logging.warning(f"Failed to write text cache {file_path}: {e}")
-        return False
+    with _cache_lock:
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(content, encoding="utf-8")
+            return True
+        except Exception as e:
+            logging.warning(f"Failed to write text cache {file_path}: {e}")
+            return False
 
 
 def read_metadata_cache[T: BaseModel](
@@ -130,74 +135,76 @@ def write_metadata_cache(
     Write metadata to cache.
     Supports both Pydantic models (recommended) and dictionaries.
     """
-    try:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with _cache_lock:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-        data = metadata.model_dump() if isinstance(metadata, BaseModel) else metadata
+            data = metadata.model_dump() if isinstance(metadata, BaseModel) else metadata
 
-        # Add provider-model info for validation
-        cache_data = {
-            **data,
-            "_provider": provider,
-            "_model": model,
-        }
+            # Add provider-model info for validation
+            cache_data = {
+                **data,
+                "_provider": provider,
+                "_model": model,
+            }
 
-        cache_path.write_text(
-            json.dumps(cache_data, ensure_ascii=False, indent=4),
-            encoding="utf-8",
-        )
-        return True
-    except Exception as e:
-        logging.warning(f"Failed to write metadata cache {cache_path}: {e}")
-        return False
+            cache_path.write_text(
+                json.dumps(cache_data, ensure_ascii=False, indent=4),
+                encoding="utf-8",
+            )
+            return True
+        except Exception as e:
+            logging.warning(f"Failed to write metadata cache {cache_path}: {e}")
+            return False
 
 
 def invalidate_cache_for_provider_model(cache_dir: Path | None = None) -> int:
     """Clear metadata cache when switching providers/models."""
-    if cache_dir is None:
-        cache_dir = CACHE_DIR
+    with _cache_lock:
+        if cache_dir is None:
+            cache_dir = CACHE_DIR
 
-    metadata_dir = cache_dir / "metadata"
-    if not metadata_dir.exists():
-        return 0
+        metadata_dir = cache_dir / "metadata"
+        if not metadata_dir.exists():
+            return 0
 
-    count = 0
-    try:
-        for cache_file in metadata_dir.glob("*.json"):
-            cache_file.unlink()
-            count += 1
-    except Exception as e:
-        logging.warning(f"Failed to clear metadata cache: {e}")
-    return count
+        count = 0
+        try:
+            for cache_file in metadata_dir.glob("*.json"):
+                cache_file.unlink()
+                count += 1
+        except Exception as e:
+            logging.warning(f"Failed to clear metadata cache: {e}")
+        return count
 
 
 def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
     """Clear all caches (text, metadata, and ocr_debug)."""
+    with _cache_lock:
+        if cache_dir is None:
+            cache_dir = CACHE_DIR
 
-    if cache_dir is None:
-        cache_dir = CACHE_DIR
+        results = {"text": 0, "metadata": 0, "ocr_debug": 0}
 
-    results = {"text": 0, "metadata": 0, "ocr_debug": 0}
+        # Define targets
+        targets = [
+            ("text", cache_dir / "text"),
+            ("metadata", cache_dir / "metadata"),
+            ("ocr_debug", DEBUG_DIR),
+        ]
 
-    # Define targets
-    targets = [
-        ("text", cache_dir / "text"),
-        ("metadata", cache_dir / "metadata"),
-        ("ocr_debug", DEBUG_DIR),
-    ]
+        for cache_type, target_path in targets:
+            if target_path.exists():
+                try:
+                    # Count files for reporting
+                    if target_path.is_dir():
+                        count = len(list(target_path.glob("*")))
+                        shutil.rmtree(target_path)
+                    else:
+                        count = 1
+                        target_path.unlink()
+                    results[cache_type] = count
+                except Exception as e:
+                    logging.warning(f"Failed to clear {cache_type} cache at {target_path}: {e}")
 
-    for cache_type, target_path in targets:
-        if target_path.exists():
-            try:
-                # Count files for reporting
-                if target_path.is_dir():
-                    count = len(list(target_path.glob("*")))
-                    shutil.rmtree(target_path)
-                else:
-                    count = 1
-                    target_path.unlink()
-                results[cache_type] = count
-            except Exception as e:
-                logging.warning(f"Failed to clear {cache_type} cache at {target_path}: {e}")
-
-    return results
+        return results
