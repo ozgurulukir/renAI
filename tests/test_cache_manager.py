@@ -10,6 +10,7 @@ def pre_mock(module_name):
         mock.__spec__ = None
         sys.modules[module_name] = mock
 
+
 # Essential mocks for settings initialization
 pre_mock("platformdirs")
 pre_mock("pydantic")
@@ -63,6 +64,7 @@ def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
         assert "Cache invalidated" in caplog.text
         assert "was test_provider/test_model" in caplog.text
 
+
 def test_read_metadata_cache_success(tmp_path):
     """Test successful metadata cache read with model validation."""
     cache_path = tmp_path / "success_metadata.json"
@@ -85,11 +87,13 @@ def test_read_metadata_cache_success(tmp_path):
     assert isinstance(result, BookMetadata)
     assert result.title == "Success Book"
 
+
 def test_read_metadata_cache_nonexistent(tmp_path):
     """Test reading from non-existent cache file."""
     cache_path = tmp_path / "nonexistent.json"
     result = read_metadata_cache(cache_path, "p", "m")
     assert result is None
+
 
 def test_read_metadata_cache_invalid_json(tmp_path, caplog):
     """Test reading cache file with invalid JSON."""
@@ -100,6 +104,7 @@ def test_read_metadata_cache_invalid_json(tmp_path, caplog):
         result = read_metadata_cache(cache_path, "p", "m")
         assert result is None
         assert "Failed to read metadata cache" in caplog.text
+
 
 def test_read_metadata_cache_exception(tmp_path, caplog):
     """Test reading cache when an exception occurs."""
@@ -114,6 +119,7 @@ def test_read_metadata_cache_exception(tmp_path, caplog):
         assert result is None
         assert "Failed to read metadata cache" in caplog.text
         assert "Read error" in caplog.text
+
 
 def test_get_metadata_cache_path():
     """Test generating metadata cache path with mode awareness."""
@@ -133,6 +139,7 @@ def test_get_metadata_cache_path():
     assert "img_abc123_" in path.name
     assert ".json" in path.name
 
+
 def test_invalidate_cache_for_provider_model_basic(tmp_path):
     """Test basic clearing of metadata cache files for provider/model."""
     metadata_dir = tmp_path / "metadata"
@@ -148,11 +155,13 @@ def test_invalidate_cache_for_provider_model_basic(tmp_path):
     assert not (metadata_dir / "test2.json").exists()
     assert (metadata_dir / "not_json.txt").exists()
 
+
 def test_invalidate_cache_for_provider_model_nonexistent(tmp_path):
     """Test clearing metadata cache when directory doesn't exist."""
     non_existent = tmp_path / "nonexistent"
     count = invalidate_cache_for_provider_model(cache_dir=non_existent)
     assert count == 0
+
 
 def test_invalidate_cache_for_provider_model_empty(tmp_path):
     """Test clearing metadata cache when directory is empty."""
@@ -160,6 +169,8 @@ def test_invalidate_cache_for_provider_model_empty(tmp_path):
     metadata_dir.mkdir()
     count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
     assert count == 0
+
+
 def test_clear_all_cache(tmp_path):
     """Test clearing all cache types including ocr_debug."""
     cache_dir = tmp_path / "cache"

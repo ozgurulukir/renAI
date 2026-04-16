@@ -22,6 +22,7 @@ def setup_files(tmp_path, num_files, file_size_mb):
 
     # Create random binary data
     import os
+
     data = os.urandom(file_size_mb * 1024 * 1024)
 
     files = []
@@ -47,6 +48,7 @@ def setup_files(tmp_path, num_files, file_size_mb):
 
     return source_dir, dest_dir, files
 
+
 def benchmark():
     import tempfile
 
@@ -67,6 +69,7 @@ def benchmark():
         elapsed = time.time() - start_time
         print(f"Elapsed time: {elapsed:.3f} seconds")
         return elapsed
+
 
 if __name__ == "__main__":
     benchmark()

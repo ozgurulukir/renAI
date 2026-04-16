@@ -98,12 +98,13 @@ class TestGetLogger:
 
 def test_configure_logging_defaults():
     """Test configure_logging with default arguments."""
-    with patch("renai.logging_config.get_log_level", return_value=logging.INFO), \
-         patch("renai.logging_config.is_development", return_value=True), \
-         patch("structlog.configure") as mock_structlog_configure, \
-         patch("logging.basicConfig") as mock_basic_config, \
-         patch("logging.getLogger") as mock_get_logger:
-
+    with (
+        patch("renai.logging_config.get_log_level", return_value=logging.INFO),
+        patch("renai.logging_config.is_development", return_value=True),
+        patch("structlog.configure") as mock_structlog_configure,
+        patch("logging.basicConfig") as mock_basic_config,
+        patch("logging.getLogger") as mock_get_logger,
+    ):
         mock_logger_instance = MagicMock()
         mock_get_logger.return_value = mock_logger_instance
 
@@ -128,10 +129,11 @@ def test_configure_logging_defaults():
 
 def test_configure_logging_explicit_args():
     """Test configure_logging with explicit arguments."""
-    with patch("structlog.configure") as mock_structlog_configure, \
-         patch("logging.basicConfig") as mock_basic_config, \
-         patch("logging.getLogger"):
-
+    with (
+        patch("structlog.configure") as mock_structlog_configure,
+        patch("logging.basicConfig") as mock_basic_config,
+        patch("logging.getLogger"),
+    ):
         configure_logging(log_level=logging.DEBUG, json_output=True)
 
         mock_structlog_configure.assert_called_once()
@@ -139,12 +141,8 @@ def test_configure_logging_explicit_args():
 
         # JSONRenderer should be in processors
         processors = kwargs["processors"]
-        assert any(
-            isinstance(p, structlog.processors.JSONRenderer) for p in processors
-        )
-        assert not any(
-            isinstance(p, structlog.dev.ConsoleRenderer) for p in processors
-        )
+        assert any(isinstance(p, structlog.processors.JSONRenderer) for p in processors)
+        assert not any(isinstance(p, structlog.dev.ConsoleRenderer) for p in processors)
 
         mock_basic_config.assert_called_once_with(
             format="%(message)s", stream=sys.stdout, level=logging.DEBUG
@@ -153,11 +151,12 @@ def test_configure_logging_explicit_args():
 
 def test_configure_logging_development_mode():
     """Test configure_logging output processors in development mode."""
-    with patch("renai.logging_config.is_development", return_value=True), \
-         patch("structlog.configure") as mock_structlog_configure, \
-         patch("logging.basicConfig"), \
-         patch("logging.getLogger"):
-
+    with (
+        patch("renai.logging_config.is_development", return_value=True),
+        patch("structlog.configure") as mock_structlog_configure,
+        patch("logging.basicConfig"),
+        patch("logging.getLogger"),
+    ):
         # json_output is None so it uses `not is_development()`
         configure_logging(log_level=logging.INFO)
 
@@ -167,21 +166,18 @@ def test_configure_logging_development_mode():
         processors = kwargs["processors"]
 
         # In dev mode, should use ConsoleRenderer, not JSONRenderer
-        assert any(
-            isinstance(p, structlog.dev.ConsoleRenderer) for p in processors
-        )
-        assert not any(
-            isinstance(p, structlog.processors.JSONRenderer) for p in processors
-        )
+        assert any(isinstance(p, structlog.dev.ConsoleRenderer) for p in processors)
+        assert not any(isinstance(p, structlog.processors.JSONRenderer) for p in processors)
 
 
 def test_configure_logging_production_mode():
     """Test configure_logging output processors in production mode."""
-    with patch("renai.logging_config.is_development", return_value=False), \
-         patch("structlog.configure") as mock_structlog_configure, \
-         patch("logging.basicConfig"), \
-         patch("logging.getLogger"):
-
+    with (
+        patch("renai.logging_config.is_development", return_value=False),
+        patch("structlog.configure") as mock_structlog_configure,
+        patch("logging.basicConfig"),
+        patch("logging.getLogger"),
+    ):
         # json_output is None so it uses `not is_development()`
         configure_logging(log_level=logging.INFO)
 
@@ -191,12 +187,8 @@ def test_configure_logging_production_mode():
         processors = kwargs["processors"]
 
         # In production mode, should use JSONRenderer, not ConsoleRenderer
-        assert any(
-            isinstance(p, structlog.processors.JSONRenderer) for p in processors
-        )
-        assert not any(
-            isinstance(p, structlog.dev.ConsoleRenderer) for p in processors
-        )
+        assert any(isinstance(p, structlog.processors.JSONRenderer) for p in processors)
+        assert not any(isinstance(p, structlog.dev.ConsoleRenderer) for p in processors)
 
 
 @patch("renai.logging_config.get_logger")
@@ -246,4 +238,3 @@ def test_get_api_logger(mock_get_logger):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

@@ -20,7 +20,7 @@ class TestBuildBookFilename:
             author="Kevin Murphy",
             year=2012,
             category="Technology",
-            language="en"
+            language="en",
         )
         result = build_book_filename(data, ".pdf")
         assert "Machine Learning" in result
@@ -56,11 +56,9 @@ class TestBuildImageFilename:
             category="Photo",
             language="en",
             visual_context="Beach",
-            exif_date="2024-07-15"
+            exif_date="2024-07-15",
         )
-        result = build_image_filename(
-            data, ".jpg", add_exif_date=True
-        )
+        result = build_image_filename(data, ".jpg", add_exif_date=True)
         assert "Sunset" in result
         assert "[2024-07-15]" in result
 
@@ -76,7 +74,9 @@ class TestBuildVisionFilename:
 
     def test_model_conversion(self):
         """Test vision filename with BookMetadata model."""
-        data = BookMetadata(title="Research Paper", author="Author", year=2023, category="Paper", language="en")
+        data = BookMetadata(
+            title="Research Paper", author="Author", year=2023, category="Paper", language="en"
+        )
         result = build_vision_filename(data, ".pdf")
         assert "Research Paper" in result
         assert "(2023)" in result

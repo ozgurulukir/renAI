@@ -32,13 +32,16 @@ class TestLoadCategories:
         from renai.settings import load_categories_from_file
 
         user_file = tmp_path / "categories.toml"
-        user_file.write_text(
-            '[en]\ncategories = ["UserEn"]\n[tr]\ncategories = ["UserTr"]\n'
-        )
+        user_file.write_text('[en]\ncategories = ["UserEn"]\n[tr]\ncategories = ["UserTr"]\n')
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path / "nonexistent_pkg"):
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path / "nonexistent_pkg"),
+        ):
             result = load_categories_from_file()
             assert result["categories"] == {"en": ["UserEn"], "tr": ["UserTr"]}
 
@@ -48,33 +51,39 @@ class TestLoadCategories:
 
         user_file = tmp_path / "nonexistent.toml"
         package_file = tmp_path / "categories.default.toml"
-        package_file.write_text(
-            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
-        )
+        package_file.write_text('[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n')
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
-                result = load_categories_from_file()
-                assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
+        ):
+            result = load_categories_from_file()
+            assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
     def test_user_config_empty_categories_fallback_to_package(self, tmp_path):
         """Should fallback to package config if user config has no categories."""
         from renai.settings import load_categories_from_file
 
         user_file = tmp_path / "categories.toml"
-        user_file.write_text('[en]\n[tr]\n')
+        user_file.write_text("[en]\n[tr]\n")
 
         package_file = tmp_path / "categories.default.toml"
-        package_file.write_text(
-            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
-        )
+        package_file.write_text('[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n')
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
-                result = load_categories_from_file()
-                assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
+        ):
+            result = load_categories_from_file()
+            assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
     def test_user_invalid(self, tmp_path):
         """Should fallback and log warning if user config is invalid."""
@@ -84,18 +93,21 @@ class TestLoadCategories:
         user_file.write_text("invalid toml = ")
 
         package_file = tmp_path / "categories.default.toml"
-        package_file.write_text(
-            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
-        )
+        package_file.write_text('[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n')
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
-                with patch("logging.warning") as mock_warn:
-                    result = load_categories_from_file()
-                    assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
-                    mock_warn.assert_called_once()
-                    assert "Could not load user categories" in mock_warn.call_args[0][0]
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
+        ):
+            with patch("logging.warning") as mock_warn:
+                result = load_categories_from_file()
+                assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                mock_warn.assert_called_once()
+                assert "Could not load user categories" in mock_warn.call_args[0][0]
 
     def test_user_read_error(self, tmp_path):
         """Should fallback and log warning if user config cannot be read."""
@@ -105,27 +117,30 @@ class TestLoadCategories:
         user_file.touch()
 
         package_file = tmp_path / "categories.default.toml"
-        package_file.write_text(
-            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
-        )
+        package_file.write_text('[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n')
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
-                original_open = open
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
+        ):
+            original_open = open
 
-                def mock_open(file, *args, **kwargs):
-                    if str(file) == str(user_file):
-                        raise OSError("Permission denied")
-                    return original_open(file, *args, **kwargs)
+            def mock_open(file, *args, **kwargs):
+                if str(file) == str(user_file):
+                    raise OSError("Permission denied")
+                return original_open(file, *args, **kwargs)
 
-                with patch("builtins.open", side_effect=mock_open):
-                    with patch("logging.warning") as mock_warn:
-                        result = load_categories_from_file()
+            with patch("builtins.open", side_effect=mock_open):
+                with patch("logging.warning") as mock_warn:
+                    result = load_categories_from_file()
 
-                        assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
-                        mock_warn.assert_called_once()
-                        assert "Could not load user categories" in mock_warn.call_args[0][0]
+                    assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+                    mock_warn.assert_called_once()
+                    assert "Could not load user categories" in mock_warn.call_args[0][0]
 
     def test_user_missing_keys(self, tmp_path):
         """Should fallback if user config lacks matching categories."""
@@ -135,15 +150,18 @@ class TestLoadCategories:
         user_file.write_text('[en]\nwrong_key = ["UserEn"]\n')
 
         package_file = tmp_path / "categories.default.toml"
-        package_file.write_text(
-            '[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n'
-        )
+        package_file.write_text('[en]\ncategories = ["PkgEn"]\n[tr]\ncategories = ["PkgTr"]\n')
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
-                result = load_categories_from_file()
-                assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
+        ):
+            result = load_categories_from_file()
+            assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
 
     def test_package_invalid(self, tmp_path):
         """Should return empty and log warning if both configs missing/invalid."""
@@ -154,15 +172,20 @@ class TestLoadCategories:
         package_file = tmp_path / "categories.default.toml"
         package_file.write_text("invalid toml = ")
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
-                with patch("logging.warning") as mock_warn:
-                    result = load_categories_from_file()
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
+        ):
+            with patch("logging.warning") as mock_warn:
+                result = load_categories_from_file()
 
-                    assert result == {"categories": {}, "image_categories": {}}
-                    mock_warn.assert_called_once()
-                    assert "Could not load package categories" in mock_warn.call_args[0][0]
+                assert result == {"categories": {}, "image_categories": {}}
+                mock_warn.assert_called_once()
+                assert "Could not load package categories" in mock_warn.call_args[0][0]
 
     def test_package_read_error(self, tmp_path):
         """Should return empty and log warning if package config cannot be read."""
@@ -173,23 +196,28 @@ class TestLoadCategories:
         package_file = tmp_path / "categories.default.toml"
         package_file.touch()
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path):
-                original_open = open
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
+        ):
+            original_open = open
 
-                def mock_open(file, *args, **kwargs):
-                    if str(file) == str(package_file):
-                        raise OSError("Permission denied")
-                    return original_open(file, *args, **kwargs)
+            def mock_open(file, *args, **kwargs):
+                if str(file) == str(package_file):
+                    raise OSError("Permission denied")
+                return original_open(file, *args, **kwargs)
 
-                with patch("builtins.open", side_effect=mock_open):
-                    with patch("logging.warning") as mock_warn:
-                        result = load_categories_from_file()
+            with patch("builtins.open", side_effect=mock_open):
+                with patch("logging.warning") as mock_warn:
+                    result = load_categories_from_file()
 
-                        assert result == {"categories": {}, "image_categories": {}}
-                        mock_warn.assert_called_once()
-                        assert "Could not load package categories" in mock_warn.call_args[0][0]
+                    assert result == {"categories": {}, "image_categories": {}}
+                    mock_warn.assert_called_once()
+                    assert "Could not load package categories" in mock_warn.call_args[0][0]
 
     def test_empty(self, tmp_path):
         """Should return empty dict if no configs exist."""
@@ -198,11 +226,16 @@ class TestLoadCategories:
         user_file = tmp_path / "nonexistent1.toml"
         package_dir = tmp_path / "nonexistent_dir"
 
-        with patch("renai.config.providers.CATEGORIES_USER_FILE", user_file), \
-             patch("renai.config.providers.CATEGORIES_DEFAULT_FILE", package_dir / "nonexistent_default.toml"), \
-             patch("renai.config.providers.PACKAGE_CONFIG_DIR", package_dir):
-                result = load_categories_from_file()
-                assert result == {"categories": {}, "image_categories": {}}
+        with (
+            patch("renai.config.providers.CATEGORIES_USER_FILE", user_file),
+            patch(
+                "renai.config.providers.CATEGORIES_DEFAULT_FILE",
+                package_dir / "nonexistent_default.toml",
+            ),
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", package_dir),
+        ):
+            result = load_categories_from_file()
+            assert result == {"categories": {}, "image_categories": {}}
 
 
 class TestCategories:
@@ -397,9 +430,14 @@ class TestLoadEvalModels:
         config_dir.mkdir()
         pkg_dir.mkdir()
 
-        with patch("renai.config.providers.PACKAGE_CONFIG_DIR", pkg_dir), \
-             patch("renai.config.providers.EVAL_MODELS_USER_FILE", config_dir / "eval_models.toml"), \
-             patch("renai.config.providers.EVAL_MODELS_DEFAULT_FILE", tmp_path / "nonexistent_default.toml"):
+        with (
+            patch("renai.config.providers.PACKAGE_CONFIG_DIR", pkg_dir),
+            patch("renai.config.providers.EVAL_MODELS_USER_FILE", config_dir / "eval_models.toml"),
+            patch(
+                "renai.config.providers.EVAL_MODELS_DEFAULT_FILE",
+                tmp_path / "nonexistent_default.toml",
+            ),
+        ):
             yield config_dir, pkg_dir
 
     def test_load_user_config_success(self, mock_dirs):
@@ -409,6 +447,7 @@ class TestLoadEvalModels:
         user_file.write_text('[test_provider]\nmodels = ["user_model_1", "user_model_2"]')
 
         from renai.settings import load_eval_models
+
         result = load_eval_models("test_provider")
         assert result == ["user_model_1", "user_model_2"]
 
@@ -418,12 +457,13 @@ class TestLoadEvalModels:
 
         # Invalid TOML
         user_file = config_dir / "eval_models.toml"
-        user_file.write_text('invalid toml content')
+        user_file.write_text("invalid toml content")
 
         pkg_file = pkg_dir / "eval_models.default.toml"
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
 
         from renai.settings import load_eval_models
+
         with patch("logging.warning") as mock_warn:
             result = load_eval_models("test_provider")
             assert result == ["pkg_model_1"]
@@ -441,6 +481,7 @@ class TestLoadEvalModels:
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
 
         from renai.settings import load_eval_models
+
         result = load_eval_models("test_provider")
         assert result == ["pkg_model_1"]
 
@@ -452,6 +493,7 @@ class TestLoadEvalModels:
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1", "pkg_model_2"]')
 
         from renai.settings import load_eval_models
+
         result = load_eval_models("test_provider")
         assert result == ["pkg_model_1", "pkg_model_2"]
 
@@ -466,15 +508,16 @@ class TestLoadEvalModels:
         pkg_file.write_text('[other_provider]\nmodels = ["model_2"]')
 
         from renai.settings import load_eval_models
+
         result = load_eval_models("test_provider")
         assert result == []
 
     def test_load_no_files_found(self, mock_dirs):
         """Should return empty list if neither config file exists."""
         from renai.settings import load_eval_models
+
         result = load_eval_models("test_provider")
         assert result == []
-
 
     def test_load_user_config_open_error(self, mock_dirs):
         """Should fallback to package default if opening user config raises an exception."""
@@ -487,13 +530,13 @@ class TestLoadEvalModels:
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
 
         original_open = builtins.open
+
         def mock_open(file, *args, **kwargs):
             if str(user_file) == str(file):
                 raise PermissionError("Permission denied")
             return original_open(file, *args, **kwargs)
 
-        with patch("builtins.open", side_effect=mock_open), \
-             patch("logging.warning") as mock_warn:
+        with patch("builtins.open", side_effect=mock_open), patch("logging.warning") as mock_warn:
             result = load_eval_models("test_provider")
             assert result == ["pkg_model_1"]
             mock_warn.assert_called_once()
@@ -509,13 +552,13 @@ class TestLoadEvalModels:
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
 
         original_open = builtins.open
+
         def mock_open(file, *args, **kwargs):
             if str(pkg_file) == str(file):
                 raise PermissionError("Permission denied")
             return original_open(file, *args, **kwargs)
 
-        with patch("builtins.open", side_effect=mock_open), \
-             patch("logging.warning") as mock_warn:
+        with patch("builtins.open", side_effect=mock_open), patch("logging.warning") as mock_warn:
             result = load_eval_models("test_provider")
             assert result == []
             mock_warn.assert_called_once()
@@ -528,9 +571,10 @@ class TestLoadEvalModels:
         _, pkg_dir = mock_dirs
 
         pkg_file = pkg_dir / "eval_models.default.toml"
-        pkg_file.write_text('invalid toml content')
+        pkg_file.write_text("invalid toml content")
 
         from renai.settings import load_eval_models
+
         with patch("logging.warning") as mock_warn:
             result = load_eval_models("test_provider")
             assert result == []
@@ -581,7 +625,9 @@ class TestGetEffectiveModel:
 
         with patch("renai.settings.app_settings.model", None):
             with patch("renai.settings.provider_settings.deepinfra_model", None):
-                with patch("renai.config.providers.get_default_model", return_value="default-model") as mock_get_default:
+                with patch(
+                    "renai.config.providers.get_default_model", return_value="default-model"
+                ) as mock_get_default:
                     result = get_effective_model("deepinfra")
                     assert result == "default-model"
                     mock_get_default.assert_called_once_with("deepinfra")
@@ -595,12 +641,18 @@ class TestGetDefaultModel:
         from renai.settings import ProviderConfig, app_settings, get_default_model
 
         # Ensure they exist in the registry for this test
-        app_settings.providers["openai"] = ProviderConfig(default_model="gpt-4", base_url="https://api.openai.com/v1")
-        app_settings.providers["deepinfra"] = ProviderConfig(default_model="llama3-70b", base_url="https://api.deepinfra.com/v1")
+        app_settings.providers["openai"] = ProviderConfig(
+            default_model="gpt-4", base_url="https://api.openai.com/v1"
+        )
+        app_settings.providers["deepinfra"] = ProviderConfig(
+            default_model="llama3-70b", base_url="https://api.deepinfra.com/v1"
+        )
 
         assert get_default_model("openai") == "gpt-4"
         assert get_default_model("deepinfra") == "llama3-70b"
-        assert get_default_model("unknown-at-all") == "llama3" # Fallback since not in mocked providers
+        assert (
+            get_default_model("unknown-at-all") == "llama3"
+        )  # Fallback since not in mocked providers
 
     def test_unknown_provider_default(self):
         """Should return 'llama3' for unknown provider when CUSTOM_MODEL is not set."""
@@ -643,8 +695,12 @@ class TestSettingsAccessorFunctions:
         from renai.settings import ProviderConfig, app_settings, get_base_url
 
         # Setup registry
-        app_settings.providers["deepinfra"] = ProviderConfig(default_model="some-model", base_url="https://api.deepinfra.com/v1")
-        app_settings.providers["custom"] = ProviderConfig(default_model="some-model", base_url="http://localhost:8000/v1")
+        app_settings.providers["deepinfra"] = ProviderConfig(
+            default_model="some-model", base_url="https://api.deepinfra.com/v1"
+        )
+        app_settings.providers["custom"] = ProviderConfig(
+            default_model="some-model", base_url="http://localhost:8000/v1"
+        )
 
         assert get_base_url("deepinfra") == "https://api.deepinfra.com/v1"
         assert get_base_url("custom") == "http://localhost:8000/v1"
@@ -660,7 +716,9 @@ class TestSettingsAccessorFunctions:
         """Should return correct default model for provider."""
         from renai.settings import ProviderConfig, app_settings, get_default_model
 
-        app_settings.providers["deepinfra"] = ProviderConfig(default_model="llama3", base_url="https://api.deepinfra.com/v1")
+        app_settings.providers["deepinfra"] = ProviderConfig(
+            default_model="llama3", base_url="https://api.deepinfra.com/v1"
+        )
         assert get_default_model("deepinfra") == "llama3"
 
         with patch.dict("os.environ", {"CUSTOM_MODEL": "custom_model_env"}):
@@ -682,8 +740,11 @@ class TestSettingsAccessorFunctions:
         # 3. Default model
         with patch("renai.settings.app_settings.model", None):
             with patch("renai.settings.provider_settings.deepinfra_model", None):
-                with patch("renai.config.providers.get_default_model", return_value="default_model"):
+                with patch(
+                    "renai.config.providers.get_default_model", return_value="default_model"
+                ):
                     assert get_effective_model("deepinfra") == "default_model"
+
 
 class TestGetApiKey:
     """Test get_api_key function."""
@@ -708,11 +769,12 @@ class TestGetApiKey:
         """Should retrieve keys for all standard providers."""
         from renai.settings import get_api_key
 
-        with patch("renai.settings.provider_settings.deepinfra_api_key", "key1"), \
-             patch("renai.settings.provider_settings.openrouter_api_key", "key2"), \
-             patch("renai.settings.provider_settings.openai_api_key", "key3"), \
-             patch("renai.settings.provider_settings.custom_api_key", "key4"):
-
+        with (
+            patch("renai.settings.provider_settings.deepinfra_api_key", "key1"),
+            patch("renai.settings.provider_settings.openrouter_api_key", "key2"),
+            patch("renai.settings.provider_settings.openai_api_key", "key3"),
+            patch("renai.settings.provider_settings.custom_api_key", "key4"),
+        ):
             with patch.dict("os.environ", {}, clear=True):
                 assert get_api_key("deepinfra") == "key1"
                 assert get_api_key("openrouter") == "key2"
@@ -760,7 +822,9 @@ class TestEffectiveModel:
 
         with patch("renai.settings.app_settings.model", None):
             with patch("renai.settings.provider_settings.deepinfra_model", None):
-                with patch("renai.config.providers.get_default_model", return_value="default-model"):
+                with patch(
+                    "renai.config.providers.get_default_model", return_value="default-model"
+                ):
                     result = get_effective_model("deepinfra")
                     assert result == "default-model"
 
@@ -781,14 +845,18 @@ class TestGetBaseUrl:
         """Should return correct base url for known providers."""
         from renai.settings import ProviderConfig, app_settings, get_base_url
 
-        app_settings.providers["openai"] = ProviderConfig(default_model="gpt-4", base_url="https://api.openai.com/v1")
+        app_settings.providers["openai"] = ProviderConfig(
+            default_model="gpt-4", base_url="https://api.openai.com/v1"
+        )
         assert get_base_url("openai") == "https://api.openai.com/v1"
 
     def test_get_base_url_unknown_provider_with_settings_custom_url(self):
         """Should return provider_settings.custom_api_base_url if provider is unknown."""
         from renai.settings import get_base_url
 
-        with patch("renai.settings.provider_settings.custom_api_base_url", "http://custom-url:9000/v1"):
+        with patch(
+            "renai.settings.provider_settings.custom_api_base_url", "http://custom-url:9000/v1"
+        ):
             assert get_base_url("unknown_provider") == "http://custom-url:9000/v1"
 
     def test_get_base_url_unknown_provider_with_env_override(self):

@@ -10,7 +10,7 @@ def mock_if_missing(module_name):
     """
     try:
         if module_name in sys.modules:
-            return
+            return None
         __import__(module_name)
     except ImportError:
         # Create a mock that behaves like a package if it has submodules
@@ -22,8 +22,10 @@ def mock_if_missing(module_name):
         if module_name == "typer.testing":
             mock.CliRunner = MagicMock
         if module_name == "typer":
+
             class Exit(Exception):
                 pass
+
             mock.Exit = Exit
             mock.Option = MagicMock()
             mock.Argument = MagicMock()
@@ -31,6 +33,7 @@ def mock_if_missing(module_name):
         sys.modules[module_name] = mock
         return mock
     return None
+
 
 # Global mocks for environment-restricted dependencies
 mock_if_missing("platformdirs")

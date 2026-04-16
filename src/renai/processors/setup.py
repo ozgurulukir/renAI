@@ -3,7 +3,6 @@ setup.py - Interactive initialization wizard for renAI.
 Handles environment setup, provider configuration, and configuration file creation.
 """
 
-
 import shutil
 
 from rich.console import Console
@@ -22,22 +21,27 @@ from ..settings import (
 )
 
 # Custom theme for a premium look
-custom_theme = Theme({
-    "info": "cyan",
-    "warning": "yellow",
-    "error": "red",
-    "success": "green",
-    "highlight": "magenta",
-})
+custom_theme = Theme(
+    {
+        "info": "cyan",
+        "warning": "yellow",
+        "error": "red",
+        "success": "green",
+        "highlight": "magenta",
+    }
+)
 console = Console(theme=custom_theme)
+
 
 def run_init_wizard():
     """Run the interactive setup wizard."""
-    console.print(Panel.fit(
-        "[bold cyan]renAI Configuration Wizard[/bold cyan]\n"
-        "[italic]Setting up your environment for AI-powered document organization.[/italic]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]renAI Configuration Wizard[/bold cyan]\n"
+            "[italic]Setting up your environment for AI-powered document organization.[/italic]",
+            border_style="cyan",
+        )
+    )
 
     # 1. Ensure directories exist
     initialize_directories()
@@ -45,7 +49,9 @@ def run_init_wizard():
 
     # 2. Check if user config already exists
     if SETTINGS_USER_FILE.exists() or SECRETS_FILE.exists():
-        if not Confirm.ask("[warning]User configuration files already exist. Overwrite?[/warning]", default=False):
+        if not Confirm.ask(
+            "[warning]User configuration files already exist. Overwrite?[/warning]", default=False
+        ):
             console.print("[info]Setup cancelled.[/info]")
             return
 
@@ -53,22 +59,24 @@ def run_init_wizard():
     console.print("\n[highlight]Step 1: Provider Setup[/highlight]")
     available_providers = list(PROVIDERS.keys()) + ["custom"]
     provider = Prompt.ask(
-        "Select your preferred LLM provider",
-        choices=available_providers,
-        default="deepinfra"
+        "Select your preferred LLM provider", choices=available_providers, default="deepinfra"
     )
 
     secrets = {}
     config = {"provider": provider}
 
     if provider == "custom":
-        config["custom_api_base_url"] = Prompt.ask("Custom API Base URL", default="http://localhost:8000/v1")
+        config["custom_api_base_url"] = Prompt.ask(
+            "Custom API Base URL", default="http://localhost:8000/v1"
+        )
         config["custom_model"] = Prompt.ask("Custom Model Name", default="llama3")
         config["custom_api_key"] = Prompt.ask("Custom API Key", default="not-required")
     else:
         # Suggest default model from provider pool
         default_model = PROVIDERS.get(provider).default_model if provider in PROVIDERS else ""
-        config["model"] = Prompt.ask(f"Default Model for {provider.capitalize()}", default=default_model)
+        config["model"] = Prompt.ask(
+            f"Default Model for {provider.capitalize()}", default=default_model
+        )
 
         api_key = Prompt.ask(f"Enter your {provider.capitalize()} API Key", password=True)
         secrets[f"{provider}_api_key"] = api_key
@@ -80,7 +88,7 @@ def run_init_wizard():
         config["fallback_mode"] = Prompt.ask(
             "Extraction fallback strategy",
             choices=["none", "ocr", "vision", "move"],
-            default=app_settings.fallback_mode
+            default=app_settings.fallback_mode,
         )
     else:
         console.print("[info]Using factory defaults for general settings.[/info]")
@@ -116,7 +124,9 @@ def run_init_wizard():
         console.print("[info]  - Default files are also available for reference.[/info]")
 
     except ImportError:
-        console.print("[error]Missing 'tomli-w' dependency. Please install it using 'uv sync' or 'pip install tomli-w'.[/error]")
+        console.print(
+            "[error]Missing 'tomli-w' dependency. Please install it using 'uv sync' or 'pip install tomli-w'.[/error]"
+        )
         return
     except Exception as e:
         console.print(f"[error]Failed to save configuration: {e}[/error]")

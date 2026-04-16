@@ -42,121 +42,96 @@ class AppSettings(BaseSettings):
 
     # Provider settings
     provider: str = Field(default="deepinfra", description="LLM provider")
-    model: str | None = Field(
-        default=None, description="Default model name override"
-    )
+    model: str | None = Field(default=None, description="Default model name override")
 
     # Processing settings
-    workers: int = Field(
-        default=4, ge=1, le=32, description="Number of concurrent workers"
-    )
-    text_length: int = Field(
-        default=10000, ge=100, le=100000, description="Target text length"
-    )
-    text_extraction: str = Field(
-        default="mixed", description="Extraction mode: mixed or regular"
-    )
-    extraction_pages: int = Field(
-        default=10, ge=1, description="Number of pages to read from PDFs"
-    )
-    extractor: str = Field(
-        default="pymupdf", description="PDF text extractor library"
-    )
+    workers: int = Field(default=4, ge=1, le=32, description="Number of concurrent workers")
+    text_length: int = Field(default=10000, ge=100, le=100000, description="Target text length")
+    text_extraction: str = Field(default="mixed", description="Extraction mode: mixed or regular")
+    extraction_pages: int = Field(default=10, ge=1, description="Number of pages to read from PDFs")
+    extractor: str = Field(default="pymupdf", description="PDF text extractor library")
 
     # Behavior settings
-    show_warnings: bool = Field(
-        default=True, description="Show warnings before processing"
-    )
-    recursive: bool = Field(
-        default=True, description="Process subdirectories recursively"
-    )
+    show_warnings: bool = Field(default=True, description="Show warnings before processing")
+    recursive: bool = Field(default=True, description="Process subdirectories recursively")
 
     # Text and Content heuristics
     min_sufficient_text: int = Field(
-        default=100, ge=10,
+        default=100,
+        ge=10,
         description="Minimum characters for successful extraction",
     )
     mixed_chunk_count: int = Field(
-        default=10, ge=1,
+        default=10,
+        ge=1,
         description="Number of chunks for mixed extraction mode",
     )
     max_filename_length: int = Field(
-        default=200, ge=50, le=255,
+        default=200,
+        ge=50,
+        le=255,
         description="Maximum length for sanitized filenames",
     )
 
     # LLM extraction parameters
-    llm_max_tokens: int = Field(
-        default=1024, ge=256, description="Max tokens for LLM response"
+    llm_max_tokens: int = Field(default=1024, ge=256, description="Max tokens for LLM response")
+    llm_rpm_limit: int = Field(
+        default=60, ge=0, description="Requests Per Minute limit (0 for unlimited)"
     )
     llm_temperature: float = Field(
-        default=0.3, ge=0.0, le=2.0,
+        default=0.3,
+        ge=0.0,
+        le=2.0,
         description="Initial temperature for metadata extraction",
     )
     llm_temperature_retry: float = Field(
-        default=0.5, ge=0.0, le=2.0,
+        default=0.5,
+        ge=0.0,
+        le=2.0,
         description="Retry temperature for metadata extraction",
     )
-    llm_max_retries: int = Field(
-        default=2, ge=0, description="Max retries for metadata extraction"
-    )
+    llm_max_retries: int = Field(default=2, ge=0, description="Max retries for metadata extraction")
 
     # Vision and Image settings
-    rename_images: bool = Field(
-        default=False, description="Rename image files using vision"
-    )
-    exif: bool = Field(
-        default=False, description="Add EXIF date to image filenames"
-    )
+    rename_images: bool = Field(default=False, description="Rename image files using vision")
+    exif: bool = Field(default=False, description="Add EXIF date to image filenames")
     vision_image_max_size: int = Field(
-        default=1024, ge=512,
+        default=1024,
+        ge=512,
         description="Max size (pixels) for optimized vision images",
     )
     vision_image_quality: int = Field(
-        default=85, ge=1, le=100,
+        default=85,
+        ge=1,
+        le=100,
         description="JPEG quality for vision images",
     )
-    vision_dpi: int = Field(
-        default=150, ge=72, description="DPI for PDF-to-image conversion"
-    )
+    vision_dpi: int = Field(default=150, ge=72, description="DPI for PDF-to-image conversion")
 
     # Fallback settings
-    fallback_mode: str = Field(
-        default="none", description="Extraction failure strategy"
-    )
+    fallback_mode: str = Field(default="none", description="Extraction failure strategy")
     move_scan_failures: bool = Field(
         default=False, description="Move failed files to Scan_Failures"
     )
 
     # OCR settings
-    ocr_enhanced: bool = Field(
-        default=False, description="Enable high-quality OCR"
-    )
-    skip_needs_ocr: bool = Field(
-        default=False, description="Skip OCR for files needing fallback"
-    )
-    move_ocr_failures: bool = Field(
-        default=False, description="Move OCR failures to folder"
-    )
+    ocr_enhanced: bool = Field(default=False, description="Enable high-quality OCR")
+    skip_needs_ocr: bool = Field(default=False, description="Skip OCR for files needing fallback")
+    move_ocr_failures: bool = Field(default=False, description="Move OCR failures to folder")
 
     # Tool settings
-    use_mutool: bool = Field(
-        default=False, description="Use mutool for PDF-to-image"
-    )
-    mutool_path: str = Field(
-        default="mutool", description="Path to mutool executable"
-    )
+    use_mutool: bool = Field(default=False, description="Use mutool for PDF-to-image")
+    mutool_path: str = Field(default="mutool", description="Path to mutool executable")
 
     # Other heuristics
     benchmark_sample_count: int = Field(
-        default=3, ge=1,
+        default=3,
+        ge=1,
         description="Number of files to sample for benchmark",
     )
 
     # Debug settings
-    debug_ocr: bool = Field(
-        default=False, description="Save OCR debug images"
-    )
+    debug_ocr: bool = Field(default=False, description="Save OCR debug images")
 
     # Provider Registry
     providers: dict[str, ProviderConfig] = Field(
@@ -203,12 +178,8 @@ class ProviderSettings(BaseSettings):
         default="http://localhost:8000/v1",
         description="Custom provider base URL",
     )
-    custom_api_key: str = Field(
-        default="not-required", description="Custom provider API key"
-    )
-    custom_model: str = Field(
-        default="llama3", description="Custom provider model name"
-    )
+    custom_api_key: str = Field(default="not-required", description="Custom provider API key")
+    custom_model: str = Field(default="llama3", description="Custom provider model name")
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 

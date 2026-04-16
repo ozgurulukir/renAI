@@ -35,9 +35,7 @@ class TestPyMuPDFExtractor:
                 result = extractor.extract_text(Path("test.pdf"))
 
             assert result is None
-            assert (
-                "PyMuPDF extraction failed for test.pdf: PyMuPDF failed" in caplog.text
-            )
+            assert "PyMuPDF extraction failed for test.pdf: PyMuPDF failed" in caplog.text
 
 
 class TestPDFPlumberExtractor:
@@ -79,9 +77,7 @@ class TestPDFPlumberExtractor:
                 result = extractor.extract_text(Path("test.pdf"))
 
             assert result is None
-            assert (
-                "pdfplumber extraction failed for test.pdf: Open failed" in caplog.text
-            )
+            assert "pdfplumber extraction failed for test.pdf: Open failed" in caplog.text
 
 
 class TestGetExtractor:
@@ -160,9 +156,7 @@ class TestPyPDFExtractor:
                     result = extractor.extract_text(Path("test.pdf"))
 
                     assert result is None
-                    assert (
-                        "pypdf extraction failed for test.pdf: Open failed" in caplog.text
-                    )
+                    assert "pypdf extraction failed for test.pdf: Open failed" in caplog.text
 
     def test_pypdf_extract_text_page_returns_none(self):
         """Test handling when page.extract_text returns None."""
@@ -225,9 +219,7 @@ class TestPyPdfium2Extractor:
                 result = extractor.extract_text(Path("test.pdf"))
 
             assert result is None
-            assert (
-                "pypdfium2 extraction failed for test.pdf: Open failed" in caplog.text
-            )
+            assert "pypdfium2 extraction failed for test.pdf: Open failed" in caplog.text
 
     def test_pypdfium2_extract_text_page_returns_none(self):
         """Test handling when get_text_bounded returns None."""

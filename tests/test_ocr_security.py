@@ -6,19 +6,14 @@ from renai.engines.ocr import OCREngine
 
 
 class TestOCREngineSecurity:
-
     @patch("shutil.which")
     @patch("subprocess.run")
     def test_validate_mutool_valid(self, mock_run, mock_which):
         """Test validation with a legitimate-looking mutool."""
         mock_which.return_value = "/usr/bin/mutool"
-        mock_run.return_value = MagicMock(
-            stdout="mutool version 1.23.0\n",
-            stderr="",
-            returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout="mutool version 1.23.0\n", stderr="", returncode=0)
 
-        engine = OCREngine(use_mutool=False) # Don't trigger validation in init yet
+        engine = OCREngine(use_mutool=False)  # Don't trigger validation in init yet
         result = engine._validate_mutool("mutool")
 
         # Use Path for platform-agnostic comparison
@@ -51,11 +46,9 @@ class TestOCREngineSecurity:
     @patch("subprocess.run")
     def test_validate_mutool_wrong_output(self, mock_run, mock_which):
         """Test validation when executable is named mutool but gives wrong output."""
-        mock_which.return_value = "/tmp/mutool" # Name starts with mutool
+        mock_which.return_value = "/tmp/mutool"  # Name starts with mutool
         mock_run.return_value = MagicMock(
-            stdout="I am a malicious script\n",
-            stderr="",
-            returncode=0
+            stdout="I am a malicious script\n", stderr="", returncode=0
         )
 
         engine = OCREngine(use_mutool=False)
@@ -118,13 +111,10 @@ class TestOCREngineSecurity:
     def test_validate_mutool_safe_characters(self, mock_run, mock_which):
         """Test validation with a path containing safe but unusual characters (e.g. spaces, parentheses)."""
         import os
+
         safe_path = os.path.abspath("/usr/bin/mutool (x86) for pdf")
         mock_which.return_value = safe_path
-        mock_run.return_value = MagicMock(
-            stdout="mutool version 1.23.0\n",
-            stderr="",
-            returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout="mutool version 1.23.0\n", stderr="", returncode=0)
 
         engine = OCREngine(use_mutool=False)
         result = engine._validate_mutool(safe_path)

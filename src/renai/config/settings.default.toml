@@ -20,6 +20,7 @@ max_filename_length = 200
 
 # LLM extraction parameters
 llm_max_tokens = 1024
+llm_rpm_limit = 60
 llm_temperature = 0.3
 llm_temperature_retry = 0.5
 llm_max_retries = 2

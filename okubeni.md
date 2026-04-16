@@ -2,7 +2,7 @@
 
 `renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı meta veriler (metadata) çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
 
-Son güncelleme: 2026-04-10
+Son güncelleme: 2026-04-16
 
 ---
 
@@ -59,8 +59,11 @@ Açıklama -- [Tarih] -- (Dil).uzantı
 | **Gelişmiş OCR** | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu |
 | **mutool Desteği** | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır |
 | **Akıllı Önbellekleme** | SHA256 tabanlı önbellekleme sistemi (Hem metin hem metadata için ayrı katmanlar). |
+| **AsyncIO-First** | Bloklamayan I/O ve yüksek eşzamanlılık için `asyncio` kullanan tamamen asenkron mimari |
+| **Async RPM Sınırı** | `AsyncRateLimiter` ile eşzamanlı görevlerde sağlayıcı limitlerine tam uyum |
+| **Ruff Desteği** | Kod stili tutarlılığı için ultra hızlı linting ve formatlama |
 | **SSoT Mimarisi** | Sıkı tipli Pydantic modelleri kullanarak meta veriler için Tek Gerçek Kaynak (SSoT) |
-| **Modüler Promptlar** | Dinamik şema enjeksiyonuna sahip merkezi ve yeniden kullanılabilir prompt bileşenleri |
+| **Modüler Promptlar** | Dinamik JSON şema enjeksiyonuna sahip merkezi ve yeniden kullanılabilir prompt bileşenleri |
 | **Bütünleşik İyileştirme** | Hem metin hem de görsel modları için standartlaştırılmış ikinci geçiş 'Kıdemli Editör' mantığı |
 | **Token Optimizasyonu** | Bağlamdan bağımsız iyileştirme geçişi ile ikincil API maliyetlerinde ~%90 tasarruf |
 | **Özel Kategoriler** | `categories.toml` dosyasında dil başına kendi kategorilerinizi tanımlayın |
@@ -628,7 +631,7 @@ categories = [
 │       │   ├── text_extractor.py
 │       │   └── visual.py
 │       └── ...
-├── tests/                       # Senkronize edilmiş birim testleri
+├── tests/                       # Asenkron birim testleri (pytest-asyncio)
 ├── pyproject.toml               # Paket meta verileri ve bağımlılıklar
 └── ...
 
@@ -731,19 +734,20 @@ Bu komut, mevcutsa fotoğrafın EXIF meta verilerinden tarihi dosya adına ekler
 
 ---
 
-## 🧪 Test Etme
+---
 
-Test paketini çalıştırın:
+## 🛠️ Geliştirme
 
 ```bash
-# Tüm testleri çalıştır
+# Linting & Formatlama
+uv run ruff check .
+uv run ruff format .
+
+# Tip Kontrolü
+uv run pyright
+
+# Testleri Çalıştır
 uv run pytest tests/ -v
-
-# Görüntü modu testlerini çalıştır
-uv run pytest tests/test_vision_*.py -v
-
-# Kapsam ile çalıştır
-uv run pytest tests/test_file_processor.py --cov=src/renai/processors/book
 ```
 
 ---

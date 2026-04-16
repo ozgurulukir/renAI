@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +12,7 @@ def build_book_filename(
     """
     Build a filename from book metadata for document processing.
     Uses SSoT BookMetadata model or compatible dict.
-    
+
     Format: Title -- Subtitle -- 'Edition' -- Author -- (Year).ext
     """
     if isinstance(book_data, BookMetadata):
@@ -45,7 +44,7 @@ def build_book_filename(
     if year_val:
         try:
             year_int = int(year_val)
-            if 1000 <= year_int <= 2100: # Sanity check for year
+            if 1000 <= year_int <= 2100:  # Sanity check for year
                 name_parts.append(f"({year_int})")
         except (ValueError, TypeError):
             pass
@@ -66,7 +65,7 @@ def build_image_filename(
     """
     Build a filename from image metadata.
     Uses SSoT ImageMetadata model or compatible dict.
-    
+
     Format: Description -- [Date] -- (Language).ext
     """
     if isinstance(image_data, ImageMetadata):

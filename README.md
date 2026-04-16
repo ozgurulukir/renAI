@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-Last updated: 2026-04-10
+Last updated: 2026-04-16
 
 ---
 
@@ -59,8 +59,11 @@ Description -- [Date] -- (Language).ext
 | **Advanced OCR** | Tesseract integration with Enhanced Mode for low-quality scans |
 | **mutool Support** | Extracts high-quality images from fixed-layout PDFs |
 | **Smart Caching** | SHA256-based caching system (separate layers for both text and metadata). |
+| **AsyncIO-First** | Fully asynchronous architecture using `asyncio` for non-blocking I/O and high concurrency |
+| **Async RPM Limiting** | Integrated `AsyncRateLimiter` ensures provider compliance across concurrent tasks |
+| **Ruff Powered** | ultra-fast linting and formatting for consistent code style |
 | **SSoT Architecture** | Single Source of Truth for metadata using strictly-typed Pydantic models |
-| **Modular Prompts** | Centralized, reusable prompt components with dynamic schema injection |
+| **Modular Prompts** | Centralized, reusable prompt components with dynamic JSON schema injection |
 | **Unified Refinement** | Standardized second-pass 'Senior Editor' logic for both text and vision modes |
 | **Token Optimization** | Context-free refinement pass reduces secondary API costs by ~90% |
 | **Custom Categories** | Define your own categories per language in `categories.toml` |
@@ -634,7 +637,7 @@ categories = [
 │       │   ├── text_extractor.py
 │       │   └── visual.py
 │       └── ...
-├── tests/                       # Synchronized unit tests
+├── tests/                       # Async-powered unit tests (pytest-asyncio)
 ├── pyproject.toml               # Package metadata & dependencies
 └── ...
 ```
@@ -724,19 +727,20 @@ This adds the photo date from EXIF metadata to the filename when available.
 
 ---
 
-## 🧪 Testing
+---
 
-Run the test suite:
+## 🛠️ Development
 
 ```bash
-# Run all tests
+# Linting & Formatting
+uv run ruff check .
+uv run ruff format .
+
+# Type Checking
+uv run pyright
+
+# Run Tests
 uv run pytest tests/ -v
-
-# Run vision-specific tests
-uv run pytest tests/test_vision_*.py -v
-
-# Run with coverage
-uv run pytest tests/test_file_processor.py --cov=src/renai/processors/book
 ```
 
 ---

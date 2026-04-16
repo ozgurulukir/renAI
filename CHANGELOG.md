@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-04-16
+
+### Added
+
+- **AsyncIO-First Architecture**: Complete refactoring of the entire processing pipeline to use native Python `asyncio`.
+- **Concurrency Control**: Implemented `asyncio.Semaphore` based worker management (default: 4) for high-performance non-blocking I/O.
+- **Async RPM Limiting**: Integrated `AsyncRateLimiter` at the engine level to ensure compliance with provider rate limits (Requests Per Minute) across concurrent tasks.
+- **Ruff Modernization**: Migrated to Ruff for ultra-fast linting and formatting. Added `[tool.ruff]` and `[tool.ruff.format]` sections to `pyproject.toml`.
+- **Global .editorconfig**: Standardized editor settings (indentation, line endings) across the project.
+- **Improved Test Isolation**: Integration tests now use private temporary cache directories via patching to prevent cross-test interference.
+
+### Changed
+
+- **Async Caching**: Upgraded `CacheManager` to perform disk I/O using `asyncio.to_thread`.
+- **Modern Typing**: Migrated to PEP 604 (`X | None`) across the core models.
+- **Standardized Results**: Refined `ProcessingResult` to be the unified, typed output for all async operations.
+
+### Fixed
+
+- **Metadata Validation**: Resolved crashes in `BookMetadata` validation when handling `None` or messy LLM year outputs.
+- **IDE Resolution**: Fixed `renai.settings` import paths in utility modules to resolve static analysis errors.
+
+
 ## [1.6.2] - 2026-04-10
 
 ### Added
@@ -142,7 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Centralized Logic**: Moved file-moving logic from `TextExtractor` to `BookProcessor` to prevent premature movement and ensure all fallback paths are exhausted.
 - **Directory Naming**: Renamed `Needs_OCR` to `Needs_Scan` and `OCR_Failures` to `Scan_Failures`.
-- **CLI Refinement**: Deprecated `--move-ocr-failures` in favor of `--move-scan-failures`.
+- **CLI Refinement**: Deprecated `--move-ocr-failures' in favor of `--move-scan-failures`.
 
 ### [Fixed]
 

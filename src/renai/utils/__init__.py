@@ -44,9 +44,6 @@ def get_provider_model_key(provider: str, model: str) -> str:
     return generate_cache_key(provider, model)
 
 
-
-
-
 def sanitize_filename(filename: str, max_length: int | None = None) -> str:
     """
     Replace invalid characters and remove all control characters.
@@ -54,10 +51,14 @@ def sanitize_filename(filename: str, max_length: int | None = None) -> str:
     """
     if max_length is None:
         try:
-            from .settings import app_settings
-            max_length = app_settings.max_filename_length
+            from renai.settings import app_settings
+
+            max_length = app_settings.max_filename_length or 200
         except (ImportError, AttributeError, NameError):
             max_length = 200  # Fallback
+
+    # Ensure max_length is an int for type safety
+    max_val: int = int(max_length) if max_length is not None else 200
     # Remove invalid characters for Windows paths: < > : " / \ | ? *
     sanitized = RE_INVALID_CHARS.sub("", filename)
 
@@ -78,8 +79,8 @@ def sanitize_filename(filename: str, max_length: int | None = None) -> str:
         sanitized = "unnamed"
 
     # Limit length (preserving extension if possible)
-    if len(sanitized) > max_length:
-        sanitized = sanitized[:max_length].strip()
+    if len(sanitized) > max_val:
+        sanitized = sanitized[:max_val].strip()
 
     return sanitized
 
@@ -104,9 +105,6 @@ def ensure_secure_dir(path: Path) -> Path:
         return path
 
     # Security: Validate username to prevent command injection
-    # Allows alphanumeric, spaces, dots, underscores, hyphens, @, and backslashes.
-    # Must start with an alphanumeric character or underscore.
-    # This covers standard local users, domain users (DOMAIN\user), and email-style names.
     if not re.match(r"^\w[\w\s.@\\-]*$", username):
         logging.warning(f"Invalid username for secure permissions: {username}")
         return path
@@ -184,3 +182,19 @@ def proportional_chunk_trim(text: str, target_length: int, num_chunks: int) -> s
             break
 
     return trimmed_text
+
+
+def handle_clear_cache() -> None:
+    """Clear extracted text cache, metadata, and OCR debug files."""
+    from renai.cache.manager import clear_all_cache
+    from renai.settings import CACHE_DIR
+
+    ensure_secure_dir(CACHE_DIR)
+    results = clear_all_cache(CACHE_DIR)
+
+    total = sum(results.values())
+    if total > 0:
+        details = ", ".join([f"{count} {ctype}" for ctype, count in results.items() if count > 0])
+        logging.info(f"Cache cleared: {total} items removed ({details})")
+    else:
+        logging.info("Cache is already empty. Nothing to clear.")

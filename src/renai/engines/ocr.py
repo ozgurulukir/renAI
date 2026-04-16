@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import shutil
@@ -24,6 +25,7 @@ from ..utils import ensure_secure_dir, sanitize_filename
 # Try to detect OpenCV at module level for test collection support
 try:
     import cv2
+
     OPENCV_AVAILABLE = True
 except ImportError:
     OPENCV_AVAILABLE = False
@@ -138,9 +140,8 @@ class OCREngine:
             output = (result.stdout + result.stderr).lower()
             if "mutool" in output or "mupdf" in output:
                 return resolved
-            else:
-                logging.warning(f"Executable at {resolved} did not respond like mutool")
-                return None
+            logging.warning(f"Executable at {resolved} did not respond like mutool")
+            return None
         except Exception as e:
             logging.warning(f"Failed to verify mutool at {resolved}: {e}")
             return None
@@ -185,9 +186,7 @@ class OCREngine:
 
             # Threshold to get binary image (text white, background black)
             # Use Otsu's thresholding for better results on varying contrast
-            _, binary = cv2.threshold(
-                gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-            )
+            _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
             # Morphological operations to join text into lines/blocks
             # This helps in detecting the overall skew of text lines rather than individual chars
@@ -195,9 +194,7 @@ class OCREngine:
             dilated = cv2.dilate(binary, kernel, iterations=1)
 
             # Find contours of the dilated blocks
-            contours, _ = cv2.findContours(
-                dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
+            contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             if not contours:
                 return image
@@ -276,10 +273,10 @@ class OCREngine:
             pages_to_extract += [total_pages - 1, total_pages]
         return sorted(set(p for p in pages_to_extract if 0 <= p < total_pages))
 
-    def _bulk_extract_images(
+    async def _bulk_extract_images(
         self, file_path: Path, pages: list[int], target_dpi: int
     ) -> dict[int, Path]:
-        """Extract multiple pages from a PDF in a single mutool call."""
+        """Extract multiple pages from a PDF in a single mutool call asynchronously."""
         if not pages:
             return {}
 
@@ -304,15 +301,24 @@ class OCREngine:
                 page_range,
             ]
 
-            kwargs = self._get_subprocess_kwargs()
-
-            subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True,
-                timeout=get_subprocess_timeout(),
-                **kwargs,
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                **self._get_subprocess_kwargs(),
             )
+
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=get_subprocess_timeout()
+                )
+                if process.returncode != 0:
+                    logging.error(f"mutool bulk error: {stderr.decode()}")
+                    return {}
+            except TimeoutError:
+                process.kill()
+                logging.error("mutool bulk extraction timed out")
+                return {}
 
             # Map back to 0-based pno
             results = {}
@@ -326,7 +332,7 @@ class OCREngine:
             logging.error(f"Bulk mutool extraction failed: {e}")
             return {}
 
-    def _extract_image_from_page(
+    async def _extract_image_from_page(
         self,
         doc: pymupdf.Document,
         pno: int,
@@ -334,19 +340,18 @@ class OCREngine:
         target_dpi: int,
         pre_extracted_path: Path | None = None,
     ) -> tuple[Image.Image | None, Path | None]:
-        """Handles mutool or pymupdf fallback to extract an image from a page."""
+        """Handles mutool or pymupdf fallback to extract an image from a page asynchronously."""
         image: Image.Image | None = None
         if pre_extracted_path and pre_extracted_path.exists():
             try:
-                image = Image.open(pre_extracted_path)
-                image.load()
+                # CPU intensive image loading
+                image = await asyncio.to_thread(Image.open, pre_extracted_path)
+                await asyncio.to_thread(image.load)
                 return image, pre_extracted_path
             except Exception as e:
-                logging.error(
-                    f"Failed to load pre-extracted image for page {pno + 1}: {e}"
-                )
-        use_mutool_for_page = self.use_mutool and file_path.suffix.lower() == ".pdf"
+                logging.error(f"Failed to load pre-extracted image for page {pno + 1}: {e}")
 
+        use_mutool_for_page = self.use_mutool and file_path.suffix.lower() == ".pdf"
         temp_img = None
 
         if use_mutool_for_page:
@@ -365,36 +370,47 @@ class OCREngine:
                     str(file_path),
                     str(pno + 1),
                 ]
-                kwargs = self._get_subprocess_kwargs()
 
-                subprocess.run(
-                    cmd,
-                    check=True,
-                    capture_output=True,
-                    timeout=get_subprocess_timeout(),
-                    **kwargs,
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    **self._get_subprocess_kwargs(),
                 )
-                image = Image.open(temp_img)
-                image.load()
-            except subprocess.TimeoutExpired:
-                logging.error(f"mutool timed out for page {pno + 1}")
+
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        process.communicate(), timeout=get_subprocess_timeout()
+                    )
+                    if process.returncode == 0:
+                        image = await asyncio.to_thread(Image.open, temp_img)
+                        await asyncio.to_thread(image.load)
+                    else:
+                        logging.error(f"mutool page error: {stderr.decode()}")
+                except TimeoutError:
+                    process.kill()
+                    logging.error(f"mutool timed out for page {pno + 1}")
             except Exception as e:
                 logging.error(f"mutool failed for page {pno + 1}: {e}")
 
         if not image:
-            page = doc.load_page(pno)
-            zoom = target_dpi / 72
-            pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
-            image = Image.frombytes(
-                "RGB",
-                (pix.width, pix.height),
-                pix.samples,
-            )
+
+            def _get_pixmap_thread():
+                page = doc.load_page(pno)
+                zoom = target_dpi / 72
+                pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+                return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+            image = await asyncio.to_thread(_get_pixmap_thread)
+
         return image, temp_img
 
-    def _preprocess_image(self, image: Image.Image) -> Image.Image:
-        """Handles resizing, grayscale conversion, deskewing, and enhancements."""
-        # Pre-processing pipeline
+    async def _preprocess_image(self, image: Image.Image) -> Image.Image:
+        """Handles resizing and enhancements in a thread."""
+        return await asyncio.to_thread(self._sync_preprocess_image, image)
+
+    def _sync_preprocess_image(self, image: Image.Image) -> Image.Image:
+        """Sync version of preprocessing for thread execution."""
         scale = self.cfg["resize"]
         if max(image.width, image.height) * scale > self.MAX_DIMENSION:
             scale = self.MAX_DIMENSION / max(image.width, image.height)
@@ -403,49 +419,39 @@ class OCREngine:
             new_size = (int(image.width * scale), int(image.height * scale))
             image = image.resize(new_size, Image.Resampling.LANCZOS)
 
-        # 1. Grayscale
         image = image.convert("L")
 
         if self.cfg["enhance"]:
-            # 1. Deskew (if enabled)
             if self.cfg["deskew"]:
                 image = self._deskew(image)
-
-            # 2. Contrast enhancement (Auto-contrast + Brightness boost)
             image = ImageOps.autocontrast(image)
             enhancer = ImageEnhance.Contrast(image)
             image = enhancer.enhance(1.5)
-
-            # 3. Sharpening (Unsharp Mask equivalent)
             if self.cfg["sharpen"]:
-                image = image.filter(
-                    ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3)
-                )
-
-            # 4. Thresholding (Binarization)
+                image = image.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
             if self.cfg["threshold"]:
-                # Convert to 1-bit black and white
                 image = image.point(lambda x: 0 if x < 140 else 255)
         return image
 
-    def _perform_ocr(self, image: Image.Image, pno: int) -> str:
-        """Calls Tesseract to extract text from the processed image."""
-        # OCR with optimized config
-        # --oem 3 (Default, base + LSTM), --psm 3
+    async def _perform_ocr(self, image: Image.Image, pno: int) -> str:
+        """Calls Tesseract in a thread."""
         try:
-            page_text = pytesseract.image_to_string(
-                image,
-                lang=get_ocr_lang(),
-                config=r"--oem 3 --psm 3",
-                timeout=get_subprocess_timeout(),
-            )
-            return page_text
-        except RuntimeError as e:
-            logging.error(f"Tesseract timed out or failed for page {pno + 1}: {e}")
+
+            def _tesseract_thread():
+                return pytesseract.image_to_string(
+                    image,
+                    lang=get_ocr_lang(),
+                    config=r"--oem 3 --psm 3",
+                    timeout=get_subprocess_timeout(),
+                )
+
+            return await asyncio.to_thread(_tesseract_thread)
+        except Exception as e:
+            logging.error(f"Tesseract failed for page {pno + 1}: {e}")
             return ""
 
-    def extract_text(self, file_path: Path) -> str:
-        """Extract text from a document using OCR."""
+    async def extract_text(self, file_path: Path) -> str:
+        """Extract text from a document asynchronously using OCR."""
         try:
             file_debug_dir = None
             if self.debug:
@@ -453,16 +459,15 @@ class OCREngine:
                 file_debug_dir = DEBUG_DIR / sanitize_filename(base_name)
                 ensure_secure_dir(file_debug_dir)
 
-            doc = pymupdf.open(str(file_path))
+            # PyMuPDF open is fast, but let's be safe
+            doc = await asyncio.to_thread(pymupdf.open, str(file_path))
             total_pages = len(doc)
 
-            # Page sampling strategy
             pages_to_extract = self._get_pages_to_extract(total_pages)
 
-            # Bulk extract if mutool is available and file is PDF
             bulk_images = {}
             if self.use_mutool and file_path.suffix.lower() == ".pdf":
-                bulk_images = self._bulk_extract_images(
+                bulk_images = await self._bulk_extract_images(
                     file_path, pages_to_extract, int(self.cfg["dpi"])
                 )
 
@@ -470,49 +475,51 @@ class OCREngine:
             total_chars = 0
             for pno in pages_to_extract:
                 pre_path = bulk_images.get(pno)
+                target_dpi = self.cfg["dpi"]
 
-                if pre_path:
-                    # Use a default target_dpi when using pre-extracted images
-                    # as we don't want to load the page just to calculate source_dpi
-                    target_dpi = self.cfg["dpi"]
-                else:
-                    page = doc.load_page(pno)
-                    source_dpi = self.get_page_source_dpi(page)
-                    target_dpi = min(self.cfg["dpi"], source_dpi)
+                if not pre_path:
+                    # In thread to avoid blocking loop with PDF info extraction
+                    def _get_dpi():
+                        page = doc.load_page(pno)
+                        return min(self.cfg["dpi"], self.get_page_source_dpi(page))
 
-                image, temp_img = self._extract_image_from_page(
+                    target_dpi = await asyncio.to_thread(_get_dpi)
+
+                image, temp_img = await self._extract_image_from_page(
                     doc, pno, file_path, int(target_dpi), pre_extracted_path=pre_path
                 )
 
                 if image:
-                    image = self._preprocess_image(image)
+                    image = await self._preprocess_image(image)
 
                     if self.debug and file_debug_dir:
-                        quality_tag = "enhanced" if self.enhanced else "minimal"
-                        image.save(file_debug_dir / f"page_{pno + 1}_{quality_tag}.png")
 
-                    page_text = self._perform_ocr(image, pno)
+                        def _save_debug():
+                            quality_tag = "enhanced" if self.enhanced else "minimal"
+                            image.save(file_debug_dir / f"page_{pno + 1}_{quality_tag}.png")
 
+                        await asyncio.to_thread(_save_debug)
+
+                    page_text = await self._perform_ocr(image, pno)
                     extracted_text.append(page_text)
                     total_chars += len(page_text)
 
                     if temp_img and temp_img.exists():
                         try:
                             image.close()
-                            temp_img.unlink()
+                            await asyncio.to_thread(temp_img.unlink)
                         except Exception as e:
                             logging.debug(f"Cleanup of temp_img failed: {e}")
 
                 if total_chars > 10000:
                     break
 
-            doc.close()
+            await asyncio.to_thread(doc.close)
 
-            # Cleanup any remaining bulk images that weren't processed/unlinked
             for img_path in bulk_images.values():
                 if img_path.exists():
                     try:
-                        img_path.unlink()
+                        await asyncio.to_thread(img_path.unlink)
                     except Exception as e:
                         logging.debug(f"Cleanup of bulk_img failed: {e}")
 

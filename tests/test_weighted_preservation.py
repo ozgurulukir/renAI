@@ -41,9 +41,7 @@ def test_weighted_preservation_strategy():
     preserved_early_content = any(
         keyword in result for keyword in ["TITLE:", "AUTHOR:", "YEAR:", "PUBLISHER:"]
     )
-    preserved_middle_content = any(
-        keyword in result for keyword in ["CHAPTER 3", "CHAPTER 4"]
-    )
+    preserved_middle_content = any(keyword in result for keyword in ["CHAPTER 3", "CHAPTER 4"])
 
     print(f"Early metadata preserved: {preserved_early_content}")
     print(f"Middle content preserved: {preserved_middle_content}")

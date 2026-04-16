@@ -16,9 +16,7 @@ def test_proportional_trimming():
     # Test 2: Long text with preservation of endings
     # Ensure metadata is at the end
     chunks = [f"Content chunk {i}" for i in range(8)]
-    chunks.extend(
-        ["REFERENCES", "Author: John Doe", "Year: 2023", "Publisher: Test Press"]
-    )
+    chunks.extend(["REFERENCES", "Author: John Doe", "Year: 2023", "Publisher: Test Press"])
     long_text = "\n".join(chunks)
     result = proportional_chunk_trim(long_text, target_length=200, num_chunks=4)
 

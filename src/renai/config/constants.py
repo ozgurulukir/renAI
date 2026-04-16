@@ -70,6 +70,7 @@ CATEGORIES_FILE = CATEGORIES_USER_FILE
 # Factory Defaults Loader
 # =============================================================================
 
+
 def load_factory_defaults() -> dict:
     """Load baseline defaults from package TOML."""
     default_file = PACKAGE_CONFIG_DIR / "settings.default.toml"
@@ -81,6 +82,7 @@ def load_factory_defaults() -> dict:
     except Exception as e:
         logging.error(f"Failed to load factory defaults: {e}")
         return {}
+
 
 FACTORY_DEFAULTS = load_factory_defaults()
 
@@ -146,24 +148,37 @@ CUSTOM_CATEGORIES_FILE = CATEGORIES_USER_FILE
 # Helper Functions for Dynamic Configuration
 # =============================================================================
 
+
 def get_ocr_lang() -> str:
     """Get OCR language from factory defaults or config."""
     return FACTORY_DEFAULTS.get("processing", {}).get("ocr_lang", "tur+eng")
+
 
 def get_max_text_read_size() -> int:
     """Get maximum text read size from factory defaults or config."""
     return FACTORY_DEFAULTS.get("processing", {}).get("max_text_read_size", 1_000_000)
 
+
 def get_subprocess_timeout() -> int:
     """Get subprocess timeout from factory defaults or config."""
     return FACTORY_DEFAULTS.get("processing", {}).get("subprocess_timeout", 60)
 
+
 def get_image_extensions() -> set[str]:
     """Get supported image file extensions."""
     return {
-        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",
-        ".tiff", ".tif", ".heic", ".heif",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".bmp",
+        ".webp",
+        ".tiff",
+        ".tif",
+        ".heic",
+        ".heif",
     }
+
 
 def get_tesseract_path() -> Path:
     """Get Tesseract executable path with environment variable override."""
@@ -182,10 +197,10 @@ def get_tesseract_path() -> Path:
     # 3. Platform-specific defaults
     if sys.platform == "win32":
         return Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
-    elif sys.platform == "darwin":
+    if sys.platform == "darwin":
         return Path("/usr/local/bin/tesseract")
-    else:
-        return Path("/usr/bin/tesseract")
+    return Path("/usr/bin/tesseract")
+
 
 TESSERACT_PATH = get_tesseract_path()
 

@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -12,4 +11,5 @@ class ProcessingResult:
     name: str | None = None
     category: str | None = None
     file_hash: str | None = None
+    metadata: dict | None = None  # To satisfy existing code/tests
     error: str | None = None

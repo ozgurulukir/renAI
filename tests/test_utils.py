@@ -99,9 +99,6 @@ def test_get_provider_model_key():
     assert get_provider_model_key(provider, model) == expected
 
 
-
-
-
 @pytest.mark.parametrize(
     "filename, expected",
     [
@@ -282,6 +279,7 @@ def test_read_text_limited_nonexistent(tmp_path):
     result = read_text_limited(test_file, max_chars=100)
     assert result == ""
 
+
 def test_read_text_limited_directory(caplog, tmp_path):
     """Test reading from a directory to trigger an actual OS error without mocking open."""
     import logging
@@ -298,13 +296,19 @@ def test_read_text_limited_directory(caplog, tmp_path):
 
     # Verify the error was logged
     assert any("Error reading" in record.message for record in caplog.records)
-    assert any("Is a directory" in record.message or "Permission denied" in record.message for record in caplog.records)
+    assert any(
+        "Is a directory" in record.message or "Permission denied" in record.message
+        for record in caplog.records
+    )
+
 
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
 @patch("renai.utils.subprocess")
 @patch("renai.utils.logging.debug")
-def test_ensure_secure_dir_windows_exception_extended(mock_debug, mock_subprocess, mock_os, mock_sys, tmp_path):
+def test_ensure_secure_dir_windows_exception_extended(
+    mock_debug, mock_subprocess, mock_os, mock_sys, tmp_path
+):
     """Test ensure_secure_dir on Windows when subprocess.run raises an exception (extended coverage)."""
     mock_sys.platform = "win32"
     mock_os.environ.get.return_value = "valid_user"
@@ -335,6 +339,7 @@ def test_ensure_secure_dir_windows_exception_extended(mock_debug, mock_subproces
     assert "Failed to set secure permissions" in log_msg
     assert "Mock icacls failure" in log_msg
 
+
 @patch("renai.utils.sys")
 def test_ensure_secure_dir_unix(mock_sys, tmp_path):
     """Test directory creation with secure permissions on Unix."""
@@ -349,6 +354,7 @@ def test_ensure_secure_dir_unix(mock_sys, tmp_path):
 
         # chmod should be called with 0o700
         mock_chmod.assert_called_once_with(0o700)
+
 
 @patch("renai.utils.sys")
 @patch("renai.utils.logging.debug")
@@ -365,6 +371,7 @@ def test_ensure_secure_dir_unix_exception(mock_debug, mock_sys, tmp_path):
         # Adjusted to match the log message in src/renai/utils.py if needed,
         # but I'll stick to what was in main for now.
         assert "Failed to set secure permissions" in mock_debug.call_args[0][0]
+
 
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
@@ -397,11 +404,14 @@ def test_ensure_secure_dir_windows_valid_user(mock_subprocess, mock_os, mock_sys
     assert "/grant:r" in args
     assert "TestUser:(OI)(CI)F" in args
 
+
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
 @patch("renai.utils.logging.warning")
 @patch("renai.utils.subprocess")
-def test_ensure_secure_dir_windows_invalid_user(mock_subprocess, mock_warning, mock_os, mock_sys, tmp_path):
+def test_ensure_secure_dir_windows_invalid_user(
+    mock_subprocess, mock_warning, mock_os, mock_sys, tmp_path
+):
     """Test Windows permission setting skips and logs warning on invalid username."""
     mock_sys.platform = "win32"
     # Invalid username with command injection attempt
@@ -418,6 +428,7 @@ def test_ensure_secure_dir_windows_invalid_user(mock_subprocess, mock_warning, m
     # icacls should NOT be called
     mock_subprocess.run.assert_not_called()
 
+
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
 @patch("renai.utils.subprocess")
@@ -433,11 +444,14 @@ def test_ensure_secure_dir_windows_no_user(mock_subprocess, mock_os, mock_sys, t
     # icacls should NOT be called
     mock_subprocess.run.assert_not_called()
 
+
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
 @patch("renai.utils.subprocess")
 @patch("renai.utils.logging.debug")
-def test_ensure_secure_dir_windows_exception(mock_debug, mock_subprocess, mock_os, mock_sys, tmp_path):
+def test_ensure_secure_dir_windows_exception(
+    mock_debug, mock_subprocess, mock_os, mock_sys, tmp_path
+):
     """Test exception handling during icacls on Windows."""
     mock_sys.platform = "win32"
     mock_os.environ.get.return_value = "TestUser"
@@ -456,4 +470,3 @@ def test_ensure_secure_dir_windows_exception(mock_debug, mock_subprocess, mock_o
     # Exception should be caught and logged as debug
     mock_debug.assert_called_once()
     assert "Failed to set secure permissions" in mock_debug.call_args[0][0]
-

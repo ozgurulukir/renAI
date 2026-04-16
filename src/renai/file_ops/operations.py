@@ -113,9 +113,7 @@ def safe_move_file(
     if dest_path.exists():
         # Check if files have same content (same hash)
         existing_hash = get_file_hash(dest_path)
-        new_hash = (
-            source_hash if source_hash is not None else get_file_hash(source_path)
-        )
+        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
 
         if existing_hash == new_hash:
             # Same content - skip moving
@@ -123,9 +121,8 @@ def safe_move_file(
                 f"File {dest_path.name} already exists with same content, skipping {operation_type}"
             )
             return dest_path
-        else:
-            # Different content - append UUID to avoid overwrite
-            final_dest_path = ensure_unique_path(dest_path, source_hash)
+        # Different content - append UUID to avoid overwrite
+        final_dest_path = ensure_unique_path(dest_path, source_hash)
 
     # Perform the file operation
     try:

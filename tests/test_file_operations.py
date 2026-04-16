@@ -33,7 +33,9 @@ class TestEnsureUniquePath:
 
     @patch("renai.file_ops.operations.get_file_hash")
     @patch("renai.file_ops.operations.uuid")
-    def test_ensure_unique_path_dest_exists_diff_hash(self, mock_uuid, mock_get_file_hash, tmp_path):
+    def test_ensure_unique_path_dest_exists_diff_hash(
+        self, mock_uuid, mock_get_file_hash, tmp_path
+    ):
         """Test that it appends UUID if destination exists with different hash."""
         dest = tmp_path / "existing_file.txt"
         dest.touch()

@@ -1,4 +1,5 @@
 """Tests for FallbackMode detection and handling in text_extractor.py."""
+
 from unittest.mock import MagicMock
 
 from renai.processors.text_extractor import TextExtractor

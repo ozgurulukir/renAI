@@ -165,7 +165,9 @@ def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
 
     if "API Key" in str(exc_value):
         why = "API Anahtarı (API Key) bulunamadı veya geçersiz."
-        how = "RENAI_PROVIDER_API_KEY ortam değişkenini kontrol edin veya .env dosyasını güncelleyin."
+        how = (
+            "RENAI_PROVIDER_API_KEY ortam değişkenini kontrol edin veya .env dosyasını güncelleyin."
+        )
     elif "Tesseract" in str(exc_value) or "mutool" in str(exc_value):
         why = "Bağımlı bir dış araç (OCR veya MuTool) bulunamadı."
         how = "Tesseract veya MuTool'un sisteminizde kurulu ve PATH üzerinde olduğundan emin olun."

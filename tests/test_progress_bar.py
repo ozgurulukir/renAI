@@ -1,110 +1,51 @@
-"""
-Tests for CLI progress bar functionality.
-"""
-
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from renai.processors.orchestrator import Progress, SpinnerColumn, TextColumn, process_files
-from renai.processors.text_extractor import FallbackMode
+from renai.models import ProcessingResult
+from renai.processors.orchestrator import run_pipeline
 
 
-class TestProgressBar:
-    """Test progress bar implementation in CLI."""
+@pytest.mark.asyncio
+async def test_run_pipeline_with_progress_mock(tmp_path):
+    """Test run_pipeline with progress bar updates."""
+    # We need to mock setup_engines internally since run_pipeline calls it
+    mock_book_processor = MagicMock()
+    mock_book_processor.process_file = AsyncMock(
+        return_value=ProcessingResult(success=True, file_path=Path("test.pdf"))
+    )
+    mock_book_processor.setup_move_folders = AsyncMock()
+    mock_book_processor.supported_extensions = {".pdf"}
 
-    def test_progress_bar_imports(self):
-        """Test that Rich progress is imported."""
-        assert Progress is not None
-        assert SpinnerColumn is not None
-        assert TextColumn is not None
+    test_files = [tmp_path / f"file{i}.pdf" for i in range(3)]
+    for f in test_files:
+        f.write_text("test")
 
-    def test_progress_bar_structure(self):
-        """Test that process_files uses Progress context manager."""
-        import inspect
-
-        source = inspect.getsource(process_files)
-
-        # Check for progress bar implementation
-        assert "Progress(" in source, "Progress should be used"
-        assert "progress.add_task" in source, "add_task should be called"
-        assert "progress.advance" in source, "advance should be called"
-
-    def test_progress_bar_with_mock_processor(self):
-        """Test progress bar with mock processor."""
-        # Create mock objects
-        mock_processor = MagicMock()
-        mock_processor.process_single_book.return_value = (
-            True,
-            "Title",
-            "Author",
-            "Category",
-            None,
+    with (
+        patch(
+            "renai.processors.orchestrator.setup_engines",
+            AsyncMock(return_value=(MagicMock(), MagicMock(), mock_book_processor)),
+        ),
+        patch("renai.processors.orchestrator.collect_files", return_value=test_files),
+        patch("rich.progress.Progress.update") as mock_update,
+    ):
+        await run_pipeline(
+            root_dir=tmp_path,
+            provider="openai",
+            model="gpt-4o",
+            mode="rename",
+            workers=2,
+            recursive=False,
+            ocr_enhanced=False,
+            debug_ocr=False,
+            use_mutool=False,
+            mutool_path="mutool",
+            extractor="pymupdf",
+            text_length=1000,
+            text_extraction="mixed",
+            extraction_pages=10,
         )
 
-        # Test files
-        file_paths = [Path(f"test_{i}.pdf") for i in range(3)]
-        root_dir = Path("test_dir")
-
-        # Mock ThreadPoolExecutor and as_completed to avoid actual threading
-        with patch("renai.processors.orchestrator.ThreadPoolExecutor") as mock_executor, \
-             patch("renai.processors.orchestrator.as_completed") as mock_as_completed:
-            mock_as_completed.side_effect = lambda f: f.keys()
-            mock_executor.return_value.__enter__ = MagicMock()
-            mock_executor.return_value.__exit__ = MagicMock()
-            mock_executor.return_value.submit = MagicMock(
-                return_value=MagicMock(
-                    result=MagicMock(
-                        return_value=(True, "Title", "Author", "Category", None)
-                    )
-                )
-            )
-
-            # This should not raise any errors
-            try:
-                process_files(
-                    processor=mock_processor,
-                    file_paths=file_paths,
-                    root_dir=root_dir,
-                    mode="rename",
-                    workers=2,
-                    fallback_mode=FallbackMode.NONE,
-                    rename_images=False,
-                    update_metadata=False,
-                    exif=False,
-                    move_scan_failures=False,
-                )
-            except Exception as e:
-                pytest.fail(f"process_files raised exception: {e}")
-
-
-class TestProgressBarEdgeCases:
-    """Test edge cases for progress bar."""
-
-    def test_empty_file_list(self):
-        """Test progress bar with empty file list."""
-        mock_processor = MagicMock()
-        file_paths = []
-        root_dir = Path("test_dir")
-
-        # Should not raise any errors
-        try:
-            process_files(
-                processor=mock_processor,
-                file_paths=file_paths,
-                root_dir=root_dir,
-                mode="rename",
-                workers=2,
-                fallback_mode=FallbackMode.NONE,
-                rename_images=False,
-                update_metadata=False,
-                exif=False,
-                move_scan_failures=False,
-            )
-        except Exception as e:
-            pytest.fail(f"process_files raised exception with empty list: {e}")
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        assert mock_book_processor.process_file.await_count == 3
+        assert mock_update.called

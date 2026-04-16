@@ -44,6 +44,7 @@ def _get_settings() -> tuple:
 # Provider Registry
 # ---------------------------------------------------------------------------
 
+
 def load_providers_config() -> dict:
     """Return provider configurations from unified app_settings."""
     app, _ = _get_settings()
@@ -84,9 +85,7 @@ def get_base_url(provider: str) -> str:
     if provider in app.providers:
         return app.providers[provider].base_url
 
-    return prov.custom_api_base_url or os.getenv(
-        "CUSTOM_API_BASE_URL", "http://localhost:8000/v1"
-    )
+    return prov.custom_api_base_url or os.getenv("CUSTOM_API_BASE_URL", "http://localhost:8000/v1")
 
 
 def get_default_model(provider: str) -> str:

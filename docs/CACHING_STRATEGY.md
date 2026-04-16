@@ -6,7 +6,7 @@ This document describes the intelligent caching system implemented in renAI, inc
 
 ## Overview
 
-renAI uses a multi-layer caching system to optimize performance and reduce API costs:
+renAI uses a multi-layer **asynchronous** caching system to optimize performance and reduce API costs:
 
 1. **Text Cache** - Stores extracted text from documents
 2. **Metadata Cache** - Stores LLM-generated metadata (title, author, category, etc.)
@@ -325,7 +325,8 @@ renai cache
 | 2026-03-11 | Removed unused `_cached_at` field from metadata cache |
 | 2026-03-14 | Unified Vision/Image cache with `_vision` suffix for PDFs |
 | 2026-04-08 | Transitioned to Typer CLI with centralized Orchestration pattern |
+| 2026-04-16 | **v2.0.0 Release**: Fully asynchronous CacheManager using `asyncio.to_thread` |
 
 ## Status
 
-Last updated: 2026-04-09
+Last updated: 2026-04-16

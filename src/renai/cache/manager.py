@@ -117,12 +117,11 @@ def read_metadata_cache[T: BaseModel](
                         )
                         return None
                 return cache_data
-            else:
-                logging.info(
-                    f"Cache invalidated (was {cached_provider}/{cached_model}, "
-                    f"now {provider}/{model})"
-                )
-                return None
+            logging.info(
+                f"Cache invalidated (was {cached_provider}/{cached_model}, "
+                f"now {provider}/{model})"
+            )
+            return None
 
         except Exception as e:
             logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
