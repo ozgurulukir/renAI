@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.columns import Columns
@@ -132,7 +133,8 @@ class StatusDisplay:
                 status = "[red]FAILED[/red]"
 
             # Keep last 5 results
-            res_text = f"{status} {Path(result.original_path).name}"
+            display_name = result.name or (result.file_path.name if result.file_path else "Unknown")
+            res_text = f"{status} {display_name}"
             self.last_results.append(res_text)
             if len(self.last_results) > 5:
                 self.last_results.pop(0)
@@ -179,7 +181,7 @@ class StatusDisplay:
         )
 
 
-async def log_evaluation_result(file_path: Path, provider: str, model: str, metadata: any) -> None:
+async def log_evaluation_result(file_path: Path, provider: str, model: str, metadata: Any) -> None:
     """Log evaluation result to a file asynchronously."""
     entry = {
         "file": file_path.name,
@@ -188,9 +190,11 @@ async def log_evaluation_result(file_path: Path, provider: str, model: str, meta
         "metadata": metadata,
     }
     try:
+
         def _write():
             with Path(EVAL_LOG_FILE).open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
         await asyncio.to_thread(_write)
     except Exception as e:
         logging.error(f"Failed to log evaluation result: {e}")
@@ -282,14 +286,12 @@ async def run_pipeline(
                 add_exif_date=add_exif_date,
             )
             if mode == "evaluate" and res.success:
-                await log_evaluation_result(f_path, provider, model, res.metadata)
+                await log_evaluation_result(f_path, provider, model or "unknown", res.metadata)
             status_display.update(result=res)
             return res
 
     results = []
-    with Live(
-        status_display, console=console, refresh_per_second=4, vertical_overflow="visible"
-    ):
+    with Live(status_display, console=console, refresh_per_second=4, vertical_overflow="visible"):
         pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
         for coro in asyncio.as_completed(pending_tasks):
             result = await coro
