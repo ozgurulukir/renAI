@@ -159,34 +159,28 @@ def _try_load_categories(path: Path, label: str) -> dict | None:
 def load_categories_from_file() -> dict:
     """Load categories from layered TOML configs.
 
-    Files are merged in priority order (Internal -> Default -> User).
-    Higher priority items are appended while avoiding duplicates.
+    Priority (First one found wins, no merging):
+    1. User config (CATEGORIES_USER_FILE)
+    2. Physical default (CATEGORIES_DEFAULT_FILE)
+    3. Package-internal default
     """
-    final: dict[str, dict[str, list[str]]] = {
-        "categories": {"en": [], "tr": []},
-        "image_categories": {"en": [], "tr": []},
-    }
+    # 1. User config
+    result = _try_load_categories(CATEGORIES_USER_FILE, "user")
+    if result:
+        return result
 
-    # Files in reverse priority order to build up the list
-    sources = [
-        (PACKAGE_CONFIG_DIR / "categories.default.toml", "package"),
-        (CATEGORIES_DEFAULT_FILE, "default"),
-        (CATEGORIES_USER_FILE, "user"),
-    ]
+    # 2. Physical default in user dir
+    result = _try_load_categories(CATEGORIES_DEFAULT_FILE, "default")
+    if result:
+        return result
 
-    for path, label in sources:
-        result = _try_load_categories(path, label)
-        if not result:
-            continue
+    # 3. Package-internal default
+    package_file = PACKAGE_CONFIG_DIR / "categories.default.toml"
+    result = _try_load_categories(package_file, "package")
+    if result:
+        return result
 
-        for section in ("categories", "image_categories"):
-            for lang in ("en", "tr"):
-                if lang in result[section]:
-                    for cat in result[section][lang]:
-                        if cat not in final[section][lang]:
-                            final[section][lang].append(cat)
-
-    return final
+    return {"categories": {}, "image_categories": {}}
 
 
 # CUSTOM_CONFIG is resolved lazily via module-level __getattr__ (see end of file)
@@ -228,14 +222,28 @@ def _merge_eval_models(path: Path, target: dict[str, list[str]]) -> None:
 
 
 def load_all_eval_models() -> dict[str, list[str]]:
-    """Load all evaluation models from layered TOML configs across all providers."""
+    """Load all evaluation models from layered TOML configs.
+
+    Priority (First one found wins, no merging):
+    1. User config (EVAL_MODELS_USER_FILE)
+    2. Physical default (EVAL_MODELS_DEFAULT_FILE)
+    3. Package-internal default
+    """
+    # 1. User config
     all_models: dict[str, list[str]] = {}
+    if EVAL_MODELS_USER_FILE.exists():
+        _merge_eval_models(EVAL_MODELS_USER_FILE, all_models)
+        if all_models:
+            return all_models
 
-    # Load in reverse priority (Internal -> Physical Default -> Physical User)
+    # 2. Physical default
+    if EVAL_MODELS_DEFAULT_FILE.exists():
+        _merge_eval_models(EVAL_MODELS_DEFAULT_FILE, all_models)
+        if all_models:
+            return all_models
+
+    # 3. Package-internal default
     _merge_eval_models(PACKAGE_CONFIG_DIR / "eval_models.default.toml", all_models)
-    _merge_eval_models(EVAL_MODELS_DEFAULT_FILE, all_models)
-    _merge_eval_models(EVAL_MODELS_USER_FILE, all_models)
-
     return all_models
 
 

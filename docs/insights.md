@@ -20,11 +20,11 @@ This document captures critical technical lessons and architectural insights dis
 **Solution:** Use `console.print()` for interactive UX-critical messages and rely on logging only for non-interactive background tracing or file logs.
 **Agnostic Principle:** Clearly separate "User Experience" output (Console) from "Application Traces" (Logging) to avoid redundant terminal noise.
 
-### [Architecture]: Layered Merging vs. Override
-**Problem:** `categories.toml` was completely replacing the default list, forcing users to copy-paste the entire default set just to add one item. Consistent behavior with `eval_models.toml` (which merged) was missing.
-**Discovery/AHA!:** Users expect "Custom and Default" to mean an additive relationship (extension) rather than a destructive one (replacement), especially for lists like categories or model names.
-**Solution:** Refactored `load_categories_from_file` to use a cumulative merge across all layers (Internal -> Physical Default -> Physical User), ensuring uniqueness while preserving defaults.
-**Agnostic Principle:** When implementing multi-layered configuration, prefer additive merging for collections (lists/dicts) and replacement only for scalar values, unless explicit "total control" is requested by the user.
+### [Architecture]: Dataset Replacement (Override) vs. Configuration Merging
+**Problem:** Determining whether configuration files should merge with or replace defaults (e.g., `categories.toml`).
+**Discovery/AHA!:** Users expect a distinction between *Application Settings* (logic/state) and *Dataset Definitions* (content). While settings should be merged to avoid losing minor tweaks, datasets like categories should be replaced (override) to give the user total control over the LLM's classification space without pollution from defaults.
+**Solution:** Kept `AppSettings` merging via Pydantic, but enforced a strict priority-based replacement for `categories.toml` and `eval_models.toml`.
+**Agnostic Principle:** Prefer merging for behavioral settings (extension) and replacement for content/datasets (total control), unless explicitly requested otherwise.
 
 ### [Architecture]: AsyncIO Concurrency with CPU-Bound Tasks
 **Problem:** Transitioning to `asyncio` for OCR/Image processing could easily block the event loop.
