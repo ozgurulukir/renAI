@@ -143,8 +143,7 @@ def display_warnings(mode: str, recursive: bool) -> None:
     msg.append("=" * 70 + "\n")
     warning_text = "\n".join(msg)
 
-    # 2. Show via logging (for tests/logs) and console (for UX)
-    logging.warning(warning_text)
+    # 2. Show via console
     console.print(warning_text)
 
     # 3. Interactive confirmation

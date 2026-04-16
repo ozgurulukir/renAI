@@ -141,22 +141,24 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RENAI_",
         extra="ignore",
+        toml_file=(SETTINGS_DEFAULT_FILE, SETTINGS_USER_FILE),
     )
 
     @classmethod
-    def settings_custom_source(
+    def settings_customise_sources(
         cls,
         settings_cls: type[BaseSettings],
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
-        _dotenv_settings: PydanticBaseSettingsSource,
-        _file_secret_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        from pydantic_settings import TomlConfigSettingsSource
+
         return (
             init_settings,
             env_settings,
-            TomlConfigSettingsSource(settings_cls, SETTINGS_USER_FILE),
-            TomlConfigSettingsSource(settings_cls, SETTINGS_DEFAULT_FILE),
+            TomlConfigSettingsSource(settings_cls),
         )
 
 
