@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -142,7 +143,8 @@ class StatusDisplay:
             display_name = getattr(result, "name", "Unknown")
             res_text = f"{status} {display_name}"
             self.last_results.append(res_text)
-            if len(self.last_results) > 5:
+            MAX_HISTORY = 5
+            if len(self.last_results) > MAX_HISTORY:
                 self.last_results.pop(0)
 
 
@@ -250,6 +252,59 @@ async def run_pipeline(
     ) as progress:
         main_task = progress.add_task("[cyan]Processing...", total=len(file_paths))
 
+        results = []
+        if benchmark:
+            # Benchmark Mode: Test all extractors on the sampled files
+            extractors_to_test = ["pymupdf", "pdfplumber", "pypdf", "pypdfium2"]
+            benchmark_data = []
+
+            from renai.extractors.pdf_extractors import get_extractor
+
+            for ext_name in extractors_to_test:
+                progress.update(main_task, description=f"[yellow]Benchmarking {ext_name}...")
+                processor.extractor_name = ext_name
+                # Re-initialize extractor internal
+                processor.text_extractor = get_extractor(ext_name)
+
+                start_t = time.perf_counter()
+                success_count = 0
+
+                for f_path in file_paths:
+                    res = await processor.process_file(f_path, mode="evaluate")
+                    if res.success:
+                        success_count += 1
+
+                duration = time.perf_counter() - start_t
+                benchmark_data.append(
+                    {
+                        "extractor": ext_name,
+                        "time": f"{duration:.2f}s",
+                        "success": f"{success_count}/{len(file_paths)}",
+                    }
+                )
+                progress.advance(main_task, advance=0)  # Don't advance main task yet
+
+            # Display Benchmark Result Table
+            bench_table = Table(title="PDF Extractor Benchmark Results")
+            bench_table.add_column("Extractor", style="cyan")
+            bench_table.add_column("Time", style="magenta")
+            bench_table.add_column("Success Rate", style="green")
+
+            for data in benchmark_data:
+                bench_table.add_row(data["extractor"], data["time"], data["success"])
+
+            progress.console.print("\n")
+            progress.console.print(bench_table)
+            progress.console.print("\n")
+
+            # Restore original extractor for summary logic
+            processor.extractor_name = extractor
+            processor.text_extractor = get_extractor(extractor)
+            # In benchmark mode, we don't return individual file results for the summary card
+            # since we ran multiple times. We'll just return fake success for the card or skip.
+            return
+
+        # Standard Mode (Rename, Organize, Evaluate)
         async def _process_task(f_path):
             async with semaphore:
                 progress.update(main_task, description=f"[cyan]Processing {f_path.name}...")

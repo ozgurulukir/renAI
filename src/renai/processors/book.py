@@ -164,13 +164,15 @@ class BookProcessor:
 
             if not metadata:
                 return ProcessingResult(
-                    success=False, name=file_path.name, error="Extraction failed (No metadata generated)"
+                    success=False,
+                    name=file_path.name,
+                    error="Extraction failed (No metadata generated)",
                 )
 
-            # 2. Handle final action (rename or evaluate)
-            if mode == "rename":
+            # 2. Handle final action (rename or organize)
+            if mode in ("rename", "organize"):
                 async with self.file_operation_lock:
-                    return await self._handle_renaming(file_path, metadata)
+                    return await self._handle_renaming(file_path, metadata, mode=mode)
             else:
                 # evaluate mode - just return success with metadata
                 return ProcessingResult(success=True, metadata=metadata)
@@ -180,7 +182,7 @@ class BookProcessor:
             return ProcessingResult(success=False, name=file_path.name, error=str(e))
 
     async def _handle_renaming(
-        self, file_path: Path, metadata: BookMetadata | ImageMetadata
+        self, file_path: Path, metadata: BookMetadata | ImageMetadata, mode: str = "rename"
     ) -> ProcessingResult:
         """Build filename and move file securely asynchronously."""
         try:
@@ -203,11 +205,10 @@ class BookProcessor:
                 )
 
             # Target path logic: stay in parent or move to category subfolder
-            target_dest = (
-                (file_path.parent / category / new_name)
-                if category
-                else (file_path.parent / new_name)
-            )
+            if mode == "organize" and category:
+                target_dest = file_path.parent / category / new_name
+            else:
+                target_dest = file_path.parent / new_name
 
             def _do_move():
                 return safe_move_file(file_path, target_dest, operation_type="rename")

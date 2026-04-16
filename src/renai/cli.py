@@ -177,7 +177,10 @@ def process_cmd(
         typer.Option(
             "--mode",
             "-m",
-            help="Action: 'rename' (renames files) or 'evaluate' (no changes, just extraction test)",
+            help=(
+                "Action: 'rename' (renames files), 'organize' (moves to category) "
+                "or 'evaluate' (no changes, just extraction test)"
+            ),
         ),
     ] = "rename",
     provider: Annotated[
