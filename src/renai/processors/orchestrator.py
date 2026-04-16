@@ -6,12 +6,17 @@ from typing import Any
 
 import typer
 from rich.columns import Columns
-from rich.console import Console, Group
-from rich.layout import Layout
-from rich.live import Live
+from rich.console import Console
 from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 from rich.table import Table
-from rich.text import Text
 
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
@@ -112,7 +117,7 @@ def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> 
 
 
 class StatusDisplay:
-    """Manages the Live UI display for renAI processing."""
+    """Tracks stats for renAI processing."""
 
     def __init__(self, total_files: int):
         self.total = total_files
@@ -120,9 +125,8 @@ class StatusDisplay:
         self.success = 0
         self.failed = 0
         self.last_results = []
-        self.current_activity = "Initializing..."
 
-    def update(self, result=None, activity=None):
+    def update(self, result=None):
         if result:
             self.completed += 1
             if result.success:
@@ -138,50 +142,6 @@ class StatusDisplay:
             self.last_results.append(res_text)
             if len(self.last_results) > 5:
                 self.last_results.pop(0)
-
-        if activity:
-            self.current_activity = activity
-
-    def generate_table(self) -> Table:
-        table = Table(expand=True, box=None)
-        table.add_column("Status", width=12)
-        table.add_column("File")
-
-        for res in reversed(self.last_results):
-            parts = res.split(" ", 1)
-            table.add_row(parts[0], parts[1] if len(parts) > 1 else "")
-        return table
-
-    # Status Bar logic
-    def __rich__(self) -> Panel:
-        pct = (self.completed / self.total) * 100 if self.total > 0 else 0
-        filled = int(pct / 5)
-        bar_filled = "━" * filled
-        bar_empty = "━" * (20 - filled)
-        
-        # Compact footer
-        footer = Text.assemble(
-            (bar_filled, "bold green"),
-            (bar_empty, "dim"),
-            (f" {pct:>3.0f}%", "bold white"),
-            (f" | {self.completed}/{self.total} | ", "dim"),
-            (self.current_activity, "italic yellow")
-        )
-
-        renderables = []
-        if self.last_results:
-            renderables.append(self.generate_table())
-            renderables.append(Text(""))
-        renderables.append(footer)
-
-        return Panel(
-            Group(*renderables),
-            title="[bold blue]Processing Live[/bold blue]",
-            subtitle=f"[bold green]S: {self.success}[/bold green] • [bold red]F: {self.failed}[/bold red]",
-            border_style="cyan",
-            padding=(0, 1),
-            expand=True
-        )
 
 
 async def log_evaluation_result(file_path: Path, provider: str, model: str, metadata: Any) -> None:
@@ -206,29 +166,29 @@ async def log_evaluation_result(file_path: Path, provider: str, model: str, meta
 async def run_pipeline(
     root_dir: Path,
     provider: str,
-    model: str | None,
-    mode: str,
-    workers: int,
-    recursive: bool,
-    ocr_enhanced: bool,
-    debug_ocr: bool,
-    use_mutool: bool,
-    mutool_path: str,
-    extractor: str,
-    text_length: int,
-    text_extraction: str,
-    extraction_pages: int,
+    model: str | None = None,
+    mode: str = "rename",
+    workers: int = 4,
+    recursive: bool = False,
+    ocr_enhanced: bool = False,
+    debug_ocr: bool = False,
+    use_mutool: bool = False,
+    mutool_path: str = "mutool",
+    extractor: str = "pymupdf",
+    text_length: int = 10000,
+    text_extraction: str = "mixed",
+    extraction_pages: int = 10,
     skip_ocr_checks: bool = False,
     move_scan_failures: bool = False,
+    fallback_mode: FallbackMode = FallbackMode.NONE,
     rename_images: bool = False,
     update_metadata: bool = False,
     add_exif_date: bool = False,
-    fallback_mode: FallbackMode = FallbackMode.OCR,
     benchmark: bool = False,
 ) -> None:
-    """Run the processing pipeline asynchronously."""
+    """Core processing pipeline orchestration."""
     # 1. Setup
-    _, _, processor = await setup_engines(
+    _ocr_engine, _llm_engine, processor = await setup_engines(
         provider,
         model,
         ocr_enhanced,
@@ -274,31 +234,46 @@ async def run_pipeline(
     console.print()
 
     # 3. Execution
-    semaphore = asyncio.Semaphore(workers)
     status_display = StatusDisplay(len(file_paths))
+    semaphore = asyncio.Semaphore(workers)
 
-    async def _process_task(f_path):
-        async with semaphore:
-            status_display.update(activity=f"Processing {f_path.name}...")
-            res = await processor.process_file(
-                f_path,
-                mode=mode,
-                fallback_mode=fallback_mode,
-                rename_images=rename_images,
-                update_metadata=update_metadata,
-                add_exif_date=add_exif_date,
-            )
-            if mode == "evaluate" and res.success:
-                await log_evaluation_result(f_path, provider, model or "unknown", res.metadata)
-            status_display.update(result=res)
-            return res
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=None),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        console=console,
+        expand=True,
+    ) as progress:
+        main_task = progress.add_task("[cyan]Processing...", total=len(file_paths))
 
-    results = []
-    with Live(status_display, console=console, refresh_per_second=4):
+        async def _process_task(f_path):
+            async with semaphore:
+                progress.update(main_task, description=f"[cyan]Processing {f_path.name}...")
+                res = await processor.process_file(
+                    f_path,
+                    mode=mode,
+                    fallback_mode=fallback_mode,
+                    rename_images=rename_images,
+                    update_metadata=update_metadata,
+                    add_exif_date=add_exif_date,
+                )
+                if mode == "evaluate" and res.success:
+                    await log_evaluation_result(f_path, provider, model or "unknown", res.metadata)
+
+                status_display.update(result=res)
+                progress.advance(main_task)
+
+                # Print status briefly above progress bar
+                status_color = "green" if res.success else "red"
+                status_text = "SUCCESS" if res.success else "FAILED"
+                progress.console.print(f"[{status_color}]{status_text:>7}[/] {f_path.name}")
+
+                return res
+
         pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
-        for coro in asyncio.as_completed(pending_tasks):
-            result = await coro
-            results.append(result)
+        results = await asyncio.gather(*pending_tasks)
 
     # 4. Final Summary Card
     success_count = sum(1 for r in results if r.success)
