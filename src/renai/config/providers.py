@@ -159,28 +159,34 @@ def _try_load_categories(path: Path, label: str) -> dict | None:
 def load_categories_from_file() -> dict:
     """Load categories from layered TOML configs.
 
-    Priority:
-    1. User config (CATEGORIES_USER_FILE)
-    2. Physical default (CATEGORIES_DEFAULT_FILE)
-    3. Package internal default
+    Files are merged in priority order (Internal -> Default -> User).
+    Higher priority items are appended while avoiding duplicates.
     """
-    # 1. User config
-    result = _try_load_categories(CATEGORIES_USER_FILE, "user")
-    if result:
-        return result
+    final: dict[str, dict[str, list[str]]] = {
+        "categories": {"en": [], "tr": []},
+        "image_categories": {"en": [], "tr": []},
+    }
 
-    # 2. Physical default in user dir
-    result = _try_load_categories(CATEGORIES_DEFAULT_FILE, "default")
-    if result:
-        return result
+    # Files in reverse priority order to build up the list
+    sources = [
+        (PACKAGE_CONFIG_DIR / "categories.default.toml", "package"),
+        (CATEGORIES_DEFAULT_FILE, "default"),
+        (CATEGORIES_USER_FILE, "user"),
+    ]
 
-    # 3. Package-internal default
-    package_file = PACKAGE_CONFIG_DIR / "categories.default.toml"
-    result = _try_load_categories(package_file, "package")
-    if result:
-        return result
+    for path, label in sources:
+        result = _try_load_categories(path, label)
+        if not result:
+            continue
 
-    return {"categories": {}, "image_categories": {}}
+        for section in ("categories", "image_categories"):
+            for lang in ("en", "tr"):
+                if lang in result[section]:
+                    for cat in result[section][lang]:
+                        if cat not in final[section][lang]:
+                            final[section][lang].append(cat)
+
+    return final
 
 
 # CUSTOM_CONFIG is resolved lazily via module-level __getattr__ (see end of file)
