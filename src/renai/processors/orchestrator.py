@@ -7,7 +7,8 @@ from typing import Any
 
 import typer
 from rich.columns import Columns
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -21,8 +22,9 @@ from rich.table import Table
 
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
+from renai.models import ProcessingResult
 from renai.processors.book import BookProcessor
-from renai.processors.text_extractor import FallbackMode
+from renai.processors.text_extractor import FallbackMode, TextExtractor
 from renai.settings import (
     EVAL_LOG_FILE,
     PROVIDERS,
@@ -122,30 +124,70 @@ def collect_files(
 class StatusDisplay:
     """Tracks stats for renAI processing."""
 
-    def __init__(self, total_files: int):
-        self.total = total_files
-        self.completed = 0
-        self.success = 0
+    def __init__(self, progress: Progress):
+        self.processed = 0
+        self.successful = 0
         self.failed = 0
-        self.last_results = []
+        self.activities = []
+        self.max_activities = 5
+        self.progress = progress
 
-    def update(self, result=None):
-        if result:
-            self.completed += 1
+    def update(self, result: ProcessingResult | str):
+        if isinstance(result, ProcessingResult):
+            self.processed += 1
             if result.success:
-                self.success += 1
-                status = "[green]SUCCESS[/green]"
+                self.successful += 1
             else:
                 self.failed += 1
-                status = "[red]FAILED[/red]"
-
-            # Keep last 5 results
+            
+            status = "[green]SUCCESS[/]" if result.success else "[red]FAILED[/]"
             display_name = getattr(result, "name", "Unknown")
-            res_text = f"{status} {display_name}"
-            self.last_results.append(res_text)
-            MAX_HISTORY = 5
-            if len(self.last_results) > MAX_HISTORY:
-                self.last_results.pop(0)
+        else:
+            status = "[dim]•[/]"
+            display_name = str(result)
+
+        # Aggressive truncation to 50 chars to prevent terminal row wrapping corruption
+        if len(display_name) > 50:
+            display_name = display_name[:47] + "..."
+        
+        res_text = f"{status} {display_name}"
+        self.activities.append(res_text)
+        
+        if len(self.activities) > 5:
+            self.activities.pop(0)
+
+    def __rich__(self) -> Table:
+        # 1. Activity Panel
+        activity_table = Table.grid(expand=True)
+        activity_table.add_column(no_wrap=True, overflow="ellipsis")
+        for act in self.activities:
+            activity_table.add_row(act)
+
+        # 2. Stats and Progress combined
+        layout_table = Table.grid(expand=True)
+        layout_table.add_row(
+            Panel(
+                activity_table,
+                title="[bold blue]Recent Activity[/]",
+                border_style="blue",
+                padding=(1, 2)
+            )
+        )
+
+        stats_line = (
+            f" [bold cyan]Files:[/] {self.processed}  "
+            f"[bold green]Success:[/] {self.successful}  "
+            f"[bold red]Failed:[/] {self.failed}"
+        )
+        layout_table.add_row(
+            Panel(
+                Group(stats_line, "\n", self.progress),
+                title="[bold green]Total Progress[/]",
+                border_style="green"
+            )
+        )
+
+        return layout_table
 
 
 async def log_evaluation_result(file_path: Path, provider: str, model: str, metadata: Any) -> None:
@@ -173,7 +215,7 @@ async def run_pipeline(
     model: str | None = None,
     mode: str = "rename",
     workers: int = 4,
-    recursive: bool = False,
+    recursive: bool = True,
     ocr_enhanced: bool = False,
     debug_ocr: bool = False,
     use_mutool: bool = False,
@@ -236,12 +278,8 @@ async def run_pipeline(
     ]
     console.print(Columns(summary_cols, expand=True))
     console.print()
-
-    # 3. Execution
-    status_display = StatusDisplay(len(file_paths))
-    semaphore = asyncio.Semaphore(workers)
-
-    with Progress(
+    # 3. Execution Setup
+    progress = Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(bar_width=None),
@@ -249,94 +287,61 @@ async def run_pipeline(
         TimeRemainingColumn(),
         console=console,
         expand=True,
-    ) as progress:
-        main_task = progress.add_task("[cyan]Processing...", total=len(file_paths))
+    )
+    main_task = progress.add_task("[cyan]Processing...", total=len(file_paths))
+    status_display = StatusDisplay(progress)
+    semaphore = asyncio.Semaphore(workers)
+    results = []
 
-        results = []
-        if benchmark:
-            # Benchmark Mode: Test all extractors on the sampled files
-            extractors_to_test = ["pymupdf", "pdfplumber", "pypdf", "pypdfium2"]
-            benchmark_data = []
-
-            from renai.extractors.pdf_extractors import get_extractor
-
-            for ext_name in extractors_to_test:
-                progress.update(main_task, description=f"[yellow]Benchmarking {ext_name}...")
-                processor.extractor_name = ext_name
-                # Re-initialize extractor internal
-                processor.text_extractor = get_extractor(ext_name)
-
-                start_t = time.perf_counter()
-                success_count = 0
-
-                for f_path in file_paths:
-                    res = await processor.process_file(f_path, mode="evaluate")
-                    if res.success:
-                        success_count += 1
-
-                duration = time.perf_counter() - start_t
-                benchmark_data.append(
-                    {
-                        "extractor": ext_name,
-                        "time": f"{duration:.2f}s",
-                        "success": f"{success_count}/{len(file_paths)}",
-                    }
+    try:
+        with Live(
+            status_display,
+            console=console,
+            refresh_per_second=4,
+            screen=True,  # Isolate from scrollback to prevent stacking
+        ) as live:
+            if benchmark:
+                await _run_benchmark_mode(
+                    processor, file_paths, status_display, progress, live
                 )
-                progress.advance(main_task, advance=0)  # Don't advance main task yet
+                return
 
-            # Display Benchmark Result Table
-            bench_table = Table(title="PDF Extractor Benchmark Results")
-            bench_table.add_column("Extractor", style="cyan")
-            bench_table.add_column("Time", style="magenta")
-            bench_table.add_column("Success Rate", style="green")
+            # Standard Mode (Rename, Organize, Evaluate)
+            async def _process_task(f_path):
+                async with semaphore:
+                    status_display.update(f"Scanning {f_path.name}")
+                    
+                    res = await processor.process_file(
+                        f_path,
+                        mode=mode,
+                        fallback_mode=fallback_mode,
+                        rename_images=rename_images,
+                        update_metadata=update_metadata,
+                        add_exif_date=add_exif_date,
+                    )
+                    if mode == "evaluate" and res.success:
+                        await log_evaluation_result(
+                            f_path, provider, model or "unknown", res.metadata
+                        )
 
-            for data in benchmark_data:
-                bench_table.add_row(data["extractor"], data["time"], data["success"])
+                    status_display.update(res)
+                    progress.advance(main_task)
 
-            progress.console.print("\n")
-            progress.console.print(bench_table)
-            progress.console.print("\n")
+                    return res
 
-            # Restore original extractor for summary logic
-            processor.extractor_name = extractor
-            processor.text_extractor = get_extractor(extractor)
-            # In benchmark mode, we don't return individual file results for the summary card
-            # since we ran multiple times. We'll just return fake success for the card or skip.
-            return
+            pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
+            results = await asyncio.gather(*pending_tasks)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
+        return
 
-        # Standard Mode (Rename, Organize, Evaluate)
-        async def _process_task(f_path):
-            async with semaphore:
-                progress.update(main_task, description=f"[cyan]Processing {f_path.name}...")
-                res = await processor.process_file(
-                    f_path,
-                    mode=mode,
-                    fallback_mode=fallback_mode,
-                    rename_images=rename_images,
-                    update_metadata=update_metadata,
-                    add_exif_date=add_exif_date,
-                )
-                if mode == "evaluate" and res.success:
-                    await log_evaluation_result(f_path, provider, model or "unknown", res.metadata)
-
-                status_display.update(result=res)
-                progress.advance(main_task)
-
-                # Print status briefly above progress bar
-                status_color = "green" if res.success else "red"
-                status_text = "SUCCESS" if res.success else "FAILED"
-                progress.console.print(f"[{status_color}]{status_text:>7}[/] {f_path.name}")
-
-                return res
-
-        pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
-        results = await asyncio.gather(*pending_tasks)
-
-    # 4. Final Summary Card
+    # 4. Final Summary Card (Static, will stay in terminal history)
     success_count = sum(1 for r in results if r.success)
     error_count = len(results) - success_count
 
-    summary_table = Table.grid(padding=(0, 2))
+    summary_table = Table.grid(padding=(0, 1))
+    summary_table.add_column(justify="left", style="white")
+    summary_table.add_column(justify="right", style="cyan")
     summary_table.add_row(
         "[bold green]✅ Successful[/bold green]", f"[bold green]{success_count}[/bold green]"
     )
@@ -349,12 +354,69 @@ async def run_pipeline(
     console.print(
         Panel(
             summary_table,
-            title="[bold]Processing Complete[/bold]",
+            title="[bold blue]Processing Result Summary[/]",
             border_style="green" if error_count == 0 else "yellow",
             padding=(1, 2),
             expand=False,
         )
     )
+
+
+async def _run_benchmark_mode(
+    processor: BookProcessor,
+    file_paths: list[Path],
+    status_display: StatusDisplay,
+    progress: Progress,
+    live: Live,
+) -> None:
+    """Run PDF extraction benchmark across multiple libraries."""
+    extractors_to_test = ["pymupdf", "pdfplumber", "pypdf", "pypdfium2"]
+    benchmark_data = []
+
+    for ext_name in extractors_to_test:
+        msg = f"[bold yellow]BENCHMARK[/] Testing [cyan]{ext_name}[/]..."
+        status_display.update(msg)
+
+        processor.extractor_name = ext_name
+        # Re-initialize TextExtractor with new library
+        processor.text_extractor = TextExtractor(
+            ocr_engine=processor.ocr_engine,
+            extractor_name=ext_name,
+            target_length=processor.target_length,
+        )
+
+        start_t = time.perf_counter()
+        success_count = 0
+
+        for f_path in file_paths:
+            res = await processor.process_file(f_path, mode="evaluate")
+            if res.success:
+                success_count += 1
+            status_display.update(res)
+
+        duration = time.perf_counter() - start_t
+        benchmark_data.append(
+            {
+                "extractor": ext_name,
+                "time": f"{duration:.2f}s",
+                "success": f"{success_count}/{len(file_paths)}",
+            }
+        )
+        status_display.update(f"[green]Completed {ext_name} in {duration:.2f}s[/]")
+
+    # Show Benchmark Result Table outside live
+    live.stop()
+    bench_table = Table(title="PDF Extractor Benchmark Results")
+    bench_table.add_column("Extractor", style="cyan")
+    bench_table.add_column("Time", style="magenta")
+    bench_table.add_column("Success Rate", style="green")
+
+    for data in benchmark_data:
+        bench_table.add_row(data["extractor"], data["time"], data["success"])
+
+    console.print("\n")
+    console.print(bench_table)
+    console.print("\n")
 
 
 async def run_evaluation_pipeline(
