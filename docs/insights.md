@@ -9,10 +9,10 @@ This document captures critical technical lessons and architectural insights dis
 **Agnostic Principle:** Always verify directory nesting behavior of cross-platform libraries on Windows, and explicitly disable author subdirectories if a flat structure is preferred.
 
 ### [Framework]: Pydantic-Settings "Customise" Spelling
-**Problem:** `SettingsConfigDict` with `toml_file` list was being ignored, and `settings_custom_sources` override was not being called.
-**Discovery/AHA!:** The `pydantic-settings` (v2.x) library uses British spelling for its hooks: `settings_customise_sources` (with an **s** and **ise**) instead of the more common "customize" or "custom". Without the exact spelling, the hook is silent and ignored.
-**Solution:** Rename the override method to `settings_customise_sources` and ensure a `TomlConfigSettingsSource` is returned in the list to activate `toml_file` processing.
-**Agnostic Principle:** Pay extreme attention to regional spelling variations in library hooks/APIs, especially when hooks fail silently.
+**Problem:** `SettingsConfigDict` with `toml_file` list was being ignored, and `settings_custom_sources` overrides were not being called in both `AppSettings` and `ProviderSettings`.
+**Discovery/AHA!:** The `pydantic-settings` (v2.x) library uses British spelling for its hooks: `settings_customise_sources` (with an **s** and **ise**) instead of the more common "customize" or "custom". Without the exact spelling, the hook is silent and ignored globally for any class inheriting from `BaseSettings`.
+**Solution:** Ensure every settings class (e.g., `AppSettings`, `ProviderSettings`) uses the exact `settings_customise_sources` method name for custom TOML/source loading.
+**Agnostic Principle:** Pay extreme attention to regional spelling variations in library hooks/APIs, especially when hooks fail silently across multiple instances in a codebase.
 
 ### [UX]: Double-Logging in CLI Output
 **Problem:** Important warnings were being printed twice in the terminal, cluttering the UI.
