@@ -1,14 +1,16 @@
-"""
-Orchestrator for renAI processing pipelines.
-Extracts heavy workflow logic from CLI parameters.
-"""
-
 import asyncio
+import json
+import logging
 from pathlib import Path
 
 import typer
+from rich.columns import Columns
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
@@ -108,15 +110,9 @@ def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> 
     return file_paths
 
 
-from rich.live import Live
-from rich.table import Table
-from rich.panel import Panel
-from rich.layout import Layout
-from rich.columns import Columns
-from rich.text import Text
-
 class StatusDisplay:
     """Manages the Live UI display for renAI processing."""
+
     def __init__(self, total_files: int):
         self.total = total_files
         self.completed = 0
@@ -134,7 +130,7 @@ class StatusDisplay:
             else:
                 self.failed += 1
                 status = "[red]FAILED[/red]"
-            
+
             # Keep last 5 results
             res_text = f"{status} {Path(result.original_path).name}"
             self.last_results.append(res_text)
@@ -148,7 +144,7 @@ class StatusDisplay:
         table = Table(expand=True, box=None)
         table.add_column("Status", width=12)
         table.add_column("File")
-        
+
         for res in reversed(self.last_results):
             parts = res.split(" ", 1)
             table.add_row(parts[0], parts[1] if len(parts) > 1 else "")
@@ -158,29 +154,47 @@ class StatusDisplay:
     def __rich__(self) -> Panel:
         pct = (self.completed / self.total) * 100 if self.total > 0 else 0
         filled = int(pct / 5)
-        bar = f"[bold green]━[/bold green]" * filled + "[dim]━[/dim]" * (20 - filled)
-        
+        bar = "[bold green]━[/bold green]" * filled + "[dim]━[/dim]" * (20 - filled)
+
         # Build footer with activity
         footer = Text.assemble(
             (f"{bar} ", "cyan"),
             (f"{pct:>3.0f}%", "bold white"),
             (f" | {self.completed}/{self.total} | ", "dim"),
-            (self.current_activity, "italic yellow")
+            (self.current_activity, "italic yellow"),
         )
 
         content = Layout()
         content.split_column(
             Layout(self.generate_table(), name="results", ratio=3),
-            Layout(footer, name="footer", size=1)
+            Layout(footer, name="footer", size=1),
         )
 
         return Panel(
             content,
-            title=f"[bold blue]Processing Live[/bold blue]",
+            title="[bold blue]Processing Live[/bold blue]",
             subtitle=f"[bold green]S: {self.success}[/bold green] • [bold red]F: {self.failed}[/bold red]",
             border_style="cyan",
-            padding=(1, 2)
+            padding=(1, 2),
         )
+
+
+async def log_evaluation_result(file_path: Path, provider: str, model: str, metadata: any) -> None:
+    """Log evaluation result to a file asynchronously."""
+    entry = {
+        "file": file_path.name,
+        "provider": provider,
+        "model": model,
+        "metadata": metadata,
+    }
+    try:
+        def _write():
+            with Path(EVAL_LOG_FILE).open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        await asyncio.to_thread(_write)
+    except Exception as e:
+        logging.error(f"Failed to log evaluation result: {e}")
+
 
 async def run_pipeline(
     root_dir: Path,
@@ -207,7 +221,7 @@ async def run_pipeline(
 ) -> None:
     """Run the processing pipeline asynchronously."""
     # 1. Setup
-    ocr_engine, llm_engine, processor = await setup_engines(
+    _, _, processor = await setup_engines(
         provider,
         model,
         ocr_enhanced,
@@ -227,7 +241,12 @@ async def run_pipeline(
     )
 
     # 2. Collection
-    file_paths = collect_files(root_dir, processor, recursive)
+    try:
+        file_paths = collect_files(root_dir, processor, recursive)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
+        raise typer.Exit(code=0) from None
+
     if not file_paths:
         console.print("[yellow]No supported files found to process.[/yellow]")
         return
@@ -262,11 +281,15 @@ async def run_pipeline(
                 update_metadata=update_metadata,
                 add_exif_date=add_exif_date,
             )
+            if mode == "evaluate" and res.success:
+                await log_evaluation_result(f_path, provider, model, res.metadata)
             status_display.update(result=res)
             return res
 
     results = []
-    with Live(status_display, console=console, refresh_per_second=4, vertical_overflow="visible") as live:
+    with Live(
+        status_display, console=console, refresh_per_second=4, vertical_overflow="visible"
+    ):
         pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
         for coro in asyncio.as_completed(pending_tasks):
             result = await coro
@@ -275,12 +298,16 @@ async def run_pipeline(
     # 4. Final Summary Card
     success_count = sum(1 for r in results if r.success)
     error_count = len(results) - success_count
-    
+
     summary_table = Table.grid(padding=(0, 2))
-    summary_table.add_row("[bold green]✅ Successful[/bold green]", f"[bold green]{success_count}[/bold green]")
+    summary_table.add_row(
+        "[bold green]✅ Successful[/bold green]", f"[bold green]{success_count}[/bold green]"
+    )
     if error_count > 0:
-        summary_table.add_row("[bold red]❌ Failed[/bold red]", f"[bold red]{error_count}[/bold red]")
-    
+        summary_table.add_row(
+            "[bold red]❌ Failed[/bold red]", f"[bold red]{error_count}[/bold red]"
+        )
+
     console.print()
     console.print(
         Panel(
@@ -288,7 +315,7 @@ async def run_pipeline(
             title="[bold]Processing Complete[/bold]",
             border_style="green" if error_count == 0 else "yellow",
             padding=(1, 2),
-            expand=False
+            expand=False,
         )
     )
 
@@ -299,24 +326,28 @@ async def run_evaluation_pipeline(
     workers: int = 4,
 ) -> None:
     """Run evaluation for multiple models asynchronously."""
-    # Load evaluation models from eval_models.toml
+    # Resolve models to a list of (provider, model_name) pairs
+    target_models: list[tuple[str, str]] = []
     if provider_filter:
-        eval_models = load_eval_models(provider_filter)
+        models = load_eval_models(provider_filter)
+        for m in models:
+            target_models.append((provider_filter, m))
     else:
-        eval_models = load_all_eval_models()
+        all_models = load_all_eval_models()
+        for prov, models in all_models.items():
+            for m in models:
+                target_models.append((prov, m))
 
-    if not eval_models:
+    if not target_models:
         console.print("[red]No evaluation models found in eval_models.toml.[/red]")
         return
 
     console.print("🔍 [bold blue]Evaluation Mode[/bold blue]")
     console.print(f"Target: [cyan]{root_dir}[/cyan]")
-    console.print(f"Models: [green]{', '.join(eval_models.keys())}[/green]\n")
+    console.print(f"Models: [green]{len(target_models)} total[/green]\n")
 
-    for model_key, (provider, model_name) in eval_models.items():
-        console.print(
-            f"--- [bold yellow]Evaluating: {model_key} ({provider}/{model_name})[/bold yellow] ---"
-        )
+    for provider, model_name in target_models:
+        console.print(f"--- [bold yellow]Evaluating: {provider}/{model_name}[/bold yellow] ---")
 
         await run_pipeline(
             root_dir=root_dir,

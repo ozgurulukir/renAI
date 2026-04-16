@@ -6,7 +6,6 @@ original main.py has been migrated here.
 """
 
 import asyncio
-import logging
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -15,6 +14,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from renai import __version__
 from renai.logging_config import configure_logging
 from renai.processors.orchestrator import run_evaluation_pipeline, run_pipeline
 from renai.processors.setup import run_init_wizard
@@ -25,7 +25,6 @@ from renai.settings import (
     initialize_directories,
 )
 from renai.utils import ensure_secure_dir
-from renai import __version__
 
 # Initialize logging
 configure_logging()
@@ -57,7 +56,11 @@ def main_callback(
     version: Annotated[
         bool | None,
         typer.Option(
-            "--version", "-v", callback=version_callback, is_eager=True, help="Show version and exit"
+            "--version",
+            "-v",
+            callback=version_callback,
+            is_eager=True,
+            help="Show version and exit",
         ),
     ] = None,
 ):
@@ -114,26 +117,23 @@ def display_warnings(mode: str, recursive: bool) -> None:
 
     from rich.panel import Panel
     from rich.table import Table
-    from rich.text import Text
 
     # 1. Create Warning Table
     table = Table.grid(padding=(0, 1))
-    
+
     if mode == "rename":
         table.add_row(
-            "[bold yellow]🏷️  RENAMING[/bold yellow]", 
-            "Files WILL be renamed in place or moved."
+            "[bold yellow]🏷️  RENAMING[/bold yellow]", "Files WILL be renamed in place or moved."
         )
     elif mode == "organize":
         table.add_row(
-            "[bold yellow]📁 ORGANIZE[/bold yellow]", 
-            "Files will be moved to category-based subfolders."
+            "[bold yellow]📁 ORGANIZE[/bold yellow]",
+            "Files will be moved to category-based subfolders.",
         )
 
     if recursive:
         table.add_row(
-            "[bold cyan]🔄 RECURSIVE[/bold cyan]", 
-            "Files in subdirectories will also be processed."
+            "[bold cyan]🔄 RECURSIVE[/bold cyan]", "Files in subdirectories will also be processed."
         )
 
     # 2. Show Panel
@@ -143,13 +143,16 @@ def display_warnings(mode: str, recursive: bool) -> None:
             title="[bold red]⚠️  IMPORTANT WARNINGS[/bold red]",
             border_style="red",
             expand=False,
-            padding=(1, 2)
+            padding=(1, 2),
         )
     )
 
     # 3. Interactive confirmation
     try:
-        console.print("\n[dim]Press [bold]ENTER[/bold] to proceed, or [bold red]Ctrl+C[/bold] to cancel...[/dim]", end="")
+        console.print(
+            "\n[dim]Press [bold]ENTER[/bold] to proceed, or [bold red]Ctrl+C[/] to cancel...[/dim]",
+            end="",
+        )
         input("")
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Operation cancelled by user.[/yellow]")
@@ -314,25 +317,20 @@ def process_cmd(
         console.print(f"[red]Error: Directory not found: {root_dir}[/red]")
         raise typer.Exit(code=1)
 
-    from rich.panel import Panel
     from rich.columns import Columns
+    from rich.panel import Panel
 
     # 1. Header Information
     title = f"[bold cyan]renAI[/bold cyan] [dim]v{__version__}[/dim]"
-    
+
     info_cols = [
         f"[blue]📂 Dir:[/blue] {root_dir.name}",
         f"[green]🛠 Mode:[/green] {mode}",
         f"[yellow]☁ Provider:[/yellow] {provider}/{model or 'default'}",
     ]
-    
+
     console.print(
-        Panel(
-            Columns(info_cols, expand=True),
-            title=title,
-            border_style="cyan",
-            padding=(0, 1)
-        )
+        Panel(Columns(info_cols, expand=True), title=title, border_style="cyan", padding=(0, 1))
     )
 
     display_warnings(mode, recursive)
@@ -406,7 +404,7 @@ def evaluate_cmd(
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Evaluation cancelled.[/yellow]")
-        raise typer.Exit(code=0)
+        raise typer.Exit(code=0) from None
 
 
 @app.command("providers")
