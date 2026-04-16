@@ -26,6 +26,12 @@ This document captures critical technical lessons and architectural insights dis
 **Solution:** Kept `AppSettings` merging via Pydantic, but enforced a strict priority-based replacement for `categories.toml` and `eval_models.toml`.
 **Agnostic Principle:** Prefer merging for behavioral settings (extension) and replacement for content/datasets (total control), unless explicitly requested otherwise.
 
+### [CLI/UX]: Premium Terminal Experience (Live UI)
+**Problem:** Standard progress bars (like `tqdm`) get broken and interleaved when internal tasks log or print to the console. Large batch processes with interleaved logs look "noisy" and unprofessional.
+**Discovery/AHA!:** Using `rich.live.Live` allows for a fixed-layout UI that separates "Status Logs" from "Progress State". A layout with a scrolling results table and a fixed footer creates a dashboard-like feeling.
+**Solution:** Implemented `StatusDisplay` class that renders a `Live` panel with a history of recent completions, a sticky progress bar, and an activity indicator.
+**Agnostic Principle:** For CLI tools with long-running parallel tasks, prioritize a "Stable Frame" (Live UI) over "Streaming Text" to maintain visual sanity and focus.
+
 ### [Architecture]: AsyncIO Concurrency with CPU-Bound Tasks
 **Problem:** Transitioning to `asyncio` for OCR/Image processing could easily block the event loop.
 **Discovery/AHA!:** Wrapping subprocess calls and heavy I/O in `asyncio.to_thread()` or using `asyncio.create_subprocess_exec()` is essential to maintain high concurrency without stalling the orchestrator.

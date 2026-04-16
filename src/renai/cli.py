@@ -112,49 +112,47 @@ def display_warnings(mode: str, recursive: bool) -> None:
     if not app_settings.show_warnings:
         return
 
-    import sys
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
 
-    # 1. Generate message
-    msg = ["\n" + "=" * 70, "⚠️  IMPORTANT WARNINGS", "=" * 70]
-
+    # 1. Create Warning Table
+    table = Table.grid(padding=(0, 1))
+    
     if mode == "rename":
-        msg.extend(
-            [
-                "\n🏷️  RENAMING WARNING:",
-                "   Source files WILL be renamed in place or moved to subfolders.",
-            ]
+        table.add_row(
+            "[bold yellow]🏷️  RENAMING[/bold yellow]", 
+            "Files WILL be renamed in place or moved."
         )
     elif mode == "organize":
-        msg.extend(
-            [
-                "\n📁 DIRECTORY LAYOUT WARNING:",
-                "   Files will be moved into category-based subfolders.",
-            ]
+        table.add_row(
+            "[bold yellow]📁 ORGANIZE[/bold yellow]", 
+            "Files will be moved to category-based subfolders."
         )
 
     if recursive:
-        msg.extend(
-            [
-                "\n🔄 RECURSIVE MODE:",
-                "   Files in subdirectories will also be processed.",
-            ]
+        table.add_row(
+            "[bold cyan]🔄 RECURSIVE[/bold cyan]", 
+            "Files in subdirectories will also be processed."
         )
 
-    msg.append("=" * 70 + "\n")
-    warning_text = "\n".join(msg)
-
-    # 2. Show via console
-    console.print(warning_text)
+    # 2. Show Panel
+    console.print(
+        Panel(
+            table,
+            title="[bold red]⚠️  IMPORTANT WARNINGS[/bold red]",
+            border_style="red",
+            expand=False,
+            padding=(1, 2)
+        )
+    )
 
     # 3. Interactive confirmation
     try:
-        input("\nPress ENTER to proceed, or Ctrl+C to cancel...")
-    except KeyboardInterrupt:
-        logging.info("\nOperation cancelled by user.")
-        print("\nOperation cancelled by user.")
-        sys.exit(0)
-    except EOFError:
-        logging.info("\nOperation cancelled by user.")
+        console.print("\n[dim]Press [bold]ENTER[/bold] to proceed, or [bold red]Ctrl+C[/bold] to cancel...[/dim]", end="")
+        input("")
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[yellow]Operation cancelled by user.[/yellow]")
         sys.exit(0)
 
 
@@ -316,10 +314,26 @@ def process_cmd(
         console.print(f"[red]Error: Directory not found: {root_dir}[/red]")
         raise typer.Exit(code=1)
 
-    console.print("\n[bold cyan]renAI[/bold cyan] - AI-Powered Book Renamer")
-    console.print(f"[blue]Directory:[/blue] {root_dir}")
-    console.print(f"[green]Mode:[/green] {mode}")
-    console.print(f"[yellow]Provider:[/yellow] {provider}")
+    from rich.panel import Panel
+    from rich.columns import Columns
+
+    # 1. Header Information
+    title = f"[bold cyan]renAI[/bold cyan] [dim]v{__version__}[/dim]"
+    
+    info_cols = [
+        f"[blue]📂 Dir:[/blue] {root_dir.name}",
+        f"[green]🛠 Mode:[/green] {mode}",
+        f"[yellow]☁ Provider:[/yellow] {provider}/{model or 'default'}",
+    ]
+    
+    console.print(
+        Panel(
+            Columns(info_cols, expand=True),
+            title=title,
+            border_style="cyan",
+            padding=(0, 1)
+        )
+    )
 
     display_warnings(mode, recursive)
 

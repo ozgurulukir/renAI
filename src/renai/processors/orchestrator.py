@@ -53,15 +53,11 @@ async def setup_engines(
 
     # Get provider configuration
     if provider not in PROVIDERS:
-        console.print(f"[red]Invalid provider: {provider}[/red]")
         raise typer.Exit(code=1)
 
     provider_config = PROVIDERS[provider]
     api_key = provider_config.api_key or get_api_key(provider)
     if not api_key:
-        console.print(
-            f"[red]API Key for {provider} not found. Set {provider.upper()}_API_KEY environment variable.[/red]"
-        )
         raise typer.Exit(code=1)
 
     # Determine model to use
@@ -111,6 +107,80 @@ def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> 
             file_paths.append(entry)
     return file_paths
 
+
+from rich.live import Live
+from rich.table import Table
+from rich.panel import Panel
+from rich.layout import Layout
+from rich.columns import Columns
+from rich.text import Text
+
+class StatusDisplay:
+    """Manages the Live UI display for renAI processing."""
+    def __init__(self, total_files: int):
+        self.total = total_files
+        self.completed = 0
+        self.success = 0
+        self.failed = 0
+        self.last_results = []
+        self.current_activity = "Initializing..."
+
+    def update(self, result=None, activity=None):
+        if result:
+            self.completed += 1
+            if result.success:
+                self.success += 1
+                status = "[green]SUCCESS[/green]"
+            else:
+                self.failed += 1
+                status = "[red]FAILED[/red]"
+            
+            # Keep last 5 results
+            res_text = f"{status} {Path(result.original_path).name}"
+            self.last_results.append(res_text)
+            if len(self.last_results) > 5:
+                self.last_results.pop(0)
+
+        if activity:
+            self.current_activity = activity
+
+    def generate_table(self) -> Table:
+        table = Table(expand=True, box=None)
+        table.add_column("Status", width=12)
+        table.add_column("File")
+        
+        for res in reversed(self.last_results):
+            parts = res.split(" ", 1)
+            table.add_row(parts[0], parts[1] if len(parts) > 1 else "")
+        return table
+
+    # Status Bar logic
+    def __rich__(self) -> Panel:
+        pct = (self.completed / self.total) * 100 if self.total > 0 else 0
+        filled = int(pct / 5)
+        bar = f"[bold green]━[/bold green]" * filled + "[dim]━[/dim]" * (20 - filled)
+        
+        # Build footer with activity
+        footer = Text.assemble(
+            (f"{bar} ", "cyan"),
+            (f"{pct:>3.0f}%", "bold white"),
+            (f" | {self.completed}/{self.total} | ", "dim"),
+            (self.current_activity, "italic yellow")
+        )
+
+        content = Layout()
+        content.split_column(
+            Layout(self.generate_table(), name="results", ratio=3),
+            Layout(footer, name="footer", size=1)
+        )
+
+        return Panel(
+            content,
+            title=f"[bold blue]Processing Live[/bold blue]",
+            subtitle=f"[bold green]S: {self.success}[/bold green] • [bold red]F: {self.failed}[/bold red]",
+            border_style="cyan",
+            padding=(1, 2)
+        )
 
 async def run_pipeline(
     root_dir: Path,
@@ -168,17 +238,23 @@ async def run_pipeline(
             f"[yellow]Benchmark mode: only processing first {len(file_paths)} files.[/yellow]"
         )
 
-    console.print(
-        f"🚀 [bold blue]renAI[/bold blue] - Found [green]{len(file_paths)}[/green] files to process "
-        f"using [cyan]{workers}[/cyan] parallel tasks (RPM Limit: {app_settings.llm_rpm_limit}).\n"
-    )
+    # Initial Info Summary
+    summary_cols = [
+        f"[bold blue]🚀 Files:[/bold blue] {len(file_paths)}",
+        f"[bold cyan]⚙ Workers:[/bold cyan] {workers}",
+        f"[bold yellow]⏱ RPM Limit:[/bold yellow] {app_settings.llm_rpm_limit}",
+    ]
+    console.print(Columns(summary_cols, expand=True))
+    console.print()
 
     # 3. Execution
     semaphore = asyncio.Semaphore(workers)
+    status_display = StatusDisplay(len(file_paths))
 
-    async def _process_with_semaphore(f_path):
+    async def _process_task(f_path):
         async with semaphore:
-            return await processor.process_file(
+            status_display.update(activity=f"Processing {f_path.name}...")
+            res = await processor.process_file(
                 f_path,
                 mode=mode,
                 fallback_mode=fallback_mode,
@@ -186,35 +262,35 @@ async def run_pipeline(
                 update_metadata=update_metadata,
                 add_exif_date=add_exif_date,
             )
+            status_display.update(result=res)
+            return res
 
     results = []
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-        transient=True,
-    ) as progress:
-        task_id = progress.add_task("[cyan]Processing...", total=len(file_paths))
-
-        pending_tasks = [asyncio.ensure_future(_process_with_semaphore(f)) for f in file_paths]
-
+    with Live(status_display, console=console, refresh_per_second=4, vertical_overflow="visible") as live:
+        pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
         for coro in asyncio.as_completed(pending_tasks):
             result = await coro
             results.append(result)
-            progress.update(
-                task_id,
-                advance=1,
-                description=f"Processing: [bold]{len(results)}/{len(file_paths)}[/bold]",
-            )
 
-    # 4. Summary
+    # 4. Final Summary Card
     success_count = sum(1 for r in results if r.success)
     error_count = len(results) - success_count
-
-    console.print("\n[bold green]Processing complete![/bold green]")
-    console.print(f"✅ Success: [green]{success_count}[/green]")
+    
+    summary_table = Table.grid(padding=(0, 2))
+    summary_table.add_row("[bold green]✅ Successful[/bold green]", f"[bold green]{success_count}[/bold green]")
     if error_count > 0:
-        console.print(f"❌ Failed: [red]{error_count}[/red]")
+        summary_table.add_row("[bold red]❌ Failed[/bold red]", f"[bold red]{error_count}[/bold red]")
+    
+    console.print()
+    console.print(
+        Panel(
+            summary_table,
+            title="[bold]Processing Complete[/bold]",
+            border_style="green" if error_count == 0 else "yellow",
+            padding=(1, 2),
+            expand=False
+        )
+    )
 
 
 async def run_evaluation_pipeline(
