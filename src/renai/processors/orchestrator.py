@@ -98,7 +98,9 @@ async def setup_engines(
     return ocr_engine, llm_engine, processor
 
 
-def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> list[Path]:
+def collect_files(
+    root_dir: Path, processor: BookProcessor, recursive: bool, rename_images: bool = False
+) -> list[Path]:
     """Collect supported files from directory."""
     file_paths = []
     iterator = root_dir.rglob("*") if recursive else root_dir.iterdir()
@@ -107,7 +109,7 @@ def collect_files(root_dir: Path, processor: BookProcessor, recursive: bool) -> 
             entry.is_file()
             and (
                 entry.suffix.lower() in processor.supported_extensions
-                or entry.suffix.lower() in get_image_extensions()
+                or (rename_images and entry.suffix.lower() in get_image_extensions())
             )
             and "Needs_Scan" not in str(entry)
             and "Scan_Failures" not in str(entry)
@@ -209,7 +211,7 @@ async def run_pipeline(
 
     # 2. Collection
     try:
-        file_paths = collect_files(root_dir, processor, recursive)
+        file_paths = collect_files(root_dir, processor, recursive, rename_images)
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
         raise typer.Exit(code=0) from None
