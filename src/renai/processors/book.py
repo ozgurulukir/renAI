@@ -99,7 +99,7 @@ class BookProcessor:
         try:
             if file_path.is_symlink():
                 logging.warning(f"Skipping symlink: {file_path.name}")
-                return ProcessingResult(success=False, error="Symlink skipped")
+                return ProcessingResult(success=False, name=file_path.name, error="Symlink skipped")
 
             file_hash = await asyncio.to_thread(get_file_hash, file_path)
             is_image = file_path.suffix.lower() in get_image_extensions()
@@ -164,7 +164,7 @@ class BookProcessor:
 
             if not metadata:
                 return ProcessingResult(
-                    success=False, error="Extraction failed (No metadata generated)"
+                    success=False, name=file_path.name, error="Extraction failed (No metadata generated)"
                 )
 
             # 2. Handle final action (rename or evaluate)
@@ -177,7 +177,7 @@ class BookProcessor:
 
         except Exception as e:
             logging.error(f"Failed to process {file_path.name}: {e}")
-            return ProcessingResult(success=False, error=str(e))
+            return ProcessingResult(success=False, name=file_path.name, error=str(e))
 
     async def _handle_renaming(
         self, file_path: Path, metadata: BookMetadata | ImageMetadata
@@ -223,7 +223,7 @@ class BookProcessor:
                     name=final_path.name,
                     category=category,
                 )
-            return ProcessingResult(success=False, error="Safe move failed")
+            return ProcessingResult(success=False, name=file_path.name, error="Safe move failed")
 
         except Exception as e:
             return ProcessingResult(success=False, error=f"Renaming logic failed: {e!s}")

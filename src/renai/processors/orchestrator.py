@@ -6,7 +6,7 @@ from typing import Any
 
 import typer
 from rich.columns import Columns
-from rich.console import Console
+from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -133,7 +133,7 @@ class StatusDisplay:
                 status = "[red]FAILED[/red]"
 
             # Keep last 5 results
-            display_name = result.name or (result.file_path.name if result.file_path else "Unknown")
+            display_name = getattr(result, "name", "Unknown")
             res_text = f"{status} {display_name}"
             self.last_results.append(res_text)
             if len(self.last_results) > 5:
@@ -156,28 +156,31 @@ class StatusDisplay:
     def __rich__(self) -> Panel:
         pct = (self.completed / self.total) * 100 if self.total > 0 else 0
         filled = int(pct / 5)
-        bar = "[bold green]━[/bold green]" * filled + "[dim]━[/dim]" * (20 - filled)
-
-        # Build footer with activity
+        bar_filled = "━" * filled
+        bar_empty = "━" * (20 - filled)
+        
+        # Compact footer
         footer = Text.assemble(
-            (f"{bar} ", "cyan"),
-            (f"{pct:>3.0f}%", "bold white"),
+            (bar_filled, "bold green"),
+            (bar_empty, "dim"),
+            (f" {pct:>3.0f}%", "bold white"),
             (f" | {self.completed}/{self.total} | ", "dim"),
-            (self.current_activity, "italic yellow"),
+            (self.current_activity, "italic yellow")
         )
 
-        content = Layout()
-        content.split_column(
-            Layout(self.generate_table(), name="results", ratio=3),
-            Layout(footer, name="footer", size=1),
-        )
+        renderables = []
+        if self.last_results:
+            renderables.append(self.generate_table())
+            renderables.append(Text(""))
+        renderables.append(footer)
 
         return Panel(
-            content,
+            Group(*renderables),
             title="[bold blue]Processing Live[/bold blue]",
             subtitle=f"[bold green]S: {self.success}[/bold green] • [bold red]F: {self.failed}[/bold red]",
             border_style="cyan",
-            padding=(1, 2),
+            padding=(0, 1),
+            expand=True
         )
 
 
@@ -291,7 +294,7 @@ async def run_pipeline(
             return res
 
     results = []
-    with Live(status_display, console=console, refresh_per_second=4, vertical_overflow="visible"):
+    with Live(status_display, console=console, refresh_per_second=4):
         pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
         for coro in asyncio.as_completed(pending_tasks):
             result = await coro
