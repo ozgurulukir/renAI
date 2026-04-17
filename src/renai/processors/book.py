@@ -66,6 +66,7 @@ class BookProcessor:
         self.file_operation_lock = asyncio.Lock()
 
         # Tracking for reporting/failure handling
+        self.root_dir: Path | None = None
         self.scan_failed_files: set[Path] = set()
         self.supported_extensions = {
             ".pdf",
@@ -81,7 +82,8 @@ class BookProcessor:
     async def setup_move_folders(
         self, root_dir: Path, skip_ocr_checks: bool = False, move_scan_failures: bool = False
     ) -> None:
-        """Delegate to text_extractor (sync/async bridge)."""
+        """Delegate to text_extractor and store root_dir for organization."""
+        self.root_dir = root_dir
         await asyncio.to_thread(
             self.text_extractor.setup_move_folders, root_dir, skip_ocr_checks, move_scan_failures
         )
@@ -236,38 +238,55 @@ class BookProcessor:
 
             # 2. Determine target destination based on mode
             if mode == "organize" and category:
-                # Avoid double nesting: if the current parent folder's name
-                # matches the category, don't move it deeper into another subfolder.
-                if file_path.parent.name == category:
-                    target_dest = file_path.parent / new_name
-                else:
-                    target_dest = file_path.parent / category / new_name
+                # Use root_dir if available to organize everything at the top level
+                # as described in README.md. Fall back to parent if root_dir is unknown.
+                dest_root = self.root_dir or file_path.parent
+                target_dest = dest_root / category / new_name
             else:
                 target_dest = file_path.parent / new_name
 
-            # 3. Check if file is already in the correct place with correct name
-            # We use resolve() to ensure we compare absolute paths correctly
+            # 3. Security: Ensure target_dest is contained within the root_dir (Defense in Depth)
+            if self.root_dir:
+                resolved_root = self.root_dir.resolve()
+                resolved_dest = target_dest.resolve()
+                if not str(resolved_dest).startswith(str(resolved_root)):
+                    msg = f"SECURITY ALERT: Target path {target_dest} escapes root {self.root_dir}"
+                    logging.error(msg)
+                    return ProcessingResult(
+                        success=False, name=file_path.name, error="Security: Path traversal blocked"
+                    )
+
+            # 4. Check if file is already in the correct place with correct name
             if file_path.resolve() == target_dest.resolve():
-                logging.info(f"Skipping (Already in place): {file_path.name}")
+                logging.info(f"Skipping (Already organized/renamed): {file_path.name}")
+                m_data = (
+                    metadata.model_dump() if hasattr(metadata, "model_dump") else cast("dict", metadata)
+                )
                 return ProcessingResult(
                     success=True,
-                    metadata=metadata.model_dump() if hasattr(metadata, "model_dump") else metadata,
+                    metadata=m_data,
                     file_path=file_path,
                     name=file_path.name,
                     category=category,
                 )
 
-            # 4. Perform the move securely
+            # 5. Perform the move securely
             def _do_move():
-                return safe_move_file(file_path, target_dest, operation_type=mode)
+                s_hash = getattr(metadata, "file_hash", None)
+                return safe_move_file(
+                    file_path, target_dest, operation_type=mode, source_hash=s_hash
+                )
 
             final_path = await asyncio.to_thread(_do_move)
 
             if final_path:
                 logging.info(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
+                m_data = (
+                    metadata.model_dump() if hasattr(metadata, "model_dump") else cast("dict", metadata)
+                )
                 return ProcessingResult(
                     success=True,
-                    metadata=metadata.model_dump() if hasattr(metadata, "model_dump") else metadata,
+                    metadata=m_data,
                     file_path=final_path,
                     name=final_path.name,
                     category=category,

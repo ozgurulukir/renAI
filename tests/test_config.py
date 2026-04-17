@@ -8,10 +8,11 @@ Tests the TOML-based configuration system:
 - Default fallbacks
 """
 
-import pytest
 import builtins
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from renai.cli import display_warnings
 from renai.settings import (
