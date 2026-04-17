@@ -45,8 +45,8 @@ async def test_file_processing_integration():
         mock_extractor.extract = AsyncMock(return_value="AI " * 100)
         processor.text_extractor = mock_extractor
 
-        # Process the book
-        result = await processor.process_file(test_file, mode="rename")
+        # Process the book in organize mode to verify movement to category folder
+        result = await processor.process_file(test_file, mode="organize")
 
         # Check results
         assert result.success

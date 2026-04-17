@@ -28,24 +28,18 @@ __version__ = "2.0.0"
 
 
 __all__ = [
-    # Version
-    "__version__",
-    # Engines
+    "BookProcessor",
     "LLMEngine",
     "OCREngine",
-    # Processors
-    "BookProcessor",
     "TextExtractor",
     "VisualProcessor",
-    # Cache
-    "clear_all_cache",
-    "get_metadata_cache_path",
-    "get_text_cache_path",
-    # File Ops
-    "safe_copy_file",
-    "safe_move_file",
-    # Filename
+    "__version__",
     "build_book_filename",
     "build_image_filename",
     "build_vision_filename",
+    "clear_all_cache",
+    "get_metadata_cache_path",
+    "get_text_cache_path",
+    "safe_copy_file",
+    "safe_move_file",
 ]

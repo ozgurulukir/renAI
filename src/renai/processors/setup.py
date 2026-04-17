@@ -48,16 +48,15 @@ def run_init_wizard():
     console.print(f"[info]Config directory:[/info] {CONFIG_DIR}")
 
     # 2. Check if user config already exists
-    if SETTINGS_USER_FILE.exists() or SECRETS_FILE.exists():
-        if not Confirm.ask(
-            "[warning]User configuration files already exist. Overwrite?[/warning]", default=False
-        ):
-            console.print("[info]Setup cancelled.[/info]")
-            return
+    if (SETTINGS_USER_FILE.exists() or SECRETS_FILE.exists()) and not Confirm.ask(
+        "[warning]User configuration files already exist. Overwrite?[/warning]", default=False
+    ):
+        console.print("[info]Setup cancelled.[/info]")
+        return
 
     # 3. Provider Selection
     console.print("\n[highlight]Step 1: Provider Setup[/highlight]")
-    available_providers = list(PROVIDERS.keys()) + ["custom"]
+    available_providers = [*list(PROVIDERS.keys()), "custom"]
     provider = Prompt.ask(
         "Select your preferred LLM provider", choices=available_providers, default="deepinfra"
     )
@@ -107,11 +106,11 @@ def run_init_wizard():
             console.print(f"  - Propagated: {dest.name}")
 
         # B. Save settings.toml (User overrides)
-        with open(SETTINGS_USER_FILE, "wb") as f:
+        with SETTINGS_USER_FILE.open("wb") as f:
             tomli_w.dump(config, f)
 
         # C. Save secrets.toml
-        with open(SECRETS_FILE, "wb") as f:
+        with SECRETS_FILE.open("wb") as f:
             tomli_w.dump(secrets, f)
 
         # Ensure secure permissions on secrets
@@ -125,7 +124,8 @@ def run_init_wizard():
 
     except ImportError:
         console.print(
-            "[error]Missing 'tomli-w' dependency. Please install it using 'uv sync' or 'pip install tomli-w'.[/error]"
+            "[error]Missing 'tomli-w' dependency. "
+            "Please install it using 'uv sync' or 'pip install tomli-w'.[/error]"
         )
         return
     except Exception as e:

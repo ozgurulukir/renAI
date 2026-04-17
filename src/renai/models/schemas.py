@@ -87,5 +87,8 @@ class ImageMetadata(BaseMetadata):
     )
     exif_date: str | None = Field(
         None,
-        description="The date extracted from EXIF (internal use only, usually provided by processor).",
+        description=(
+            "The date extracted from EXIF (internal use only, "
+            "usually provided by processor)."
+        ),
     )

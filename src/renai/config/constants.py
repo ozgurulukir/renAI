@@ -24,6 +24,10 @@ from platformdirs import user_data_dir
 APP_NAME = "renAI"
 APP_AUTHOR = False  # Set to False to ensure flat directory structure (LocalAppData/renAI)
 
+# UI & Terminal Constants
+MAX_DISPLAY_NAME_LENGTH = 50
+MAX_RECENT_ACTIVITIES = 5
+
 # Directory Configuration (using platformdirs for OS-agnostic paths)
 BASE_DIR = Path(__file__).parent.parent.resolve()
 PACKAGE_CONFIG_DIR = BASE_DIR / "config"
@@ -77,7 +81,7 @@ def load_factory_defaults() -> dict:
     if not default_file.exists():
         return {}
     try:
-        with open(default_file, "rb") as f:
+        with default_file.open("rb") as f:
             return tomllib.load(f)
     except Exception as e:
         logging.error(f"Failed to load factory defaults: {e}")

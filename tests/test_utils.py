@@ -52,29 +52,24 @@ def test_get_file_hash_nonexistent():
 
 
 def test_get_file_hash_mocked():
-    """Test get_file_hash with mocking to verify file_digest usage."""
-    mock_file_content = b"mocked content for digest"
+    """Test get_file_hash with mocked file_digest to avoid heavy I/O."""
+    from renai.utils import get_file_hash
 
-    mock_path = Path("mocked_file.txt")
+    mock_file = MagicMock()
+    # Create a mock path object that behaves like a Path
+    mock_path = MagicMock(spec=Path)
+    mock_path.open.return_value.__enter__.return_value = mock_file
 
-    with (
-        patch("builtins.open") as mock_open,
-        patch("hashlib.file_digest") as mock_file_digest,
-    ):
-        mock_file = MagicMock()
-        mock_open.return_value.__enter__.return_value = mock_file
-
+    with patch("hashlib.file_digest") as mock_file_digest:
         # Mock file_digest to return an object with a hexdigest method
         mock_digest_obj = MagicMock()
-        expected_hash = hashlib.sha256(mock_file_content).hexdigest()
-        mock_digest_obj.hexdigest.return_value = expected_hash
+        mock_digest_obj.hexdigest.return_value = "mocked_hash_value"
         mock_file_digest.return_value = mock_digest_obj
 
-        result_hash = get_file_hash(mock_path)
+        result = get_file_hash(mock_path)
 
-        assert result_hash == expected_hash
-
-        # Verify file_digest was called correctly
+        assert result == "mocked_hash_value"
+        mock_path.open.assert_called_once_with("rb")
         mock_file_digest.assert_called_once_with(mock_file, "sha256")
         mock_digest_obj.hexdigest.assert_called_once()
 
@@ -244,7 +239,7 @@ def test_read_text_limited_empty(tmp_path):
 
 
 @patch("renai.utils.logging.error")
-@patch("builtins.open")
+@patch.object(Path, "open")
 def test_read_text_limited_error_logging(mock_open, mock_logging_error, tmp_path):
     """Test that an exception triggers logging.error and returns an empty string."""
     test_file = tmp_path / "error.txt"

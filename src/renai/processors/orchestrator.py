@@ -20,13 +20,17 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from renai.config.constants import (
+    EVAL_LOG_FILE,
+    MAX_DISPLAY_NAME_LENGTH,
+    MAX_RECENT_ACTIVITIES,
+)
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
 from renai.models import ProcessingResult
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode, TextExtractor
 from renai.settings import (
-    EVAL_LOG_FILE,
     PROVIDERS,
     app_settings,
     get_api_key,
@@ -51,6 +55,7 @@ async def setup_engines(
     text_length: int = 10000,
     text_extraction: str = "mixed",
     extraction_pages: int = 10,
+    move_scan_failures: bool = False,
 ) -> tuple[OCREngine, LLMEngine, BookProcessor]:
     """Initialize OCR, LLM, and book processor engines asynchronously."""
     # Initialize OCR engine
@@ -96,6 +101,7 @@ async def setup_engines(
         target_length=text_length,
         text_extraction=text_extraction,
         extraction_pages=extraction_pages,
+        move_scan_failures=move_scan_failures,
     )
 
     return ocr_engine, llm_engine, processor
@@ -129,7 +135,7 @@ class StatusDisplay:
         self.successful = 0
         self.failed = 0
         self.activities = []
-        self.max_activities = 5
+        self.max_activities = MAX_RECENT_ACTIVITIES
         self.progress = progress
 
     def update(self, result: ProcessingResult | str):
@@ -139,21 +145,22 @@ class StatusDisplay:
                 self.successful += 1
             else:
                 self.failed += 1
-            
+
             status = "[green]SUCCESS[/]" if result.success else "[red]FAILED[/]"
-            display_name = getattr(result, "name", "Unknown")
+            display_name = getattr(result, "name", None) or getattr(result, "file_path", None)
+            display_name = str(display_name) if display_name else "Unknown"
         else:
             status = "[dim]•[/]"
             display_name = str(result)
 
-        # Aggressive truncation to 50 chars to prevent terminal row wrapping corruption
-        if len(display_name) > 50:
-            display_name = display_name[:47] + "..."
-        
+        # Aggressive truncation to prevent terminal row wrapping corruption
+        if len(display_name) > MAX_DISPLAY_NAME_LENGTH:
+            display_name = display_name[: MAX_DISPLAY_NAME_LENGTH - 3] + "..."
+
         res_text = f"{status} {display_name}"
         self.activities.append(res_text)
-        
-        if len(self.activities) > 5:
+
+        if len(self.activities) > MAX_RECENT_ACTIVITIES:
             self.activities.pop(0)
 
     def __rich__(self) -> Table:
@@ -170,7 +177,7 @@ class StatusDisplay:
                 activity_table,
                 title="[bold blue]Recent Activity[/]",
                 border_style="blue",
-                padding=(1, 2)
+                padding=(1, 2),
             )
         )
 
@@ -183,7 +190,7 @@ class StatusDisplay:
             Panel(
                 Group(stats_line, "\n", self.progress),
                 title="[bold green]Total Progress[/]",
-                border_style="green"
+                border_style="green",
             )
         )
 
@@ -245,6 +252,7 @@ async def run_pipeline(
         text_length,
         text_extraction,
         extraction_pages,
+        move_scan_failures,
     )
 
     await processor.setup_move_folders(
@@ -301,16 +309,14 @@ async def run_pipeline(
             screen=True,  # Isolate from scrollback to prevent stacking
         ) as live:
             if benchmark:
-                await _run_benchmark_mode(
-                    processor, file_paths, status_display, progress, live
-                )
+                await _run_benchmark_mode(processor, file_paths, status_display, live)
                 return
 
             # Standard Mode (Rename, Organize, Evaluate)
             async def _process_task(f_path):
                 async with semaphore:
                     status_display.update(f"Scanning {f_path.name}")
-                    
+
                     res = await processor.process_file(
                         f_path,
                         mode=mode,
@@ -366,7 +372,6 @@ async def _run_benchmark_mode(
     processor: BookProcessor,
     file_paths: list[Path],
     status_display: StatusDisplay,
-    progress: Progress,
     live: Live,
 ) -> None:
     """Run PDF extraction benchmark across multiple libraries."""

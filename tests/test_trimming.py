@@ -34,10 +34,10 @@ def test_proportional_trimming():
     # Test 4: Document metadata preservation
     document = """Introduction content goes here...
     Additional content...
-    
+
     CHAPTER 10: Conclusion
     This is the conclusion section.
-    
+
     REFERENCES
     Author: John Smith
     Published: 2023

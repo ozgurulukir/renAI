@@ -97,6 +97,23 @@ select = [
 ignore = [
     "T201", # Allow print() in CLI
     "PLR0913", # Allow many arguments (common in orchestrators)
+    "RUF001",  # Allow Turkish characters (dotless i, etc.)
+    "PLC0415", # Allow local imports (often used for lazy loading or to avoid circularity)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "PLR2004", # Magic values are fine in tests
+    "ERA001",  # Commented out code often used for examples in tests
+    "ARG001",  # Unused function arguments (common in mocks/fixtures)
+    "ARG002",  # Unused method arguments
+    "ARG005",  # Unused lambda arguments (common in mocks)
+    "S101",    # Use of assert
+    "E501",    # Long lines are common in tests (docstrings, examples)
+    "PTH",     # Path suggestions not strictly needed in tests
+    "RUF033",  # Regex warning in match=
+    "RUF043",  # Regex warning in match=
+    "SIM117",  # Nested with statements are common in mocking
 ]
 
 [tool.ruff.format]

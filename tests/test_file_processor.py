@@ -1,8 +1,7 @@
 from unittest.mock import MagicMock, patch
-
 import pytest
-
 from renai.file_ops import safe_move_file
+from renai.models.schemas import BookMetadata
 from renai.processors.book import BookProcessor
 
 
@@ -38,12 +37,12 @@ class TestBookProcessor:
         test_file.write_text("content")
 
         file_hash = "test_hash"
-        cached_metadata = {
-            "title": "Cached Title",
-            "author": "Cached Author",
-            "category": "Fiction",
-            "language": "en",
-        }
+        cached_metadata = BookMetadata(
+            title="Cached Title",
+            author="Cached Author",
+            category="Fiction",
+            language="en",
+        )
 
         with (
             patch("renai.utils.get_file_hash", return_value=file_hash),

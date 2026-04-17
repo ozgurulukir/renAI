@@ -27,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Metadata Validation**: Resolved crashes in `BookMetadata` validation when handling `None` or messy LLM year outputs.
 - **IDE Resolution**: Fixed `renai.settings` import paths in utility modules to resolve static analysis errors.
 
-
 ## [1.6.2] - 2026-04-10
 
 ### Added
@@ -165,7 +164,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Centralized Logic**: Moved file-moving logic from `TextExtractor` to `BookProcessor` to prevent premature movement and ensure all fallback paths are exhausted.
 - **Directory Naming**: Renamed `Needs_OCR` to `Needs_Scan` and `OCR_Failures` to `Scan_Failures`.
-- **CLI Refinement**: Deprecated `--move-ocr-failures' in favor of `--move-scan-failures`.
+- **CLI Refinement**: Deprecated `--move-ocr-failures' in favor of`--move-scan-failures`.
 
 ### [Fixed]
 

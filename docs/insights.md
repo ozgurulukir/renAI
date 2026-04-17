@@ -2,37 +2,43 @@
 
 This document captures critical technical lessons and architectural insights discovered during the development of renAI.
 
-### [Environment]: Windows AppData Nesting (platformdirs)
+## [Environment]: Windows AppData Nesting (platformdirs)
+
 **Problem:** Windows `platformdirs` was creating nested directories like `C:\Users\...\AppData\Local\renAI\renAI`, causing configuration files to be missed or misplaced.
 **Discovery/AHA!:** By default, `platformdirs` expects an `appauthor`. If not explicitly set to `False` on Windows, it often defaults to the app name again or a generic author, creating an extra subdirectory level.
 **Solution:** Set `APP_AUTHOR = False` in the directory configuration to ensure a flat structure (`LocalAppData/renAI`).
 **Agnostic Principle:** Always verify directory nesting behavior of cross-platform libraries on Windows, and explicitly disable author subdirectories if a flat structure is preferred.
 
 ### [Framework]: Pydantic-Settings "Customise" Spelling
+
 **Problem:** `SettingsConfigDict` with `toml_file` list was being ignored, and `settings_custom_sources` overrides were not being called in both `AppSettings` and `ProviderSettings`.
 **Discovery/AHA!:** The `pydantic-settings` (v2.x) library uses British spelling for its hooks: `settings_customise_sources` (with an **s** and **ise**) instead of the more common "customize" or "custom". Without the exact spelling, the hook is silent and ignored globally for any class inheriting from `BaseSettings`.
 **Solution:** Ensure every settings class (e.g., `AppSettings`, `ProviderSettings`) uses the exact `settings_customise_sources` method name for custom TOML/source loading.
 **Agnostic Principle:** Pay extreme attention to regional spelling variations in library hooks/APIs, especially when hooks fail silently across multiple instances in a codebase.
 
 ### [UX]: Double-Logging in CLI Output
+
 **Problem:** Important warnings were being printed twice in the terminal, cluttering the UI.
 **Discovery/AHA!:** Using both `logging.warning()` and `console.print()` simultaneously causes double output if the logging system is configured to output to `stderr` (which it typically is in terminal apps).
 **Solution:** Use `console.print()` for interactive UX-critical messages and rely on logging only for non-interactive background tracing or file logs.
 **Agnostic Principle:** Clearly separate "User Experience" output (Console) from "Application Traces" (Logging) to avoid redundant terminal noise.
 
 ### [Architecture]: Dataset Replacement (Override) vs. Configuration Merging
+
 **Problem:** Determining whether configuration files should merge with or replace defaults (e.g., `categories.toml`).
 **Discovery/AHA!:** Users expect a distinction between *Application Settings* (logic/state) and *Dataset Definitions* (content). While settings should be merged to avoid losing minor tweaks, datasets like categories should be replaced (override) to give the user total control over the LLM's classification space without pollution from defaults.
 **Solution:** Kept `AppSettings` merging via Pydantic, but enforced a strict priority-based replacement for `categories.toml` and `eval_models.toml`.
 **Agnostic Principle:** Prefer merging for behavioral settings (extension) and replacement for content/datasets (total control), unless explicitly requested otherwise.
 
 ### [CLI/UX]: Premium Terminal Experience (Live UI)
+
 **Problem:** Standard progress bars (like `tqdm`) get broken and interleaved when internal tasks log or print to the console. Large batch processes with interleaved logs look "noisy" and unprofessional.
 **Discovery/AHA!:** Using `rich.live.Live` allows for a fixed-layout UI that separates "Status Logs" from "Progress State". A layout with a scrolling results table and a fixed footer creates a dashboard-like feeling.
 **Solution:** Implemented `StatusDisplay` class that renders a `Live` panel with a history of recent completions, a sticky progress bar, and an activity indicator.
 **Agnostic Principle:** For CLI tools with long-running parallel tasks, prioritize a "Stable Frame" (Live UI) over "Streaming Text" to maintain visual sanity and focus.
 
 ### [Architecture]: AsyncIO Concurrency with CPU-Bound Tasks
+
 **Problem:** Transitioning to `asyncio` for OCR/Image processing could easily block the event loop.
 **Discovery/AHA!:** Wrapping subprocess calls and heavy I/O in `asyncio.to_thread()` or using `asyncio.create_subprocess_exec()` is essential to maintain high concurrency without stalling the orchestrator.
 **Solution:** Implemented a `Semaphore` at the orchestrator level and offloaded blocking calls to threads to ensure the UI and other tasks remain responsive.

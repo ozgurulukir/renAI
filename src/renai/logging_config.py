@@ -15,7 +15,6 @@ Usage:
 
 import logging
 import sys
-from pathlib import Path
 from typing import Any
 
 import structlog
@@ -37,7 +36,6 @@ def get_log_level() -> int:
 def configure_logging(
     log_level: int | None = None,
     json_output: bool | None = None,
-    log_file: Path | None = None,
 ) -> None:
     """Configure structured logging for the application.
 

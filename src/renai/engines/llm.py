@@ -49,7 +49,7 @@ class LLMEngine:
             path = self.prompts_dir / f"{name}.txt"
             try:
                 if path.exists():
-                    with open(path, encoding="utf-8") as f:
+                    with path.open(encoding="utf-8") as f:
                         templates[name] = f.read()
                 else:
                     logging.error(f"Prompt template not found: {path}")
@@ -125,7 +125,11 @@ class LLMEngine:
         logging.info("Refining metadata using SSoT-based validation pass...")
 
         system_role = self._get_system_role("refinement", BookMetadata)
-        refinement_prompt = f"<initial_metadata>\n{initial_model.model_dump_json(ensure_ascii=False)}\n</initial_metadata>"
+        refinement_prompt = (
+            f"<initial_metadata>\n"
+            f"{initial_model.model_dump_json(ensure_ascii=False)}\n"
+            f"</initial_metadata>"
+        )
 
         refined_model = await self._call_llm(
             prompt=refinement_prompt,
@@ -285,7 +289,10 @@ class LLMEngine:
                 if validated_model.category in allowed:
                     return validated_model
                 logging.warning(
-                    f"Invalid category '{validated_model.category}' for {context_name} (Attempt {attempt + 1})"
+                    "Invalid category '%s' for %s (Attempt %d)",
+                    validated_model.category,
+                    context_name,
+                    attempt + 1,
                 )
                 messages.append({"role": "assistant", "content": content})
                 messages.append(

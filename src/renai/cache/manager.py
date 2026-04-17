@@ -3,7 +3,7 @@ import logging
 import shutil
 import threading
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, overload
 
 from pydantic import BaseModel
 
@@ -80,12 +80,30 @@ def write_text_cache(file_path: Path, content: str) -> bool:
             return False
 
 
-def read_metadata_cache[T: BaseModel](
+@overload
+def read_metadata_cache(
     cache_path: Path,
     provider: str,
     model: str,
-    model_class: type[T] | None = None,
-) -> dict[str, Any] | T | None:
+    model_class: None = None,
+) -> dict[str, Any] | None: ...
+
+
+@overload
+def read_metadata_cache[V: BaseModel](
+    cache_path: Path,
+    provider: str,
+    model: str,
+    model_class: type[V],
+) -> V | None: ...
+
+
+def read_metadata_cache(
+    cache_path: Path,
+    provider: str,
+    model: str,
+    model_class: type[BaseModel] | None = None,
+) -> Any | None:
     """
     Read cached metadata with provider-model validation.
     If model_class is provided, returns a validated Pydantic model instance.
@@ -118,8 +136,7 @@ def read_metadata_cache[T: BaseModel](
                         return None
                 return cache_data
             logging.info(
-                f"Cache invalidated (was {cached_provider}/{cached_model}, "
-                f"now {provider}/{model})"
+                f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
             )
             return None
 

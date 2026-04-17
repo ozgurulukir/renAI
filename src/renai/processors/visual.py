@@ -88,14 +88,15 @@ class VisualProcessor:
             def _get_exif():
                 with Image.open(file_path) as img:
                     exif_data = img.getexif()
-                    if not exif_data:
-                        return None
-
                     for tag_id, value in exif_data.items():
                         tag = TAGS.get(tag_id, tag_id)
-                        if tag == "DateTime" and value:
-                            if isinstance(value, str) and len(value) >= 10:
-                                return value.split()[0].replace(":", "-")
+                        if (
+                            tag == "DateTime"
+                            and value
+                            and isinstance(value, str)
+                            and len(value) >= 10  # noqa: PLR2004
+                        ):
+                            return value.split()[0].replace(":", "-")
                 return None
 
             return await asyncio.to_thread(_get_exif)
@@ -105,7 +106,8 @@ class VisualProcessor:
 
     def _select_pages(self, total_pages: int) -> list[int]:
         """Select pages to process based on document length."""
-        if total_pages <= 5:
+        MIN_PAGES_FOR_SAMPLING = 5
+        if total_pages <= MIN_PAGES_FOR_SAMPLING:
             return list(range(total_pages))
         return [0, 1, 2, total_pages // 2, total_pages - 1]
 

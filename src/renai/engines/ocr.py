@@ -133,6 +133,7 @@ class OCREngine:
                 [resolved, "-v"],
                 capture_output=True,
                 text=True,
+                check=False,
                 timeout=5,
                 **kwargs,
             )
@@ -176,8 +177,10 @@ class OCREngine:
             image_array = np.asarray(image)
 
             # Handle grayscale vs color (ensure we have a 1-channel image for thresholding)
-            if len(image_array.shape) == 3:
-                if image_array.shape[2] == 4:
+            THREE_CHANNELS = 3
+            FOUR_CHANNELS = 4
+            if len(image_array.shape) == THREE_CHANNELS:
+                if image_array.shape[2] == FOUR_CHANNELS:
                     gray = cv2.cvtColor(image_array, cv2.COLOR_RGBA2GRAY)
                 else:
                     gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
@@ -202,7 +205,8 @@ class OCREngine:
             angles = []
             for contour in contours:
                 # Filter small contours that might be noise
-                if cv2.contourArea(contour) < 100:
+                MIN_CONTOUR_AREA = 100
+                if cv2.contourArea(contour) < MIN_CONTOUR_AREA:
                     continue
 
                 rect = cv2.minAreaRect(contour)
@@ -224,7 +228,8 @@ class OCREngine:
             median_angle = np.median(angles)
 
             # If the angle is very small, don't bother rotating
-            if abs(median_angle) < 0.1:
+            MIN_ROTATION_ANGLE = 0.1
+            if abs(median_angle) < MIN_ROTATION_ANGLE:
                 return image
 
             # Rotate image to correct skew
@@ -245,33 +250,30 @@ class OCREngine:
             rotation_matrix[1, 2] += (new_height / 2) - center[1]
 
             # Perform rotation - Use white background for documents
-            border_value = 255 if len(image_array.shape) == 2 else (255, 255, 255)
+            IS_GRAYSCALE = 2
             rotated_array = cv2.warpAffine(
                 image_array,
                 rotation_matrix,
                 (new_width, new_height),
                 flags=cv2.INTER_CUBIC,
                 borderMode=cv2.BORDER_CONSTANT,
-                borderValue=border_value,
+                borderValue=255 if len(image_array.shape) == IS_GRAYSCALE else (255, 255, 255),
             )
-
-            # Convert back to PIL Image
-            rotated_image = Image.fromarray(rotated_array)
-
-            return rotated_image
+            return Image.fromarray(rotated_array)
         except Exception as e:
             logging.debug(f"Skew correction failed: {e}")
             return image
 
-    def _get_pages_to_extract(self, total_pages: int) -> list[int]:
+    def _get_page_sampling(self, total_pages: int) -> list[int]:
         """Page sampling strategy."""
+        SAMPLE_THRESHOLD = 30
         pages_to_extract = list(range(min(15, total_pages)))
-        if total_pages > 30:
+        if total_pages > SAMPLE_THRESHOLD:
             mid = total_pages // 2
             pages_to_extract += [mid, mid + 1]
-        if total_pages > 30:
+        if total_pages > SAMPLE_THRESHOLD:
             pages_to_extract += [total_pages - 1, total_pages]
-        return sorted(set(p for p in pages_to_extract if 0 <= p < total_pages))
+        return sorted({p for p in pages_to_extract if 0 <= p < total_pages})
 
     async def _bulk_extract_images(
         self, file_path: Path, pages: list[int], target_dpi: int
@@ -309,7 +311,7 @@ class OCREngine:
             )
 
             try:
-                stdout, stderr = await asyncio.wait_for(
+                _stdout, stderr = await asyncio.wait_for(
                     process.communicate(), timeout=get_subprocess_timeout()
                 )
                 if process.returncode != 0:
@@ -379,7 +381,7 @@ class OCREngine:
                 )
 
                 try:
-                    stdout, stderr = await asyncio.wait_for(
+                    _stdout, stderr = await asyncio.wait_for(
                         process.communicate(), timeout=get_subprocess_timeout()
                     )
                     if process.returncode == 0:
@@ -430,7 +432,8 @@ class OCREngine:
             if self.cfg["sharpen"]:
                 image = image.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
             if self.cfg["threshold"]:
-                image = image.point(lambda x: 0 if x < 140 else 255)
+                CONTRAST_THRESHOLD = 140
+                image = image.point(lambda x: 0 if x < CONTRAST_THRESHOLD else 255)
         return image
 
     async def _perform_ocr(self, image: Image.Image, pno: int) -> str:
@@ -450,7 +453,7 @@ class OCREngine:
             logging.error(f"Tesseract failed for page {pno + 1}: {e}")
             return ""
 
-    async def extract_text(self, file_path: Path) -> str:
+    async def extract_text(self, file_path: Path) -> str:  # noqa: C901, PLR0912
         """Extract text from a document asynchronously using OCR."""
         try:
             file_debug_dir = None
@@ -463,7 +466,7 @@ class OCREngine:
             doc = await asyncio.to_thread(pymupdf.open, str(file_path))
             total_pages = len(doc)
 
-            pages_to_extract = self._get_pages_to_extract(total_pages)
+            pages_to_extract = self._get_page_sampling(total_pages)
 
             bulk_images = {}
             if self.use_mutool and file_path.suffix.lower() == ".pdf":
@@ -479,11 +482,11 @@ class OCREngine:
 
                 if not pre_path:
                     # In thread to avoid blocking loop with PDF info extraction
-                    def _get_dpi():
-                        page = doc.load_page(pno)
+                    def _get_dpi(p_no):
+                        page = doc.load_page(p_no)
                         return min(self.cfg["dpi"], self.get_page_source_dpi(page))
 
-                    target_dpi = await asyncio.to_thread(_get_dpi)
+                    target_dpi = await asyncio.to_thread(_get_dpi, pno)
 
                 image, temp_img = await self._extract_image_from_page(
                     doc, pno, file_path, int(target_dpi), pre_extracted_path=pre_path
@@ -494,11 +497,11 @@ class OCREngine:
 
                     if self.debug and file_debug_dir:
 
-                        def _save_debug():
+                        def _save_debug(img, p_idx):
                             quality_tag = "enhanced" if self.enhanced else "minimal"
-                            image.save(file_debug_dir / f"page_{pno + 1}_{quality_tag}.png")
+                            img.save(file_debug_dir / f"page_{p_idx + 1}_{quality_tag}.png")
 
-                        await asyncio.to_thread(_save_debug)
+                        await asyncio.to_thread(_save_debug, image, pno)
 
                     page_text = await self._perform_ocr(image, pno)
                     extracted_text.append(page_text)
@@ -511,7 +514,8 @@ class OCREngine:
                         except Exception as e:
                             logging.debug(f"Cleanup of temp_img failed: {e}")
 
-                if total_chars > 10000:
+                MAX_OCR_CHARS = 10000
+                if total_chars > MAX_OCR_CHARS:
                     break
 
             await asyncio.to_thread(doc.close)

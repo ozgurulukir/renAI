@@ -55,7 +55,7 @@ class PyPDFExtractor(BaseExtractor):
             from pypdf import PdfReader  # type: ignore[import-untyped]
 
             text_parts = []
-            with open(file_path, "rb") as f:
+            with file_path.open("rb") as f:
                 reader = PdfReader(f)
                 for page in reader.pages[:pages]:
                     text_parts.append(page.extract_text() or "")

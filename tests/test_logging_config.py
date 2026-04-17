@@ -112,7 +112,7 @@ def test_configure_logging_defaults():
 
         # Should call structlog.configure
         mock_structlog_configure.assert_called_once()
-        _, kwargs = mock_structlog_configure.call_args
+        _, _kwargs = mock_structlog_configure.call_args
 
         # Verify basic config is called
         mock_basic_config.assert_called_once_with(

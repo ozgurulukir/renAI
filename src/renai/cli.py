@@ -53,17 +53,17 @@ def version_callback(value: bool):
 
 @app.callback()
 def main_callback(
-    version: Annotated[
+    version: Annotated[  # noqa: ARG001
         bool | None,
         typer.Option(
             "--version",
             "-v",
+            help="Show version and exit.",
             callback=version_callback,
             is_eager=True,
-            help="Show version and exit",
         ),
     ] = None,
-):
+) -> None:
     """Global initializations for renAI CLI."""
     setup_environment()
     initialize_directories()
@@ -365,7 +365,7 @@ def process_cmd(
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
-        raise typer.Exit(code=0)
+        raise typer.Exit(code=0) from None
 
 
 @app.command("evaluate")

@@ -44,7 +44,9 @@ def build_book_filename(
     if year_val:
         try:
             year_int = int(year_val)
-            if 1000 <= year_int <= 2100:  # Sanity check for year
+            MIN_VALID_YEAR = 1000
+            MAX_VALID_YEAR = 2100
+            if MIN_VALID_YEAR <= year_int <= MAX_VALID_YEAR:  # Sanity check for year
                 name_parts.append(f"({year_int})")
         except (ValueError, TypeError):
             pass
@@ -115,14 +117,9 @@ def extract_category_from_metadata(
     return sanitize_filename(category_raw) or default
 
 
-def is_filename_changed(
-    original_path: Path,
-    new_name: str,
-) -> bool:
+def is_filename_changed(original_path: Path, new_name: str) -> bool:
     """Check if the new filename is different from original."""
-    if new_name == original_path.name:
-        return False
-    return True
+    return new_name != original_path.name
 
 
 def build_vision_filename(

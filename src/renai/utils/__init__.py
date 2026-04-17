@@ -14,7 +14,7 @@ RE_CONSECUTIVE_DOTS = re.compile(r"\.\.+")
 
 def get_file_hash(file_path: Path) -> str:
     """Calculate the SHA256 hash of a file to uniquely identify its content."""
-    with open(file_path, "rb") as f:
+    with file_path.open("rb") as f:
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
@@ -142,7 +142,7 @@ def read_text_limited(file_path: Path, max_chars: int) -> str:
     Uses a stream to avoid loading the entire file into memory.
     """
     try:
-        with open(file_path, encoding="utf-8", errors="ignore", newline=None) as f:
+        with file_path.open(encoding="utf-8", errors="ignore", newline=None) as f:
             return f.read(max_chars)
     except Exception as e:
         logging.error(f"Error reading {file_path}: {e}")

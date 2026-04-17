@@ -45,6 +45,7 @@ class BookProcessor:
         target_length: int = 10000,
         text_extraction: str = "mixed",
         extraction_pages: int = 10,
+        move_scan_failures: bool = False,
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
@@ -52,6 +53,7 @@ class BookProcessor:
         self.model = model or getattr(llm_engine, "model_name", "") if llm_engine else ""
         self.target_length = target_length
         self.extractor_name = extractor_name
+        self.move_scan_failures = move_scan_failures
 
         self.text_extractor = TextExtractor(
             ocr_engine=ocr_engine,
@@ -96,6 +98,7 @@ class BookProcessor:
         """
         Unified processing entry point for documents and images asynchronously.
         """
+        metadata: BookMetadata | ImageMetadata | None = None
         try:
             if file_path.is_symlink():
                 logging.warning(f"Skipping symlink: {file_path.name}")
@@ -137,7 +140,6 @@ class BookProcessor:
             if metadata:
                 logging.info(f"Cache hit for {file_path.name}")
             else:
-                # 1. Start extraction
                 if is_image and rename_images:
                     # Direct Image Vision Mode
                     metadata = await self.visual_processor.extract_metadata_from_image(
@@ -145,17 +147,9 @@ class BookProcessor:
                     )
                 else:
                     # Document Mode (Text-First)
-                    text = await self.text_extractor.extract(file_path)
-
-                    if not text.strip() and fallback_mode == FallbackMode.VISION:
-                        # Fallback to PDF Vision Page Sampling
-                        metadata = await self.visual_processor.extract_metadata_from_pdf(file_path)
-                    elif text.strip():
-                        # Standard LLM Metadata Extraction from text
-                        if self.llm_engine:
-                            metadata = await self.llm_engine.get_book_metadata(text)
-                        else:
-                            logging.warning("No LLM engine available for text-based extraction.")
+                    metadata = await self._extract_document_metadata(
+                        file_path, fallback_mode
+                    )
 
                 if metadata:
                     await asyncio.to_thread(
@@ -172,30 +166,89 @@ class BookProcessor:
             # 2. Handle final action (rename or organize)
             if mode in ("rename", "organize"):
                 async with self.file_operation_lock:
-                    return await self._handle_renaming(file_path, metadata, mode=mode)
+                    # Sanity check for type safety
+                    # (handles cases where cache might return dict or Any)
+                    if not isinstance(metadata, (BookMetadata, ImageMetadata)):
+                        return ProcessingResult(
+                            success=False,
+                            file_path=file_path,
+                            error=(
+                                f"Internal error: Expected metadata model, "
+                                f"got {type(metadata).__name__}"
+                            ),
+                        )
+
+                    return await self._handle_renaming(
+                        file_path, metadata, mode=mode, add_exif_date=add_exif_date
+                    )
             else:
-                # evaluate mode - just return success with metadata
-                return ProcessingResult(success=True, metadata=metadata)
+                # evaluate mode
+                return ProcessingResult(
+                    success=True,
+                    metadata=metadata.model_dump()
+                    if hasattr(metadata, "model_dump")
+                    else cast("dict", metadata),
+                )
 
         except Exception as e:
             logging.error(f"Failed to process {file_path.name}: {e}")
             return ProcessingResult(success=False, name=file_path.name, error=str(e))
 
+    async def _extract_document_metadata(
+        self, file_path: Path, fallback_mode: FallbackMode
+    ) -> BookMetadata | None:
+        """Internal helper to extract document metadata using text first, then vision."""
+        text = await self.text_extractor.extract(file_path)
+
+        if not text.strip() and fallback_mode == FallbackMode.VISION:
+            # Fallback to PDF Vision Page Sampling
+            return await self.visual_processor.extract_metadata_from_pdf(file_path)
+
+        if text.strip():
+            # Standard LLM Metadata Extraction from text
+            if self.llm_engine:
+                return await self.llm_engine.get_book_metadata(text)
+            logging.warning("No LLM engine available for text-based extraction.")
+
+        return None
+
     async def _handle_renaming(
-        self, file_path: Path, metadata: BookMetadata | ImageMetadata, mode: str = "rename"
+        self,
+        file_path: Path,
+        metadata: BookMetadata | ImageMetadata,
+        mode: str = "rename",
+        add_exif_date: bool = False,
     ) -> ProcessingResult:
         """Build filename and move file securely asynchronously."""
         try:
             category = extract_category_from_metadata(metadata)
-            new_name = (
-                build_image_filename(cast("ImageMetadata", metadata), file_path.suffix)
-                if isinstance(metadata, ImageMetadata)
-                else build_book_filename(cast("BookMetadata", metadata), file_path.suffix)
-            )
+            is_image = isinstance(metadata, ImageMetadata)
 
-            # Check if file already has the correct name (to avoid redundant move logs)
-            if file_path.name == new_name:
-                logging.info(f"Skipping rename (Already named): {file_path.name}")
+            # 1. Build the new filename
+            if is_image:
+                new_name = build_image_filename(
+                    cast("ImageMetadata", metadata),
+                    file_path.suffix,
+                    add_exif_date=add_exif_date,
+                )
+            else:
+                new_name = build_book_filename(cast("BookMetadata", metadata), file_path.suffix)
+
+            # 2. Determine target destination based on mode
+            if mode == "organize" and category:
+                # Avoid double nesting: if the current parent folder's name
+                # matches the category, don't move it deeper into another subfolder.
+                if file_path.parent.name == category:
+                    target_dest = file_path.parent / new_name
+                else:
+                    target_dest = file_path.parent / category / new_name
+            else:
+                target_dest = file_path.parent / new_name
+
+            # 3. Check if file is already in the correct place with correct name
+            # We use resolve() to ensure we compare absolute paths correctly
+            if file_path.resolve() == target_dest.resolve():
+                logging.info(f"Skipping (Already in place): {file_path.name}")
                 return ProcessingResult(
                     success=True,
                     metadata=metadata.model_dump() if hasattr(metadata, "model_dump") else metadata,
@@ -204,19 +257,14 @@ class BookProcessor:
                     category=category,
                 )
 
-            # Target path logic: stay in parent or move to category subfolder
-            if mode == "organize" and category:
-                target_dest = file_path.parent / category / new_name
-            else:
-                target_dest = file_path.parent / new_name
-
+            # 4. Perform the move securely
             def _do_move():
-                return safe_move_file(file_path, target_dest, operation_type="rename")
+                return safe_move_file(file_path, target_dest, operation_type=mode)
 
             final_path = await asyncio.to_thread(_do_move)
 
             if final_path:
-                logging.info(f"Renamed: {file_path.name} -> {final_path.name}")
+                logging.info(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
                 return ProcessingResult(
                     success=True,
                     metadata=metadata.model_dump() if hasattr(metadata, "model_dump") else metadata,
@@ -227,4 +275,5 @@ class BookProcessor:
             return ProcessingResult(success=False, name=file_path.name, error="Safe move failed")
 
         except Exception as e:
+            logging.error(f"Renaming logic failed for {file_path.name}: {e}")
             return ProcessingResult(success=False, error=f"Renaming logic failed: {e!s}")

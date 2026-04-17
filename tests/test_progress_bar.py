@@ -29,6 +29,7 @@ async def test_run_pipeline_with_progress_mock(tmp_path):
         ),
         patch("renai.processors.orchestrator.collect_files", return_value=test_files),
         patch("rich.progress.Progress.update") as mock_update,
+        patch("rich.progress.Progress.advance") as mock_advance,
     ):
         await run_pipeline(
             root_dir=tmp_path,
@@ -48,4 +49,4 @@ async def test_run_pipeline_with_progress_mock(tmp_path):
         )
 
         assert mock_book_processor.process_file.await_count == 3
-        assert mock_update.called
+        assert mock_update.called or mock_advance.called

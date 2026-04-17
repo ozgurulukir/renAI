@@ -32,7 +32,7 @@ _settings_ref: tuple | None = None
 
 def _get_settings() -> tuple:
     """Return (app_settings, provider_settings) lazily."""
-    global _settings_ref
+    global _settings_ref  # noqa: PLW0603
     if _settings_ref is None:
         from renai.config.settings import app_settings, provider_settings
 
@@ -146,7 +146,7 @@ def _try_load_categories(path: Path, label: str) -> dict | None:
     if not path.exists():
         return None
     try:
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             data = tomllib.load(f)
             result = _parse_toml_categories(data)
             if result["categories"] or result["image_categories"]:
@@ -211,7 +211,7 @@ def _merge_eval_models(path: Path, target: dict[str, list[str]]) -> None:
     if not path.exists():
         return
     try:
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             data = tomllib.load(f)
             for provider, config in data.items():
                 if isinstance(config, dict) and "models" in config:
