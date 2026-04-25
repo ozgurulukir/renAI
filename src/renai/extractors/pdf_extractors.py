@@ -86,6 +86,7 @@ class PyPdfium2Extractor(BaseExtractor):
                         text_parts.append(textpage.get_text_bounded() or "")
                     finally:
                         textpage.close()
+                    page.close()
             return "".join(text_parts).strip()
         except ImportError:
             logging.error("pypdfium2 is not installed.")
