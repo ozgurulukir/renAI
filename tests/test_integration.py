@@ -107,3 +107,116 @@ async def test_cache_functionality():
             assert result2.success
             # Should NOT call LLM again due to cache
             assert mock_llm_engine.get_book_metadata.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_organize_with_root_dir():
+    """Test organize mode when setup_move_folders sets root_dir."""
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        root_dir = tmp_path / "library"
+        root_dir.mkdir()
+        test_cache_dir = tmp_path / "cache"
+
+        mock_ocr_engine = MagicMock()
+        mock_llm_engine = MagicMock()
+        mock_llm_engine.model_name = "test-model"
+        mock_llm_engine.get_book_metadata = AsyncMock(
+            return_value=BookMetadata(
+                title="Organized Book",
+                subtitle=None,
+                edition=None,
+                author="Jane Author",
+                category="Fiction",
+                year=2024,
+                language="en",
+            )
+        )
+
+        processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
+
+        # Create test file in a subdirectory of root_dir
+        sub_dir = root_dir / "unsorted"
+        sub_dir.mkdir()
+        test_file = sub_dir / "messy_name.pdf"
+        test_file.write_bytes(b"unique content for root_dir test")
+
+        mock_extractor = MagicMock()
+        mock_extractor.extract = AsyncMock(return_value="Text " * 100)
+        processor.text_extractor = mock_extractor
+
+        # setup_move_folders sets root_dir on the processor
+        await processor.setup_move_folders(root_dir)
+
+        # Use private cache dir to avoid collisions with other tests
+        with (
+            patch("renai.cache.manager.CACHE_DIR", test_cache_dir),
+            patch("renai.processors.book.CACHE_DIR", test_cache_dir),
+        ):
+            result = await processor.process_file(test_file, mode="organize")
+
+        assert result.success
+        assert "Organized Book" in (result.name or "")
+        # File should be organized under root_dir/category, not under sub_dir
+        category_dir = root_dir / "Fiction"
+        assert category_dir.exists()
+        assert (category_dir / result.name).exists()
+
+
+@pytest.mark.asyncio
+async def test_path_traversal_blocked_with_root_dir():
+    """Test that path traversal is blocked when root_dir is set.
+    This tests the is_relative_to defense-in-depth check in _handle_renaming."""
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        root_dir = tmp_path / "library"
+        root_dir.mkdir()
+        test_cache_dir = tmp_path / "cache"
+
+        mock_ocr_engine = MagicMock()
+        mock_llm_engine = MagicMock()
+        mock_llm_engine.model_name = "test-model"
+
+        mock_llm_engine.get_book_metadata = AsyncMock(
+            return_value=BookMetadata(
+                title="Safe Title",
+                subtitle=None,
+                edition=None,
+                author="Author",
+                category="Fiction",
+                year=2024,
+                language="en",
+            )
+        )
+
+        processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
+        test_file = root_dir / "test.pdf"
+        test_file.write_bytes(b"unique content for traversal test")
+
+        mock_extractor = MagicMock()
+        mock_extractor.extract = AsyncMock(return_value="Text " * 100)
+        processor.text_extractor = mock_extractor
+
+        await processor.setup_move_folders(root_dir)
+
+        # Mock extract_category_from_metadata to return a category that
+        # combined with root_dir would create a path outside root_dir
+        # (simulate the bug where str.startswith would pass but is_relative_to blocks)
+        def fake_category(meta, default="Uncategorized"):
+            # Return a relative path that escapes root_dir
+            return "../escaped"
+
+        with (
+            patch("renai.cache.manager.CACHE_DIR", test_cache_dir),
+            patch("renai.processors.book.CACHE_DIR", test_cache_dir),
+            patch(
+                "renai.processors.book.extract_category_from_metadata", side_effect=fake_category
+            ),
+        ):
+            result = await processor.process_file(test_file, mode="organize")
+
+        # is_relative_to should block the traversal
+        assert not result.success
+        assert "Path traversal blocked" in (result.error or "")

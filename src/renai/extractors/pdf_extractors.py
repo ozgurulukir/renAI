@@ -79,11 +79,13 @@ class PyPdfium2Extractor(BaseExtractor):
 
             text_parts = []
             with pdfium.PdfDocument(file_path) as pdf:
-                # Extract up to 'pages' pages for metadata
                 for i in range(min(pages, len(pdf))):
                     page = pdf[i]
                     textpage = page.get_textpage()
-                    text_parts.append(textpage.get_text_bounded() or "")
+                    try:
+                        text_parts.append(textpage.get_text_bounded() or "")
+                    finally:
+                        textpage.close()
             return "".join(text_parts).strip()
         except ImportError:
             logging.error("pypdfium2 is not installed.")
