@@ -181,15 +181,21 @@ class BookProcessor:
                         )
 
                     return await self._handle_renaming(
-                        file_path, metadata, mode=mode, add_exif_date=add_exif_date
+                        file_path,
+                        metadata,
+                        mode=mode,
+                        add_exif_date=add_exif_date,
+                        file_hash=file_hash,
                     )
             else:
                 # evaluate mode
                 return ProcessingResult(
                     success=True,
-                    metadata=metadata.model_dump()
-                    if hasattr(metadata, "model_dump")
-                    else cast("dict", metadata),
+                    metadata=(
+                        metadata.model_dump()
+                        if hasattr(metadata, "model_dump")
+                        else cast("dict", metadata)
+                    ),
                 )
 
         except Exception as e:
@@ -220,6 +226,7 @@ class BookProcessor:
         metadata: BookMetadata | ImageMetadata,
         mode: str = "rename",
         add_exif_date: bool = False,
+        file_hash: str | None = None,
     ) -> ProcessingResult:
         """Build filename and move file securely asynchronously."""
         try:
@@ -249,9 +256,10 @@ class BookProcessor:
             if self.root_dir:
                 resolved_root = self.root_dir.resolve()
                 resolved_dest = target_dest.resolve()
-                if not str(resolved_dest).startswith(str(resolved_root)):
-                    msg = f"SECURITY ALERT: Target path {target_dest} escapes root {self.root_dir}"
-                    logging.error(msg)
+                if not resolved_dest.is_relative_to(resolved_root):
+                    logging.error(
+                        "Target path %s escapes root %s", target_dest, self.root_dir
+                    )
                     return ProcessingResult(
                         success=False, name=file_path.name, error="Security: Path traversal blocked"
                     )
@@ -260,7 +268,9 @@ class BookProcessor:
             if file_path.resolve() == target_dest.resolve():
                 logging.info(f"Skipping (Already organized/renamed): {file_path.name}")
                 m_data = (
-                    metadata.model_dump() if hasattr(metadata, "model_dump") else cast("dict", metadata)
+                    metadata.model_dump()
+                    if hasattr(metadata, "model_dump")
+                    else cast("dict", metadata)
                 )
                 return ProcessingResult(
                     success=True,
@@ -272,9 +282,8 @@ class BookProcessor:
 
             # 5. Perform the move securely
             def _do_move():
-                s_hash = getattr(metadata, "file_hash", None)
                 return safe_move_file(
-                    file_path, target_dest, operation_type=mode, source_hash=s_hash
+                    file_path, target_dest, operation_type=mode, source_hash=file_hash
                 )
 
             final_path = await asyncio.to_thread(_do_move)
@@ -282,7 +291,9 @@ class BookProcessor:
             if final_path:
                 logging.info(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
                 m_data = (
-                    metadata.model_dump() if hasattr(metadata, "model_dump") else cast("dict", metadata)
+                    metadata.model_dump()
+                    if hasattr(metadata, "model_dump")
+                    else cast("dict", metadata)
                 )
                 return ProcessingResult(
                     success=True,

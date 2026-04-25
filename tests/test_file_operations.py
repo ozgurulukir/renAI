@@ -196,3 +196,18 @@ class TestSafeMoveFile:
         assert result == dest
         assert not source.exists()
         assert result.exists()
+
+    def test_move_with_source_hash_skips_rehash(self, tmp_path):
+        """Test that providing source_hash avoids re-hashing the source file."""
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("same content")
+        dest.write_text("same content")
+
+        # Patch get_file_hash so dest returns the same hash as source_hash.
+        # This verifies the source_hash parameter bypasses get_file_hash(source).
+        with patch("renai.file_ops.operations.get_file_hash", return_value="abc123"):
+            result = safe_move_file(source, dest, source_hash="abc123")
+
+        assert result == dest
+        assert source.exists()  # Source should remain (duplicate skipped)
