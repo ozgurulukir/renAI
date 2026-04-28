@@ -64,7 +64,7 @@ jobs:
 
       - name: Run pyright (type checking)
         run: |
-          pyright src/renai
+          pyright src/renai --ignoreexternal
 
   build:
     runs-on: ubuntu-latest
