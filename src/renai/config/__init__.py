@@ -73,19 +73,19 @@ __all__ = [
     "CONFIG_DIR",
     "CONFIG_FILE",
     "CUSTOM_CATEGORIES_FILE",
-    "CUSTOM_CONFIG",
+    "CUSTOM_CONFIG",  # pyright: ignore[reportUnsupportedDunderAll]
     "DATA_DIR",
     "DEBUG_DIR",
     "DEFAULT_CATEGORIES",
     "EVAL_LOG_FILE",
-    "EVAL_MODELS",
+    "EVAL_MODELS",  # pyright: ignore[reportUnsupportedDunderAll]
     "EVAL_MODELS_DEFAULT_FILE",
     "EVAL_MODELS_USER_FILE",
     # Constants and helpers
     "FACTORY_DEFAULTS",
     "IMAGE_CATEGORIES",
     "PACKAGE_CONFIG_DIR",
-    "PROVIDERS",
+    "PROVIDERS",  # pyright: ignore[reportUnsupportedDunderAll]
     "PROVIDERS_USER_FILE",
     "SECRETS_FILE",
     # Settings files

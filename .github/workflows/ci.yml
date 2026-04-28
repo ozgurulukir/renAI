@@ -56,15 +56,15 @@ jobs:
 
       - name: Install linting tools
         run: |
-          pip install ruff mypy
+          pip install ruff pyright
 
       - name: Run ruff (linting)
         run: |
           ruff check src/ tests/
 
-      - name: Run mypy (type checking)
+      - name: Run pyright (type checking)
         run: |
-          mypy src/renai --ignore-missing-imports || true
+          pyright src/renai
 
   build:
     runs-on: ubuntu-latest

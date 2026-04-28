@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-04-28
+
+### Changed
+
+- **Type checking enforcement**: Replaced `mypy ‖‖ true` with `pyright` as a hard CI gate. Fixed 22 pyright violations across `engines/ocr.py`, `processors/setup.py`, `config/__init__.py`, and `settings.py`.
+- **Import shim elimination**: All production code now imports from `renai.config` instead of the backward-compat shim `renai.settings`. The shim remains for external consumers.
+
+### Removed
+
+- **Dead code**: Removed `TextExtractor.get_needs_scan_files()` and its test file (`tests/test_text_extractor.py`). The `Needs_Scan` quarantine feature is complete without a polling function — users manually re-process files from that directory.
+
+### Fixed
+
+- **`cv2` type narrowing**: Added `TYPE_CHECKING` import guard and `assert cv2 is not None` in `OCREngine._deskew()` to resolve 19 `reportPossiblyUnboundVariable` pyright errors.
+- **`setup.py` type error**: Annotated `config` dict as `dict[str, str | int]` to fix `reportArgumentType` when assigning worker count.
+- **PIL threshold lambda**: Suppressed `reportOperatorIssue` on `image.point()` lambda in OCR threshold step.
+
 ## [2.0.0] - 2026-04-16
 
 ### Added

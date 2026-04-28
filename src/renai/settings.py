@@ -71,19 +71,19 @@ __all__ = [
     "CONFIG_DIR",
     "CONFIG_FILE",
     "CUSTOM_CATEGORIES_FILE",
-    "CUSTOM_CONFIG",  # noqa: F822 - resolved via __getattr__
+    "CUSTOM_CONFIG",  # noqa: F822  # pyright: ignore[reportUnsupportedDunderAll]
     "DATA_DIR",
     "DEBUG_DIR",
     "DEFAULT_CATEGORIES",
     "EVAL_LOG_FILE",
-    "EVAL_MODELS",  # noqa: F822 - resolved via __getattr__
+    "EVAL_MODELS",  # noqa: F822  # pyright: ignore[reportUnsupportedDunderAll]
     "EVAL_MODELS_DEFAULT_FILE",
     "EVAL_MODELS_USER_FILE",
     # Constants and helpers
     "FACTORY_DEFAULTS",
     "IMAGE_CATEGORIES",
     "PACKAGE_CONFIG_DIR",
-    "PROVIDERS",  # noqa: F822 - resolved via __getattr__
+    "PROVIDERS",  # noqa: F822  # pyright: ignore[reportUnsupportedDunderAll]
     "PROVIDERS_USER_FILE",
     "SECRETS_FILE",
     # Settings files

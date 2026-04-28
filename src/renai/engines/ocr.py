@@ -6,7 +6,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pymupdf
@@ -22,12 +22,16 @@ from ..settings import (
 )
 from ..utils import ensure_secure_dir, sanitize_filename
 
+if TYPE_CHECKING:
+    import cv2  # type: ignore[import-untyped]
+
 # Try to detect OpenCV at module level for test collection support
 try:
-    import cv2
-
-    OPENCV_AVAILABLE = True
+    import cv2 as _cv2
+    cv2 = _cv2
+    OPENCV_AVAILABLE: bool = True
 except ImportError:
+    cv2 = None  # type: ignore[assignment]
     OPENCV_AVAILABLE = False
 
 # Configure Tesseract
@@ -171,6 +175,7 @@ class OCREngine:
         """Estimate skew angle and rotate image to straighten it."""
         if not OPENCV_AVAILABLE:
             return image
+        assert cv2 is not None  # narrow after OPENCV_AVAILABLE guard
 
         try:
             # Convert PIL image to numpy array
@@ -433,7 +438,7 @@ class OCREngine:
                 image = image.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
             if self.cfg["threshold"]:
                 CONTRAST_THRESHOLD = 140
-                image = image.point(lambda x: 0 if x < CONTRAST_THRESHOLD else 255)
+                image = image.point(lambda x: 0 if x < CONTRAST_THRESHOLD else 255)  # type: ignore[operator]
         return image
 
     async def _perform_ocr(self, image: Image.Image, pno: int) -> str:

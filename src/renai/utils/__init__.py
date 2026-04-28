@@ -51,7 +51,7 @@ def sanitize_filename(filename: str, max_length: int | None = None) -> str:
     """
     if max_length is None:
         try:
-            from renai.settings import app_settings
+            from renai.config import app_settings
 
             max_length = app_settings.max_filename_length or 200
         except (ImportError, AttributeError, NameError):
@@ -187,7 +187,7 @@ def proportional_chunk_trim(text: str, target_length: int, num_chunks: int) -> s
 def handle_clear_cache() -> None:
     """Clear extracted text cache, metadata, and OCR debug files."""
     from renai.cache.manager import clear_all_cache
-    from renai.settings import CACHE_DIR
+    from renai.config import CACHE_DIR
 
     ensure_secure_dir(CACHE_DIR)
     results = clear_all_cache(CACHE_DIR)

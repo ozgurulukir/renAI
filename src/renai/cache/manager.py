@@ -7,7 +7,7 @@ from typing import Any, TypeVar, overload
 
 from pydantic import BaseModel
 
-from renai.settings import CACHE_DIR, DEBUG_DIR
+from renai.config import CACHE_DIR, DEBUG_DIR
 from renai.utils import (
     get_provider_model_key,
 )

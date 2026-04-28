@@ -11,12 +11,12 @@ from renai.cache.manager import (
     read_text_cache,
     write_text_cache,
 )
-from renai.engines.ocr import OCREngine
-from renai.extractors import get_extractor
-from renai.settings import (
+from renai.config import (
     app_settings,
     get_max_text_read_size,
 )
+from renai.engines.ocr import OCREngine
+from renai.extractors import get_extractor
 from renai.utils import (
     get_file_hash,
     proportional_chunk_trim,
@@ -300,9 +300,3 @@ class TextExtractor:
             self.scan_failures_dir = base_dir / "Scan_Failures"
             self.scan_failures_dir.mkdir(parents=True, exist_ok=True)
             self.move_scan_failures = True
-
-    def get_needs_scan_files(self) -> list[Path]:
-        """Returns a list of files currently in the Needs_Scan folder."""
-        if not self.needs_scan_dir or not self.needs_scan_dir.exists():
-            return []
-        return [f for f in self.needs_scan_dir.iterdir() if f.is_file()]

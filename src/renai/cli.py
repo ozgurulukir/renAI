@@ -15,15 +15,15 @@ from rich.console import Console
 from rich.table import Table
 
 from renai import __version__
-from renai.logging_config import configure_logging
-from renai.processors.orchestrator import run_evaluation_pipeline, run_pipeline
-from renai.processors.setup import run_init_wizard
-from renai.processors.text_extractor import FallbackMode
-from renai.settings import (
+from renai.config import (
     PROVIDERS,
     app_settings,
     initialize_directories,
 )
+from renai.logging_config import configure_logging
+from renai.processors.orchestrator import run_evaluation_pipeline, run_pipeline
+from renai.processors.setup import run_init_wizard
+from renai.processors.text_extractor import FallbackMode
 from renai.utils import ensure_secure_dir
 
 # Initialize logging
@@ -97,7 +97,7 @@ def setup_environment() -> None:
 def handle_clear_cache() -> None:
     """Clear extracted text cache, metadata, and OCR debug files."""
     from renai.cache.manager import clear_all_cache
-    from renai.settings import CACHE_DIR
+    from renai.config import CACHE_DIR
 
     ensure_secure_dir(CACHE_DIR)
     results = clear_all_cache(CACHE_DIR)

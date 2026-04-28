@@ -61,8 +61,8 @@ def run_init_wizard():
         "Select your preferred LLM provider", choices=available_providers, default="deepinfra"
     )
 
-    secrets = {}
-    config = {"provider": provider}
+    secrets: dict[str, str] = {}
+    config: dict[str, str | int] = {"provider": provider}
 
     if provider == "custom":
         config["custom_api_base_url"] = Prompt.ask(

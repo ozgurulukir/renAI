@@ -20,6 +20,15 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from renai.config import (
+    PROVIDERS,
+    app_settings,
+    get_api_key,
+    get_effective_model,
+    get_image_extensions,
+    load_all_eval_models,
+    load_eval_models,
+)
 from renai.config.constants import (
     EVAL_LOG_FILE,
     MAX_DISPLAY_NAME_LENGTH,
@@ -30,15 +39,6 @@ from renai.engines.ocr import OCREngine
 from renai.models import ProcessingResult
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode, TextExtractor
-from renai.settings import (
-    PROVIDERS,
-    app_settings,
-    get_api_key,
-    get_effective_model,
-    get_image_extensions,
-    load_all_eval_models,
-    load_eval_models,
-)
 from renai.utils.rate_limiter import AsyncRateLimiter
 
 console = Console()
