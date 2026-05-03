@@ -1,7 +1,40 @@
 import re
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
+
+
+class FallbackMode(str, Enum):
+    """Modes for handling failed text extraction."""
+
+    NONE = "none"  # No fallback, return empty string
+    OCR = "ocr"  # Fallback to OCR engine
+    MOVE_TO_FOLDER = "move"  # Move to Needs_Scan folder
+    VISION = "vision"  # Fallback to vision model (handled by BookProcessor)
+
+
+class ProcessingConfig(BaseModel):
+    """Configuration for the processing pipeline."""
+
+    mode: str = "rename"
+    workers: int = 4
+    recursive: bool = True
+    ocr_enhanced: bool = False
+    debug_ocr: bool = False
+    use_mutool: bool = False
+    mutool_path: str = "mutool"
+    extractor: str = "pymupdf"
+    text_length: int = 10000
+    text_extraction: str = "mixed"
+    extraction_pages: int = 10
+    skip_ocr_checks: bool = False
+    move_scan_failures: bool = False
+    fallback_mode: FallbackMode = FallbackMode.NONE
+    rename_images: bool = False
+    update_metadata: bool = False
+    add_exif_date: bool = False
+    benchmark: bool = False
 
 
 class BaseMetadata(BaseModel):

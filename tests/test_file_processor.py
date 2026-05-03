@@ -1,6 +1,7 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
+from pathlib import Path
 
 from renai.file_ops import safe_move_file
 from renai.models.schemas import BookMetadata
@@ -27,9 +28,17 @@ class TestBookProcessor:
     """Test BookProcessor class asynchronously."""
 
     @pytest.fixture
-    def processor(self):
-        mock_ocr = MagicMock()
-        mock_llm = MagicMock()
+    def mock_ocr(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_llm(self):
+        llm = MagicMock()
+        llm.model_name = "test-model"
+        return llm
+
+    @pytest.fixture
+    def processor(self, mock_ocr, mock_llm):
         return BookProcessor(mock_ocr, mock_llm)
 
     @pytest.mark.asyncio
@@ -47,17 +56,15 @@ class TestBookProcessor:
         )
 
         with (
-            patch("renai.utils.get_file_hash", return_value=file_hash),
+            patch("renai.processors.book.get_file_hash", return_value=file_hash),
             patch("renai.processors.book.read_metadata_cache", return_value=cached_metadata),
+            patch("renai.processors.book.safe_move_file", side_effect=lambda s, d, **kwargs: d)
         ):
-            # We also need to mock safe_move_file since it's called in rename mode
-            with patch(
-                "renai.processors.book.safe_move_file", side_effect=lambda s, d, **kwargs: d
-            ):
-                result = await processor.process_file(test_file, mode="rename")
+            result = await processor.process_file(test_file, mode="rename")
 
         assert result.success is True
         assert result.metadata["title"] == "Cached Title"
+        # Verify LLM was NOT called due to cache hit
         processor.llm_engine.get_book_metadata.assert_not_called()
 
     @pytest.mark.asyncio
@@ -66,8 +73,8 @@ class TestBookProcessor:
         test_file = tmp_path / "empty.pdf"
         test_file.write_text("")
 
-        with patch("renai.utils.get_file_hash", return_value="hash"):
-            with patch.object(processor.text_extractor, "extract", return_value=""):
+        with patch("renai.processors.book.get_file_hash", return_value="hash"):
+            with patch.object(processor.text_extractor, "extract", AsyncMock(return_value="")):
                 result = await processor.process_file(test_file)
 
         assert result.success is False
