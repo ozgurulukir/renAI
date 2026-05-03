@@ -37,7 +37,7 @@ from renai.config.constants import (
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
 from renai.models import ProcessingResult
-from renai.models.schemas import ProcessingConfig
+from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import TextExtractor
 from renai.utils.rate_limiter import AsyncRateLimiter
@@ -245,7 +245,7 @@ async def run_pipeline(
 
     if config.benchmark:
         file_paths = file_paths[:3]
-        console_print(
+        console.print(
             f"[yellow]Benchmark mode: only processing first {len(file_paths)} files.[/yellow]"
         )
 

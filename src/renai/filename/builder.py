@@ -12,7 +12,11 @@ def _get_field(data: BaseMetadata | dict[str, Any], field_name: str, default: An
         val = getattr(data, field_name, default)
     else:
         val = data.get(field_name, default)
-    
+
+    # If value is None, return default to ensure proper fallback
+    if val is None:
+        return default
+
     if isinstance(val, str):
         return val.strip()
     return val
@@ -61,7 +65,9 @@ def build_book_filename(
         return f"Unknown_Document{original_extension}"
 
     new_name_base = " -- ".join(name_parts)
-    return f"{sanitize_filename(new_name_base, app_settings.max_filename_length)}{original_extension}"
+    return (
+        f"{sanitize_filename(new_name_base, app_settings.max_filename_length)}{original_extension}"
+    )
 
 
 def build_image_filename(
@@ -79,7 +85,7 @@ def build_image_filename(
     description = _get_field(image_data, "description")
     language = _get_field(image_data, "language", "en")
     visual_context = _get_field(image_data, "visual_context")
-    
+
     if isinstance(image_data, ImageMetadata):
         final_exif = exif_date or image_data.exif_date
     else:
@@ -155,4 +161,3 @@ def build_vision_filename(
         new_name_base = "Document"
 
     return f"{sanitize_filename(new_name_base, app_settings.max_filename_length)} -- ({lang_indicator}){original_extension}"
-

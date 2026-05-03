@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -17,7 +17,7 @@ class FallbackMode(str, Enum):
 class ProcessingConfig(BaseModel):
     """Configuration for the processing pipeline."""
 
-    mode: str = "rename"
+    mode: Literal["rename", "organize", "evaluate"] = "rename"
     workers: int = 4
     recursive: bool = True
     ocr_enhanced: bool = False
@@ -121,7 +121,6 @@ class ImageMetadata(BaseMetadata):
     exif_date: str | None = Field(
         None,
         description=(
-            "The date extracted from EXIF (internal use only, "
-            "usually provided by processor)."
+            "The date extracted from EXIF (internal use only, usually provided by processor)."
         ),
     )

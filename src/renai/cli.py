@@ -8,7 +8,7 @@ original main.py has been migrated here.
 import asyncio
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 from rich.console import Console
@@ -21,8 +21,8 @@ from renai.config import (
     initialize_directories,
 )
 from renai.logging_config import configure_logging
+from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.orchestrator import run_evaluation_pipeline, run_pipeline
-from renai.models.schemas import ProcessingConfig, FallbackMode
 from renai.processors.setup import run_init_wizard
 from renai.utils import ensure_secure_dir
 
@@ -173,7 +173,7 @@ def process_cmd(
         ),
     ] = ".",
     mode: Annotated[
-        str,
+        Literal["rename", "organize", "evaluate"],
         typer.Option(
             "--mode",
             "-m",
@@ -356,14 +356,14 @@ def process_cmd(
                     text_length=text_length,
                     text_extraction=text_extraction,
                     extraction_pages=extraction_pages,
-                    skip_ocr_checks=False, # default for process cmd
+                    skip_ocr_checks=False,  # default for process cmd
                     move_scan_failures=move_scan_failures,
                     fallback_mode=final_fallback,
                     rename_images=rename_images,
                     add_exif_date=exif,
                     update_metadata=update_metadata,
                     benchmark=benchmark,
-                )
+                ),
             )
         )
     except KeyboardInterrupt:
