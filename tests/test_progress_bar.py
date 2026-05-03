@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from renai.models import ProcessingResult
+from renai.models.schemas import ProcessingConfig
 from renai.processors.orchestrator import run_pipeline
 
 
@@ -35,17 +36,19 @@ async def test_run_pipeline_with_progress_mock(tmp_path):
             root_dir=tmp_path,
             provider="openai",
             model="gpt-4o",
-            mode="rename",
-            workers=2,
-            recursive=False,
-            ocr_enhanced=False,
-            debug_ocr=False,
-            use_mutool=False,
-            mutool_path="mutool",
-            extractor="pymupdf",
-            text_length=1000,
-            text_extraction="mixed",
-            extraction_pages=10,
+            config=ProcessingConfig(
+                mode="rename",
+                workers=2,
+                recursive=False,
+                ocr_enhanced=False,
+                debug_ocr=False,
+                use_mutool=False,
+                mutool_path="mutool",
+                extractor="pymupdf",
+                text_length=1000,
+                text_extraction="mixed",
+                extraction_pages=10,
+            ),
         )
 
         assert mock_book_processor.process_file.await_count == 3

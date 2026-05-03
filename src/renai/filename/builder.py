@@ -1,8 +1,25 @@
 from pathlib import Path
 from typing import Any
 
+from ..config import app_settings
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
 from ..utils import sanitize_filename
+
+
+def _get_field(data: BaseMetadata | dict[str, Any], field_name: str, default: Any = "") -> Any:
+    """Helper to extract a field from either a Pydantic model or a dictionary."""
+    if isinstance(data, BaseMetadata):
+        val = getattr(data, field_name, default)
+    else:
+        val = data.get(field_name, default)
+
+    # If value is None, return default to ensure proper fallback
+    if val is None:
+        return default
+
+    if isinstance(val, str):
+        return val.strip()
+    return val
 
 
 def build_book_filename(
@@ -15,18 +32,11 @@ def build_book_filename(
 
     Format: Title -- Subtitle -- 'Edition' -- Author -- (Year).ext
     """
-    if isinstance(book_data, BookMetadata):
-        title = (book_data.title or "").strip()
-        subtitle = (book_data.subtitle or "").strip()
-        edition = (book_data.edition or "").strip()
-        author = (book_data.author or "").strip()
-        year_val = book_data.year
-    else:
-        title = (book_data.get("title") or "").strip()
-        subtitle = (book_data.get("subtitle") or "").strip()
-        edition = (book_data.get("edition") or "").strip()
-        author = (book_data.get("author") or "").strip()
-        year_val = book_data.get("year")
+    title = _get_field(book_data, "title")
+    subtitle = _get_field(book_data, "subtitle")
+    edition = _get_field(book_data, "edition")
+    author = _get_field(book_data, "author")
+    year_val = _get_field(book_data, "year", None)
 
     name_parts = []
 
@@ -55,7 +65,9 @@ def build_book_filename(
         return f"Unknown_Document{original_extension}"
 
     new_name_base = " -- ".join(name_parts)
-    return f"{sanitize_filename(new_name_base)}{original_extension}"
+    return (
+        f"{sanitize_filename(new_name_base, app_settings.max_filename_length)}{original_extension}"
+    )
 
 
 def build_image_filename(
@@ -70,15 +82,13 @@ def build_image_filename(
 
     Format: Description -- [Date] -- (Language).ext
     """
+    description = _get_field(image_data, "description")
+    language = _get_field(image_data, "language", "en")
+    visual_context = _get_field(image_data, "visual_context")
+
     if isinstance(image_data, ImageMetadata):
-        description = (image_data.description or "").strip()
-        language = (image_data.language or "en").strip()
-        visual_context = (image_data.visual_context or "").strip()
         final_exif = exif_date or image_data.exif_date
     else:
-        description = (image_data.get("description") or "").strip()
-        language = (image_data.get("language") or "en").strip()
-        visual_context = (image_data.get("visual_context") or "").strip()
         final_exif = exif_date or image_data.get("exif_date")
 
     name_parts = []
@@ -97,7 +107,7 @@ def build_image_filename(
     if not new_name_base:
         new_name_base = "Image"
 
-    return f"{sanitize_filename(new_name_base)} -- ({lang_indicator}){original_extension}"
+    return f"{sanitize_filename(new_name_base, app_settings.max_filename_length)} -- ({lang_indicator}){original_extension}"
 
 
 def extract_category_from_metadata(
@@ -114,7 +124,7 @@ def extract_category_from_metadata(
             category_raw = category_raw.replace("/", "&").replace("\\", "&")
 
     category_raw = (category_raw or default).strip()
-    return sanitize_filename(category_raw) or default
+    return sanitize_filename(category_raw, app_settings.max_filename_length) or default
 
 
 def is_filename_changed(original_path: Path, new_name: str) -> bool:
@@ -130,16 +140,10 @@ def build_vision_filename(
     Build a filename from vision-processed metadata for PDFs.
     Uses BookMetadata SSoT for consistency.
     """
-    if isinstance(book_data, BookMetadata):
-        title = (book_data.title or "").strip()
-        author = (book_data.author or "").strip()
-        year = str(book_data.year or "").strip()
-        language = (book_data.language or "en").strip()
-    else:
-        title = (book_data.get("title") or "").strip()
-        author = (book_data.get("author") or "").strip()
-        year = str(book_data.get("year") or "").strip()
-        language = (book_data.get("language") or "en").strip()
+    title = _get_field(book_data, "title")
+    author = _get_field(book_data, "author")
+    year = str(_get_field(book_data, "year") or "")
+    language = _get_field(book_data, "language", "en")
 
     name_parts = []
 
@@ -156,4 +160,4 @@ def build_vision_filename(
     if not new_name_base:
         new_name_base = "Document"
 
-    return f"{sanitize_filename(new_name_base)} -- ({lang_indicator}){original_extension}"
+    return f"{sanitize_filename(new_name_base, app_settings.max_filename_length)} -- ({lang_indicator}){original_extension}"

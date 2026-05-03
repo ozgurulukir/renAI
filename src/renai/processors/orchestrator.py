@@ -37,8 +37,9 @@ from renai.config.constants import (
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
 from renai.models import ProcessingResult
+from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.book import BookProcessor
-from renai.processors.text_extractor import FallbackMode, TextExtractor
+from renai.processors.text_extractor import TextExtractor
 from renai.utils.rate_limiter import AsyncRateLimiter
 
 console = Console()
@@ -47,23 +48,15 @@ console = Console()
 async def setup_engines(
     provider: str,
     model: str | None,
-    ocr_enhanced: bool = False,
-    debug_ocr: bool = False,
-    use_mutool: bool = False,
-    mutool_path: str = "mutool",
-    extractor: str = "pymupdf",
-    text_length: int = 10000,
-    text_extraction: str = "mixed",
-    extraction_pages: int = 10,
-    move_scan_failures: bool = False,
+    config: ProcessingConfig,
 ) -> tuple[OCREngine, LLMEngine, BookProcessor]:
     """Initialize OCR, LLM, and book processor engines asynchronously."""
     # Initialize OCR engine
     ocr_engine = OCREngine(
-        enhanced=ocr_enhanced,
-        debug=debug_ocr,
-        use_mutool=use_mutool,
-        mutool_path=mutool_path,
+        enhanced=config.ocr_enhanced,
+        debug=config.debug_ocr,
+        use_mutool=config.use_mutool,
+        mutool_path=config.mutool_path,
         silent=False,
     )
 
@@ -95,13 +88,13 @@ async def setup_engines(
     processor = BookProcessor(
         ocr_engine,
         llm_engine,
-        extractor_name=extractor,
+        extractor_name=config.extractor,
         provider=provider,
         model=model_name,
-        target_length=text_length,
-        text_extraction=text_extraction,
-        extraction_pages=extraction_pages,
-        move_scan_failures=move_scan_failures,
+        target_length=config.text_length,
+        text_extraction=config.text_extraction,
+        extraction_pages=config.extraction_pages,
+        move_scan_failures=config.move_scan_failures,
     )
 
     return ocr_engine, llm_engine, processor
@@ -220,50 +213,28 @@ async def run_pipeline(
     root_dir: Path,
     provider: str,
     model: str | None = None,
-    mode: str = "rename",
-    workers: int = 4,
-    recursive: bool = True,
-    ocr_enhanced: bool = False,
-    debug_ocr: bool = False,
-    use_mutool: bool = False,
-    mutool_path: str = "mutool",
-    extractor: str = "pymupdf",
-    text_length: int = 10000,
-    text_extraction: str = "mixed",
-    extraction_pages: int = 10,
-    skip_ocr_checks: bool = False,
-    move_scan_failures: bool = False,
-    fallback_mode: FallbackMode = FallbackMode.NONE,
-    rename_images: bool = False,
-    update_metadata: bool = False,
-    add_exif_date: bool = False,
-    benchmark: bool = False,
+    config: ProcessingConfig | None = None,
 ) -> None:
     """Core processing pipeline orchestration."""
+    if config is None:
+        config = ProcessingConfig()
+
     # 1. Setup
     _ocr_engine, _llm_engine, processor = await setup_engines(
         provider,
         model,
-        ocr_enhanced,
-        debug_ocr,
-        use_mutool,
-        mutool_path,
-        extractor,
-        text_length,
-        text_extraction,
-        extraction_pages,
-        move_scan_failures,
+        config,
     )
 
     await processor.setup_move_folders(
         root_dir,
-        skip_ocr_checks=skip_ocr_checks,
-        move_scan_failures=move_scan_failures,
+        skip_ocr_checks=config.skip_ocr_checks,
+        move_scan_failures=config.move_scan_failures,
     )
 
     # 2. Collection
     try:
-        file_paths = collect_files(root_dir, processor, recursive, rename_images)
+        file_paths = collect_files(root_dir, processor, config.recursive, config.rename_images)
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
         raise typer.Exit(code=0) from None
@@ -272,7 +243,7 @@ async def run_pipeline(
         console.print("[yellow]No supported files found to process.[/yellow]")
         return
 
-    if benchmark:
+    if config.benchmark:
         file_paths = file_paths[:3]
         console.print(
             f"[yellow]Benchmark mode: only processing first {len(file_paths)} files.[/yellow]"
@@ -281,9 +252,10 @@ async def run_pipeline(
     # Initial Info Summary
     summary_cols = [
         f"[bold blue]🚀 Files:[/bold blue] {len(file_paths)}",
-        f"[bold cyan]⚙ Workers:[/bold cyan] {workers}",
+        f"[bold cyan]⚙ Workers:[/bold cyan] {config.workers}",
         f"[bold yellow]⏱ RPM Limit:[/bold yellow] {app_settings.llm_rpm_limit}",
     ]
+
     console.print(Columns(summary_cols, expand=True))
     console.print()
     # 3. Execution Setup
@@ -298,7 +270,7 @@ async def run_pipeline(
     )
     main_task = progress.add_task("[cyan]Processing...", total=len(file_paths))
     status_display = StatusDisplay(progress)
-    semaphore = asyncio.Semaphore(workers)
+    semaphore = asyncio.Semaphore(config.workers)
     results = []
 
     try:
@@ -308,7 +280,7 @@ async def run_pipeline(
             refresh_per_second=4,
             screen=True,  # Isolate from scrollback to prevent stacking
         ) as live:
-            if benchmark:
+            if config.benchmark:
                 await _run_benchmark_mode(processor, file_paths, status_display, live)
                 return
 
@@ -319,13 +291,13 @@ async def run_pipeline(
 
                     res = await processor.process_file(
                         f_path,
-                        mode=mode,
-                        fallback_mode=fallback_mode,
-                        rename_images=rename_images,
-                        update_metadata=update_metadata,
-                        add_exif_date=add_exif_date,
+                        mode=config.mode,
+                        fallback_mode=config.fallback_mode,
+                        rename_images=config.rename_images,
+                        update_metadata=config.update_metadata,
+                        add_exif_date=config.add_exif_date,
                     )
-                    if mode == "evaluate" and res.success:
+                    if config.mode == "evaluate" and res.success:
                         await log_evaluation_result(
                             f_path, provider, model or "unknown", res.metadata
                         )
@@ -457,17 +429,15 @@ async def run_evaluation_pipeline(
             root_dir=root_dir,
             provider=provider,
             model=model_name,
-            mode="evaluate",
-            workers=workers,
-            recursive=False,
-            ocr_enhanced=False,
-            debug_ocr=False,
-            use_mutool=False,
-            mutool_path="mutool",
-            extractor=app_settings.extractor,
-            text_length=app_settings.text_length,
-            text_extraction=app_settings.text_extraction,
-            extraction_pages=app_settings.extraction_pages,
-            fallback_mode=FallbackMode.OCR,
+            config=ProcessingConfig(
+                mode="evaluate",
+                workers=workers,
+                recursive=False,
+                fallback_mode=FallbackMode.OCR,
+                extractor=app_settings.extractor,
+                text_length=app_settings.text_length,
+                text_extraction=app_settings.text_extraction,
+                extraction_pages=app_settings.extraction_pages,
+            ),
         )
         console.print(f"[dim]Results logged to: {EVAL_LOG_FILE}[/dim]\n")

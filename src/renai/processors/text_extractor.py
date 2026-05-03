@@ -2,7 +2,6 @@ import asyncio
 import logging
 import shutil
 import uuid
-from enum import Enum
 from pathlib import Path
 
 from renai.cache.manager import (
@@ -17,20 +16,12 @@ from renai.config import (
 )
 from renai.engines.ocr import OCREngine
 from renai.extractors import get_extractor
+from renai.models.schemas import FallbackMode
 from renai.utils import (
     get_file_hash,
     proportional_chunk_trim,
     read_text_limited,
 )
-
-
-class FallbackMode(Enum):
-    """Modes for handling failed text extraction."""
-
-    NONE = "none"  # No fallback, return empty string
-    OCR = "ocr"  # Fallback to OCR engine
-    MOVE_TO_FOLDER = "move"  # Move to Needs_Scan folder
-    VISION = "vision"  # Fallback to vision model (handled by BookProcessor)
 
 
 # Supported extensions

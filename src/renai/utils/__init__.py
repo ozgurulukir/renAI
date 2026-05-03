@@ -44,21 +44,13 @@ def get_provider_model_key(provider: str, model: str) -> str:
     return generate_cache_key(provider, model)
 
 
-def sanitize_filename(filename: str, max_length: int | None = None) -> str:
+def sanitize_filename(filename: str, max_length: int = 200) -> str:
     """
     Replace invalid characters and remove all control characters.
-    Limits length to stay within Windows path limits.
+    Limits length to stay within filesystem path limits.
     """
-    if max_length is None:
-        try:
-            from renai.config import app_settings
-
-            max_length = app_settings.max_filename_length or 200
-        except (ImportError, AttributeError, NameError):
-            max_length = 200  # Fallback
-
     # Ensure max_length is an int for type safety
-    max_val: int = int(max_length) if max_length is not None else 200
+    max_val: int = int(max_length)
     # Remove invalid characters for Windows paths: < > : " / \ | ? *
     sanitized = RE_INVALID_CHARS.sub("", filename)
 
