@@ -39,12 +39,6 @@ app = typer.Typer(
 )
 
 
-@app.command("version")
-def version_cmd() -> None:
-    """Show renAI version."""
-    console.print(f"renAI version [bold cyan]{__version__}[/bold cyan]")
-
-
 def version_callback(value: bool):
     if value:
         console.print(f"renAI version [bold cyan]{__version__}[/bold cyan]")
