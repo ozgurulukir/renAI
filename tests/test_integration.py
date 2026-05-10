@@ -1,5 +1,3 @@
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,11 +32,11 @@ def processor(mock_engines):
     """Fixture to provide a BookProcessor with mocked engines and extractor."""
     ocr, llm = mock_engines
     proc = BookProcessor(ocr, llm)
-    
+
     mock_extractor = MagicMock()
     mock_extractor.extract = AsyncMock(return_value="AI " * 100)
     proc.text_extractor = mock_extractor
-    
+
     return proc
 
 

@@ -24,14 +24,19 @@ Error Handling:
     - Handles duplicate filenames by appending UUID
 
 Thread Safety:
-    safe_move_file is NOT thread-safe. Use external locking if needed.
+    All file operations are protected by a global RLock to prevent
+    race conditions during duplicate detection and file moves.
 """
 
 import logging
+import threading
 import uuid
 from pathlib import Path
 
 from ..utils import get_file_hash
+
+# Global lock for atomic file operations (duplicate check + move/copy)
+_file_ops_lock = threading.RLock()
 
 
 def ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path:
@@ -62,20 +67,21 @@ def ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path:
     See Also:
         safe_move_file(): Higher-level function that handles the full move operation
     """
-    if not dest_path.exists():
-        return dest_path
+    with _file_ops_lock:
+        if not dest_path.exists():
+            return dest_path
 
-    # Check if files have same content
-    existing_hash = get_file_hash(dest_path)
-    new_hash = source_hash or ""
+        # Check if files have same content
+        existing_hash = get_file_hash(dest_path)
+        new_hash = source_hash or ""
 
-    if existing_hash == new_hash:
-        # Same content - return original path (will be skipped by caller)
-        return dest_path
+        if existing_hash == new_hash:
+            # Same content - return original path (will be skipped by caller)
+            return dest_path
 
-    # Different content - append UUID
-    unique_id = uuid.uuid4().hex[:8]
-    return dest_path.parent / f"{dest_path.stem}_{unique_id}{dest_path.suffix}"
+        # Different content - append UUID
+        unique_id = uuid.uuid4().hex[:8]
+        return dest_path.parent / f"{dest_path.stem}_{unique_id}{dest_path.suffix}"
 
 
 def safe_move_file(
@@ -104,41 +110,45 @@ def safe_move_file(
     """
     import shutil
 
-    # Check if source file exists
-    if not source_path.exists():
-        raise FileNotFoundError(f"Source file {source_path} does not exist")
+    with _file_ops_lock:
+        # Check if source file exists
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source file {source_path} does not exist")
 
-    # Handle duplicate destination files
-    final_dest_path = dest_path
-    if dest_path.exists():
-        # Check if files have same content (same hash)
-        existing_hash = get_file_hash(dest_path)
-        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
+        # Handle duplicate destination files
+        final_dest_path = dest_path
+        if dest_path.exists():
+            # Check if files have same content (same hash)
+            existing_hash = get_file_hash(dest_path)
+            new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
 
-        if existing_hash == new_hash:
-            # Same content - skip moving
+            if existing_hash == new_hash:
+                # Same content - skip moving
+                logging.info(
+                    f"File {dest_path.name} already exists with same content, "
+                    f"skipping {operation_type}"
+                )
+                return dest_path
+            # Different content - append UUID to avoid overwrite
+            final_dest_path = ensure_unique_path(dest_path, source_hash)
+
+        # Perform the file operation
+        try:
+            # Ensure destination directory exists if requested
+            if ensure_dirs:
+                final_dest_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source_path), str(final_dest_path))
             logging.info(
-                f"File {dest_path.name} already exists with same content, skipping {operation_type}"
+                f"SUCCESS: {operation_type.capitalize()} {source_path.name} "
+                f"-> {final_dest_path.name}"
             )
-            return dest_path
-        # Different content - append UUID to avoid overwrite
-        final_dest_path = ensure_unique_path(dest_path, source_hash)
-
-    # Perform the file operation
-    try:
-        # Ensure destination directory exists if requested
-        if ensure_dirs:
-            final_dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source_path), str(final_dest_path))
-        logging.info(
-            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
-        )
-        return final_dest_path
-    except Exception as e:
-        logging.error(
-            f"ERROR: Failed to {operation_type} {source_path.name} to {dest_path.parent.name}: {e}"
-        )
-        raise
+            return final_dest_path
+        except Exception as e:
+            logging.error(
+                f"ERROR: Failed to {operation_type} {source_path.name} "
+                f"to {dest_path.parent.name}: {e}"
+            )
+            raise
 
 
 def safe_copy_file(
@@ -165,17 +175,18 @@ def safe_copy_file(
     """
     import shutil
 
-    if not source_path.exists():
-        raise FileNotFoundError(f"Source file {source_path} does not exist")
+    with _file_ops_lock:
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source file {source_path} does not exist")
 
-    try:
-        if ensure_dirs:
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(source_path), str(dest_path))
-        logging.info(
-            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {dest_path.name}"
-        )
-        return dest_path
-    except Exception as e:
-        logging.error(f"ERROR: Failed to {operation_type} {source_path.name}: {e}")
-        raise
+        try:
+            if ensure_dirs:
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(source_path), str(dest_path))
+            logging.info(
+                f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {dest_path.name}"
+            )
+            return dest_path
+        except Exception as e:
+            logging.error(f"ERROR: Failed to {operation_type} {source_path.name}: {e}")
+            raise

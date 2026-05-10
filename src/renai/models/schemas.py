@@ -1,11 +1,11 @@
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class FallbackMode(str, Enum):
+class FallbackMode(StrEnum):
     """Modes for handling failed text extraction."""
 
     NONE = "none"  # No fallback, return empty string

@@ -23,10 +23,11 @@ class LLMEngine:
         base_url: str,
         model_name: str,
         rate_limiter: AsyncRateLimiter | None = None,
+        timeout: float | None = None,
     ) -> None:
         self.provider = provider
         self.model_name = model_name
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
         self.rate_limiter = rate_limiter
         self.allowed_categories = get_allowed_categories()
         # Path to the prompts directory within the package
@@ -233,12 +234,19 @@ class LLMEngine:
             else None
         )
         last_parsed_data: dict[str, Any] | None = None
+        # Keep conversation history bounded to avoid token bloat on retries
+        MAX_HISTORY_MESSAGES = 4  # system + user + (assistant + user) * 1 retry cycle
 
         for attempt in range(app_settings.llm_max_retries):
             try:
                 # Rate limiting wait
                 if self.rate_limiter:
                     await self.rate_limiter.acquire()
+
+                # Trim messages to bounded size before each call
+                if len(messages) > MAX_HISTORY_MESSAGES:
+                    # Keep system prompt and most recent turns
+                    messages = [messages[0], *messages[-(MAX_HISTORY_MESSAGES - 1):]]
 
                 completion = await self.client.chat.completions.create(
                     model=self.model_name,

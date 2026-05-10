@@ -23,7 +23,6 @@ from renai.utils import (
     read_text_limited,
 )
 
-
 # Supported extensions
 OFFICE_EXTENSIONS: set[str] = {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
 PLAIN_TEXT_EXTENSIONS: set[str] = {".txt", ".md"}

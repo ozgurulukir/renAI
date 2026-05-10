@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 import shutil
@@ -47,12 +48,14 @@ class OCREngine:
         use_mutool: bool = False,
         mutool_path: str = "mutool",
         silent: bool = False,
+        max_ocr_chars: int = 10000,
     ):
         self.enhanced = enhanced
         self.debug = debug
         self.use_mutool = use_mutool
         self.mutool_path = mutool_path
         self.silent = silent
+        self.max_ocr_chars = max_ocr_chars
 
         # Validate mutool if requested
         if self.use_mutool:
@@ -458,8 +461,9 @@ class OCREngine:
             logging.error(f"Tesseract failed for page {pno + 1}: {e}")
             return ""
 
-    async def extract_text(self, file_path: Path) -> str:  # noqa: C901, PLR0912
+    async def extract_text(self, file_path: Path) -> str:  # noqa: C901, PLR0912, PLR0915
         """Extract text from a document asynchronously using OCR."""
+        doc = None
         try:
             file_debug_dir = None
             if self.debug:
@@ -519,7 +523,7 @@ class OCREngine:
                         except Exception as e:
                             logging.debug(f"Cleanup of temp_img failed: {e}")
 
-                MAX_OCR_CHARS = 10000
+                MAX_OCR_CHARS = self.max_ocr_chars
                 if total_chars > MAX_OCR_CHARS:
                     break
 
@@ -540,3 +544,7 @@ class OCREngine:
         except Exception as e:
             logging.error(f"OCR Pipeline failed for {file_path.name}: {e}")
             return ""
+        finally:
+            if doc is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(doc.close)

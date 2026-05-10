@@ -101,10 +101,12 @@ class PyPdfium2Extractor(BaseExtractor):
 
 
 def get_extractor(name: str) -> BaseExtractor:
-    extractors = {
-        "pymupdf": PyMuPDFExtractor(),
-        "pdfplumber": PDFPlumberExtractor(),
-        "pypdf": PyPDFExtractor(),
-        "pypdfium2": PyPdfium2Extractor(),
+    """Return a fresh extractor instance per call to ensure thread-safety."""
+    extractor_classes: dict[str, type[BaseExtractor]] = {
+        "pymupdf": PyMuPDFExtractor,
+        "pdfplumber": PDFPlumberExtractor,
+        "pypdf": PyPDFExtractor,
+        "pypdfium2": PyPdfium2Extractor,
     }
-    return extractors.get(name.lower(), PyMuPDFExtractor())
+    extractor_cls = extractor_classes.get(name.lower(), PyMuPDFExtractor)
+    return extractor_cls()

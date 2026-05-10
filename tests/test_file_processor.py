@@ -1,7 +1,6 @@
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pathlib import Path
 
 from renai.file_ops import safe_move_file
 from renai.models.schemas import BookMetadata

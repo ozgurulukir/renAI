@@ -91,6 +91,8 @@ htmlcov/
 AGENTS.md
 QWEN.md
 docs/QWEN.md
+.opencode
+.code-tandem/
 
 # =============================================================================
 # Build & Dev Artifacts

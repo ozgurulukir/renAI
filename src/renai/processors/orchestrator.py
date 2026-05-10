@@ -39,7 +39,6 @@ from renai.engines.ocr import OCREngine
 from renai.models import ProcessingResult
 from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.book import BookProcessor
-from renai.processors.text_extractor import TextExtractor
 from renai.utils.rate_limiter import AsyncRateLimiter
 
 console = Console()
@@ -58,6 +57,7 @@ async def setup_engines(
         use_mutool=config.use_mutool,
         mutool_path=config.mutool_path,
         silent=False,
+        max_ocr_chars=app_settings.max_ocr_chars,
     )
 
     # Get provider configuration
@@ -82,6 +82,7 @@ async def setup_engines(
         base_url=provider_config.base_url,
         model_name=model_name,
         rate_limiter=rate_limiter,
+        timeout=app_settings.llm_timeout,
     )
 
     # Initialize processor
@@ -354,19 +355,24 @@ async def _run_benchmark_mode(
         msg = f"[bold yellow]BENCHMARK[/] Testing [cyan]{ext_name}[/]..."
         status_display.update(msg)
 
-        processor.extractor_name = ext_name
-        # Re-initialize TextExtractor with new library
-        processor.text_extractor = TextExtractor(
+        # Create a fresh processor for each extractor to avoid state mutation
+        benchmark_processor = BookProcessor(
             ocr_engine=processor.ocr_engine,
+            llm_engine=processor.llm_engine,
             extractor_name=ext_name,
+            provider=processor.provider,
+            model=processor.model,
             target_length=processor.target_length,
+            text_extraction=processor.text_extractor.text_extraction_mode,
+            extraction_pages=processor.text_extractor.extraction_pages,
+            move_scan_failures=processor.move_scan_failures,
         )
 
         start_t = time.perf_counter()
         success_count = 0
 
         for f_path in file_paths:
-            res = await processor.process_file(f_path, mode="evaluate")
+            res = await benchmark_processor.process_file(f_path, mode="evaluate")
             if res.success:
                 success_count += 1
             status_display.update(res)

@@ -78,6 +78,12 @@ class AppSettings(BaseSettings):
     llm_rpm_limit: int = Field(
         default=60, ge=0, description="Requests Per Minute limit (0 for unlimited)"
     )
+    llm_timeout: float = Field(
+        default=60.0,
+        ge=10.0,
+        le=300.0,
+        description="Timeout for LLM API calls in seconds",
+    )
     llm_temperature: float = Field(
         default=0.3,
         ge=0.0,
@@ -118,6 +124,12 @@ class AppSettings(BaseSettings):
     ocr_enhanced: bool = Field(default=False, description="Enable high-quality OCR")
     skip_needs_ocr: bool = Field(default=False, description="Skip OCR for files needing fallback")
     move_ocr_failures: bool = Field(default=False, description="Move OCR failures to folder")
+    max_ocr_chars: int = Field(
+        default=10000,
+        ge=1000,
+        le=100000,
+        description="Maximum OCR characters to extract per document",
+    )
 
     # Tool settings
     use_mutool: bool = Field(default=False, description="Use mutool for PDF-to-image")
