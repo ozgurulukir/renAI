@@ -19,6 +19,7 @@ from ..file_ops.operations import safe_move_file
 from ..filename.builder import (
     build_book_filename,
     build_image_filename,
+    build_vision_filename,
     extract_category_from_metadata,
 )
 from ..models import ProcessingResult
@@ -139,8 +140,12 @@ class BookProcessor:
                 )
             )
 
+            is_vision_doc = False
             if metadata:
                 logging.info(f"Cache hit for {file_path.name}")
+                # Infer vision status from cache path parameters
+                if not (is_image and rename_images) and use_vision_cache:
+                    is_vision_doc = True
             else:
                 if is_image and rename_images:
                     # Direct Image Vision Mode
@@ -149,7 +154,7 @@ class BookProcessor:
                     )
                 else:
                     # Document Mode (Text-First)
-                    metadata = await self._extract_document_metadata(
+                    metadata, is_vision_doc = await self._extract_document_metadata(
                         file_path, fallback_mode
                     )
 
@@ -186,6 +191,7 @@ class BookProcessor:
                         mode=mode,
                         add_exif_date=add_exif_date,
                         file_hash=file_hash,
+                        is_vision_doc=is_vision_doc,
                     )
             else:
                 # evaluate mode
@@ -204,21 +210,23 @@ class BookProcessor:
 
     async def _extract_document_metadata(
         self, file_path: Path, fallback_mode: FallbackMode
-    ) -> BookMetadata | None:
+    ) -> tuple[BookMetadata | None, bool]:
         """Internal helper to extract document metadata using text first, then vision."""
         text = await self.text_extractor.extract(file_path)
 
         if not text.strip() and fallback_mode == FallbackMode.VISION:
             # Fallback to PDF Vision Page Sampling
-            return await self.visual_processor.extract_metadata_from_pdf(file_path)
+            metadata = await self.visual_processor.extract_metadata_from_pdf(file_path)
+            return metadata, True
 
         if text.strip():
             # Standard LLM Metadata Extraction from text
             if self.llm_engine:
-                return await self.llm_engine.get_book_metadata(text)
+                metadata = await self.llm_engine.get_book_metadata(text)
+                return metadata, False
             logging.warning("No LLM engine available for text-based extraction.")
 
-        return None
+        return None, False
 
     async def _handle_renaming(
         self,
@@ -227,6 +235,7 @@ class BookProcessor:
         mode: str = "rename",
         add_exif_date: bool = False,
         file_hash: str | None = None,
+        is_vision_doc: bool = False,
     ) -> ProcessingResult:
         """Build filename and move file securely asynchronously."""
         try:
@@ -240,6 +249,8 @@ class BookProcessor:
                     file_path.suffix,
                     add_exif_date=add_exif_date,
                 )
+            elif is_vision_doc:
+                new_name = build_vision_filename(cast("BookMetadata", metadata), file_path.suffix)
             else:
                 new_name = build_book_filename(cast("BookMetadata", metadata), file_path.suffix)
 
