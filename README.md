@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-Last updated: 2026-04-16
+Last updated: 2026-05-31
 
 ---
 
@@ -393,11 +393,10 @@ models = ["gpt-4o", "gpt-4o-mini"]
 
 ### Cache Management
 
-```bash
-# Clear all cache (text, metadata, and ocr_debug)
-renai cache
+The cache is automatically managed based on file SHA256 hashes. Metadata cache entries are scoped by provider-model pairs, so switching providers or models automatically uses a different cache entry.
 
-# Clear cache without confirmation
+```bash
+# Manually clear all cache (text, metadata, and ocr_debug)
 renai cache --yes
 ```
 
@@ -488,12 +487,11 @@ When using `--mode organize`:
 1. **Regular Backups**: Always keep a backup of your original files
 2. **Start Small**: Test with 5-10 files first to verify quality
 3. **Monitor Costs**: Set up usage alerts with your LLM provider
-4. **Use Caching**: Avoid `--update-metadata` unless necessary
+4. **Use Caching**: Avoid `--update-metadata` unless necessary (cache is automatically scoped by provider/model)
 5. **Choose OCR Wisely**: Use `--ocr-enhanced --use-mutool` only for scanned documents
 6. **Vision for PDFs**: Use `--fallback-mode vision` for text-based PDFs (faster, more accurate)
 7. **Compare Providers**: OpenRouter often offers competitive pricing
-8. **Clear Cache**: Use `renai cache` when switching models or settings
-9. **Protect Privacy**: For sensitive or private documents, use a local LLM (Ollama, LM Studio) with the `custom` provider. This keeps your document content on your machine rather than sending it to cloud services.
+8. **Protect Privacy**: For sensitive or private documents, use a local LLM (Ollama, LM Studio) with the `custom` provider. This keeps your document content on your machine rather than sending it to cloud services.
 
 ### Caching Strategy
 
@@ -529,12 +527,7 @@ renai process "C:/Books" --provider deepinfra --update-metadata
 
 **Cache Location:** Managed automatically by the OS via `platformdirs` (e.g., `~/.cache/renAI` on Linux, `~/Library/Caches/renAI` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows).
 
-**Clear Cache:**
-
-```bash
-# Clear all cache (metadata, text, and ocr_debug)
-renai cache
-```
+---
 
 ### Privacy Considerations
 
@@ -624,8 +617,14 @@ categories = [
 ├── src/
 │   └── renai/
 │       ├── cli.py               # CLI entry point (Typer)
-│       ├── settings.py          # Configuration & Pydantic settings loading
-│       ├── config/              # [NEW] Factory default TOML files
+│       ├── config/              # Configuration & settings loading
+│       │   ├── settings.py      # Pydantic settings management
+│       │   ├── settings.default.toml
+│       │   ├── providers.py     # Provider registry
+│       │   └── constants.py     # Cache & app directory constants
+│       ├── cache/               # [NEW] Cache management with atomic writes
+│       │   ├── manager.py       # Text & metadata cache operations
+│       │   └── __init__.py
 │       ├── prompts/             # Modular .txt prompt templates
 │       ├── models/              # SSoT Pydantic Schemas (Book, Image)
 │       ├── engines/             # Vision & OCR engines

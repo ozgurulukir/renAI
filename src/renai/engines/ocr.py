@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 import shutil
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
 # Try to detect OpenCV at module level for test collection support
 try:
     import cv2 as _cv2
+
     cv2 = _cv2
     OPENCV_AVAILABLE: bool = True
 except ImportError:
@@ -458,8 +460,10 @@ class OCREngine:
             logging.error(f"Tesseract failed for page {pno + 1}: {e}")
             return ""
 
-    async def extract_text(self, file_path: Path) -> str:  # noqa: C901, PLR0912
+    async def extract_text(self, file_path: Path) -> str:  # noqa: C901, PLR0912, PLR0915
         """Extract text from a document asynchronously using OCR."""
+        doc = None
+        bulk_images: dict[int, Path] = {}
         try:
             file_debug_dir = None
             if self.debug:
@@ -467,13 +471,11 @@ class OCREngine:
                 file_debug_dir = DEBUG_DIR / sanitize_filename(base_name)
                 ensure_secure_dir(file_debug_dir)
 
-            # PyMuPDF open is fast, but let's be safe
             doc = await asyncio.to_thread(pymupdf.open, str(file_path))
             total_pages = len(doc)
 
             pages_to_extract = self._get_page_sampling(total_pages)
 
-            bulk_images = {}
             if self.use_mutool and file_path.suffix.lower() == ".pdf":
                 bulk_images = await self._bulk_extract_images(
                     file_path, pages_to_extract, int(self.cfg["dpi"])
@@ -486,7 +488,7 @@ class OCREngine:
                 target_dpi = self.cfg["dpi"]
 
                 if not pre_path:
-                    # In thread to avoid blocking loop with PDF info extraction
+
                     def _get_dpi(p_no):
                         page = doc.load_page(p_no)
                         return min(self.cfg["dpi"], self.get_page_source_dpi(page))
@@ -523,15 +525,6 @@ class OCREngine:
                 if total_chars > MAX_OCR_CHARS:
                     break
 
-            await asyncio.to_thread(doc.close)
-
-            for img_path in bulk_images.values():
-                if img_path.exists():
-                    try:
-                        await asyncio.to_thread(img_path.unlink)
-                    except Exception as e:
-                        logging.debug(f"Cleanup of bulk_img failed: {e}")
-
             logging.info(
                 f"OCR extracted text from {len(pages_to_extract)} pages of {file_path.name}"
             )
@@ -540,3 +533,11 @@ class OCREngine:
         except Exception as e:
             logging.error(f"OCR Pipeline failed for {file_path.name}: {e}")
             return ""
+        finally:
+            if doc:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(doc.close)
+            for img_path in bulk_images.values():
+                if img_path.exists():
+                    with contextlib.suppress(Exception):
+                        await asyncio.to_thread(img_path.unlink)

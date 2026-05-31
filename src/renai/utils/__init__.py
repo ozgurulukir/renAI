@@ -174,19 +174,3 @@ def proportional_chunk_trim(text: str, target_length: int, num_chunks: int) -> s
             break
 
     return trimmed_text
-
-
-def handle_clear_cache() -> None:
-    """Clear extracted text cache, metadata, and OCR debug files."""
-    from renai.cache.manager import clear_all_cache
-    from renai.config import CACHE_DIR
-
-    ensure_secure_dir(CACHE_DIR)
-    results = clear_all_cache(CACHE_DIR)
-
-    total = sum(results.values())
-    if total > 0:
-        details = ", ".join([f"{count} {ctype}" for ctype, count in results.items() if count > 0])
-        logging.info(f"Cache cleared: {total} items removed ({details})")
-    else:
-        logging.info("Cache is already empty. Nothing to clear.")

@@ -2,7 +2,7 @@
 
 `renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı meta veriler (metadata) çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
 
-Son güncelleme: 2026-04-16
+Son güncelleme: 2026-05-31
 
 ---
 
@@ -392,12 +392,11 @@ models = ["gpt-4o", "gpt-4o-mini"]
 
 ### Önbellek Yönetimi
 
-```bash
-# Tüm önbelleği temizle (metin, metadata ve ocr_debug)
-uv run renai cache
+Önbellek dosyanın SHA256 karmasına göre otomatik yönetilir. Meta veri önbellek girdileri sağlayıcı-model çiftlerine göre kapsamlıdır, bu nedenle sağlayıcı veya model değiştirmek otomatik olarak farklı bir önbellek girişi kullanır.
 
-# Onay almadan temizle
-uv run renai cache --yes
+```bash
+# Tüm önbelleği manuel olarak temizle (metin, metadata ve ocr_debug)
+renai cache --yes
 ```
 
 ---
@@ -487,11 +486,10 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 1. **Düzenli Yedekler**: Orijinal dosyalarınızın her zaman bir yedeğini tutun
 2. **Küçük Başlayın**: Kaliteyi doğrulamak için önce 5-10 dosya ile test edin
 3. **Maliyetleri İzleyin**: LLM sağlayıcınızla kullanım uyarıları ayarlayın
-4. **Önbellekleme Kullanın**: Gerekmedikçe `--update-metadata` kullanmaktan kaçının
+4. **Önbellekleme Kullanın**: Gerekmedikçe `--update-metadata` kullanmaktan kaçının (önbellek sağlayıcı/model'e göre otomatik kapsamlanır)
 5. **Akıllı OCR Seçimi**: Taranmış belgeler için yalnızca `--ocr-enhanced --use-mutool` kullanın
 6. **Sağlayıcıları Karşılaştırın**: OpenRouter genellikle rekabetçi fiyatlar sunar
-7. **Önbelleği Temizleyin**: Modelleri veya ayarları değiştirdiğinde `renai cache` kullanın
-8. **Gizliliği Koruyun**: Hassas veya özel belgeler için yerel bir LLM (Ollama, LM Studio) kullanarak `custom` sağlayıcısını tercih edin. Bu, belge içeriğinizi bulut hizmetlerine göndermek yerine makinenizde tutar.
+7. **Gizliliği Koruyun**: Hassas veya özel belgeler için yerel bir LLM (Ollama, LM Studio) kullanarak `custom` sağlayıcısını tercih edin. Bu, belge içeriğinizi bulut hizmetlerine göndermek yerine makinenizde tutar.
 
 ### Önbellek Stratejisi
 
@@ -527,12 +525,7 @@ uv run renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 
 **Önbellek Konumu:** `platformdirs` kullanılarak işletim sistemi tarafından otomatik yönetilir (ör. Linux'ta `~/.cache/renAI`, macOS'te `~/Library/Caches/renAI`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`).
 
-**Önbelleği Temizle:**
-
-```bash
-# Tüm önbelleği temizle (metadata, metin ve ocr_debug)
-uv run renai cache
-```
+---
 
 ### Gizlilik Değerlendirmeleri
 
@@ -614,12 +607,17 @@ categories = [
 ## 🏗️ Mimari
 
 ```text
-
 ├── src/
 │   └── renai/
 │       ├── cli.py               # CLI giriş noktası (Typer)
-│       ├── settings.py          # Yapılandırma ve Pydantic ayarları yükleme
-│       ├── config/              # [YENİ] Fabrika varsayılan TOML dosyaları
+│       ├── config/              # Yapılandırma ve Pydantic ayarları yükleme
+│       │   ├── settings.py      # Pydantic ayarları yönetimi
+│       │   ├── settings.default.toml
+│       │   ├── providers.py     # Sağlayıcı kaydı
+│       │   └── constants.py     # Önbellek ve uygulama dizini sabitleri
+│       ├── cache/               # [YENİ] Atomik yazma ile önbellek yönetimi
+│       │   ├── manager.py       # Metin ve metadata önbellek işlemleri
+│       │   └── __init__.py
 │       ├── prompts/             # Modüler .txt prompt şablonları
 │       ├── models/              # SSoT Pydantic Şemaları (Book, Image)
 │       ├── engines/             # Görüş ve OCR motorları
@@ -634,7 +632,6 @@ categories = [
 ├── tests/                       # Asenkron birim testleri (pytest-asyncio)
 ├── pyproject.toml               # Paket meta verileri ve bağımlılıklar
 └── ...
-
 ```text
 
 ---

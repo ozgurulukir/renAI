@@ -1,6 +1,9 @@
+import contextlib
 import json
 import logging
+import os
 import shutil
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any, TypeVar, overload
@@ -69,11 +72,21 @@ def read_text_cache(file_path: Path) -> str | None:
 
 
 def write_text_cache(file_path: Path, content: str) -> bool:
-    """Write text content to cache."""
+    """Write text content to cache atomically."""
     with _cache_lock:
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(content, encoding="utf-8")
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=file_path.parent, prefix=".renai_tmp_", suffix=".txt"
+            )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    f.write(content)
+                Path(tmp_path).replace(file_path)
+            except Exception:
+                with contextlib.suppress(OSError):
+                    Path(tmp_path).unlink()
+                raise
             return True
         except Exception as e:
             logging.warning(f"Failed to write text cache {file_path}: {e}")
@@ -138,6 +151,11 @@ def read_metadata_cache(
             logging.info(
                 f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
             )
+            try:
+                cache_path.unlink()
+                logging.debug(f"Removed stale cache file: {cache_path}")
+            except Exception:
+                pass
             return None
 
         except Exception as e:
@@ -152,7 +170,7 @@ def write_metadata_cache(
     model: str,
 ) -> bool:
     """
-    Write metadata to cache.
+    Write metadata to cache atomically.
     Supports both Pydantic models (recommended) and dictionaries.
     """
     with _cache_lock:
@@ -161,17 +179,24 @@ def write_metadata_cache(
 
             data = metadata.model_dump() if isinstance(metadata, BaseModel) else metadata
 
-            # Add provider-model info for validation
             cache_data = {
                 **data,
                 "_provider": provider,
                 "_model": model,
             }
 
-            cache_path.write_text(
-                json.dumps(cache_data, ensure_ascii=False, indent=4),
-                encoding="utf-8",
+            content = json.dumps(cache_data, ensure_ascii=False, indent=4)
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=cache_path.parent, prefix=".renai_tmp_", suffix=".json"
             )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    f.write(content)
+                Path(tmp_path).replace(cache_path)
+            except Exception:
+                with contextlib.suppress(OSError):
+                    Path(tmp_path).unlink()
+                raise
             return True
         except Exception as e:
             logging.warning(f"Failed to write metadata cache {cache_path}: {e}")
