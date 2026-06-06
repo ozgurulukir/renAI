@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-Last updated: 2026-05-31
+Last updated: 2026-06-06
 
 ---
 
@@ -72,12 +72,13 @@ Description -- [Date] -- (Language).ext
 
 - **`rename`**: Renames files based on extracted metadata
 - **`organize`**: Moves renamed files into category folders
-- **`benchmark`**: Compares PDF extraction library performance
 - **`evaluate`**: Tests multiple providers and models for accuracy
-- **`--fallback-mode ocr`**: Tries text extraction first. If it fails, falls back to Tesseract OCR (default behavior).
+- **`--fallback-mode none`**: No fallback; returns empty string on extraction failure.
+- **`--fallback-mode ocr`**: Tries text extraction first. If it fails, falls back to Tesseract OCR.
 - **`--fallback-mode vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs.
 - **`--fallback-mode move`**: Moves files where text extraction fails to `Needs_Scan/` folder.
 - **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + selected fallback.
+- **`--benchmark`**: Compares PDF extraction library performance on the first few files.
 
 ---
 
@@ -316,7 +317,7 @@ renai process "C:/Path/To/Books" --mode rename --text-extraction regular --extra
 | Option | Description | Default |
 | :--- | :--- | :--- |
 | `--text-length` | Target text length sent to LLM | 10000 |
-| `--text-extraction` | Extraction chunking logic (`mixed` or `regular`) | `regular` |
+| `--text-extraction` | Extraction chunking logic (`mixed` or `regular`) | `mixed` |
 | `--extraction-pages` | Target pages to process from the document | 10 |
 
 ### Environment Variables for Custom Provider
@@ -368,6 +369,8 @@ Compare the performance and accuracy of different PDF extraction libraries on yo
 
 ```bash
 renai process "C:/Path/To/Books" --benchmark
+# or
+renai benchmark "C:/Path/To/Books"
 ```
 
 #### Advanced Model Evaluation
@@ -420,7 +423,7 @@ renAI supports vision-capable LLMs that can process PDFs and images as visual co
 
 ### Vision Mode vs OCR
 
-| Feature | Vision Mode (`--vision`) | OCR Mode (default) |
+| Feature | Vision Fallback (`--fallback-mode vision`) | OCR Fallback (`--fallback-mode ocr`) |
 | :--- | :--- | :--- |
 | **Speed** | Faster for text PDFs | Slower |
 | **Accuracy** | Higher for clear text | Depends on scan quality |
@@ -479,6 +482,8 @@ When using `--mode organize`:
 
 - **`--fallback-mode move`**: Moves files with insufficient text to `Needs_Scan` folder (skips fallback processing)
 - **`--move-scan-failures`**: Moves files that fail both standard and fallback extraction to `Scan_Failures` folder
+- **`--fallback-mode none`**: No fallback processing; extraction failures are reported but not retried
+- **`--benchmark`**: Run a benchmark comparing PDF extractors on the first few files
 
 ---
 
@@ -560,7 +565,7 @@ renAI now utilizes modern OS-agnostic path management via the `platformdirs` lib
 
 - **Cache Data**: Managed in `%LOCALAPPDATA%\renAI\Cache` (Windows) or `~/.cache/renAI` (Linux).
 - **Log and Debug Data**: Managed in the OS user data directory.
-- **Configuration**: Managed via `config.toml`, `secrets.toml`, and `categories.toml` in the flat OS config directory (no nested folders).
+- **Configuration**: Managed via `settings.toml`, `secrets.toml`, and `categories.toml` in the flat OS config directory (no nested folders).
 
 ### Defining Custom Categories
 
@@ -602,6 +607,7 @@ categories = [
 | `--update-metadata` | Force refresh metadata cache |
 | `--fallback-mode` | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`) |
 | `--move-scan-failures` | Move failed files to `Scan_Failures` folder |
+| `--benchmark` | Benchmark PDF extractors on the first few files |
 | `cache` | Command to clear cache |
 | `init` | Command to start interactive setup wizard |
 | `providers` | Command to list configured providers |
