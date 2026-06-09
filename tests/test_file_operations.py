@@ -204,10 +204,28 @@ class TestSafeMoveFile:
         source.write_text("same content")
         dest.write_text("same content")
 
-        # Patch get_file_hash so dest returns the same hash as source_hash.
-        # This verifies the source_hash parameter bypasses get_file_hash(source).
         with patch("renai.file_ops.operations.get_file_hash", return_value="abc123"):
             result = safe_move_file(source, dest, source_hash="abc123")
 
         assert result == dest
         assert source.exists()  # Source should remain (duplicate skipped)
+
+    def test_move_file_shutil_raises_exception(self, tmp_path):
+        """Test that exception from shutil.move is logged and re-raised."""
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("content")
+
+        with patch("shutil.move", side_effect=OSError("Disk full")):
+            with pytest.raises(OSError, match="Disk full"):
+                safe_move_file(source, dest)
+
+    def test_move_file_shutil_raises_permission_error(self, tmp_path):
+        """Test that PermissionError from shutil.move is re-raised."""
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("content")
+
+        with patch("shutil.move", side_effect=PermissionError("Permission denied")):
+            with pytest.raises(PermissionError, match="Permission denied"):
+                safe_move_file(source, dest)

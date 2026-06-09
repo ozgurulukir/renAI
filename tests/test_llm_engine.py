@@ -126,6 +126,43 @@ async def test_call_llm_openai_error_retry(llm_engine):
 
 
 @pytest.mark.asyncio
+async def test_call_llm_final_fallback_uses_last_parsed_data(llm_engine):
+    """Test that final fallback constructs model from last_parsed_data with forced 'Other' category."""
+    from renai.config.settings import app_settings
+
+    bad_response = MagicMock()
+    bad_response.choices[
+        0
+    ].message.content = '{"title": "Test Book", "category": "InvalidCat", "language": "en"}'
+    llm_engine.client.chat.completions.create = AsyncMock(return_value=bad_response)
+
+    result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+
+    assert result is not None
+    assert isinstance(result, BookMetadata)
+    assert result.title == "Test Book"
+    assert result.category == "Other"
+    assert llm_engine.client.chat.completions.create.await_count == app_settings.llm_max_retries
+
+
+@pytest.mark.asyncio
+async def test_call_llm_final_fallback_tr_uses_diger(llm_engine):
+    """Test that final fallback forces 'Diğer' category for Turkish language."""
+    bad_response = MagicMock()
+    bad_response.choices[
+        0
+    ].message.content = '{"title": "Kitap", "category": "Geçersiz", "language": "tr"}'
+    llm_engine.client.chat.completions.create = AsyncMock(return_value=bad_response)
+
+    result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+
+    assert result is not None
+    assert isinstance(result, BookMetadata)
+    assert result.title == "Kitap"
+    assert result.category == "Diğer"
+
+
+@pytest.mark.asyncio
 async def test_call_llm_content_none(llm_engine):
     """Test when LLM returns None content."""
     mock_response = MagicMock()
@@ -160,3 +197,53 @@ async def test_call_llm_openrouter_headers(mock_allowed_categories):
     call_kwargs = engine.client.chat.completions.create.await_args.kwargs
     assert "extra_headers" in call_kwargs
     assert call_kwargs["extra_headers"]["HTTP-Referer"] == "https://github.com/renAI"
+
+
+class TestLoadAllTemplates:
+    """Test _load_all_templates error handling."""
+
+    def test_load_all_templates_success(self, llm_engine):
+        """Test that templates are loaded correctly when files exist."""
+        assert "system_base" in llm_engine._templates
+        assert "book_extractor" in llm_engine._templates
+        assert "refinement" in llm_engine._templates
+        assert "image_analyzer" in llm_engine._templates
+        assert len(llm_engine._templates["system_base"]) > 0
+
+    def test_load_all_templates_io_error_returns_empty_string(self, llm_engine):
+        """Test that IO errors during template loading return empty string."""
+        from pathlib import Path as _Path
+
+        with patch.object(_Path, "open", side_effect=OSError("Permission denied")):
+            templates = llm_engine._load_all_templates()
+            assert templates.get("system_base") == ""
+            assert templates.get("book_extractor") == ""
+            assert templates.get("refinement") == ""
+            assert templates.get("image_analyzer") == ""
+
+
+@pytest.mark.asyncio
+async def test_call_llm_final_fallback_silent_failure_on_exception(llm_engine):
+    """Test that final fallback returns None when model instantiation raises in the except block."""
+
+    class BrokenModel:
+        model_fields = BookMetadata.model_fields
+
+        def __init__(self, **kwargs):
+            raise TypeError("intentional break")
+
+    bad_response = MagicMock()
+    bad_response.choices[
+        0
+    ].message.content = '{"title": "Book", "category": "FakeInvalidCat", "language": "en"}'
+    llm_engine.client.chat.completions.create = AsyncMock(return_value=bad_response)
+
+    result = await llm_engine._generate_json_completion(
+        messages=[
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "prompt"},
+        ],
+        model_class=BrokenModel,
+    )
+
+    assert result is None

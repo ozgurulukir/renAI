@@ -98,6 +98,60 @@ class TestExtractCategoryFromMetadata:
         result = extract_category_from_metadata(data)
         assert result == "Science&Fiction"
 
+    def test_dict_missing_key_returns_default(self):
+        """Test dict without 'category' key returns default."""
+        data = {"title": "Book"}
+        result = extract_category_from_metadata(data)
+        assert result == "Uncategorized"
+
+    def test_dict_none_category_returns_default(self):
+        """Test dict with None category returns default."""
+        data = {"category": None}
+        result = extract_category_from_metadata(data)
+        assert result == "Uncategorized"
+
+    def test_dict_empty_string_category_returns_default(self):
+        """Test dict with empty string category returns default."""
+        data = {"category": ""}
+        result = extract_category_from_metadata(data)
+        assert result == "Uncategorized"
+
+    def test_dict_whitespace_category_returns_default(self):
+        """Test dict with whitespace-only category returns 'unnamed' after strip+sanitize."""
+        data = {"category": "   "}
+        result = extract_category_from_metadata(data)
+        assert result == "unnamed"
+
+    def test_custom_default_used_when_no_category(self):
+        """Test custom default is used when category is missing."""
+        data = {"title": "Book"}
+        result = extract_category_from_metadata(data, default="General")
+        assert result == "General"
+
+    def test_model_empty_category_safe_category_returns_uncategorized(self):
+        """Test model with empty string category uses safe_category fallback to 'Uncategorized'."""
+        data = BookMetadata(title="T", category="", language="en")
+        result = extract_category_from_metadata(data)
+        assert result == "Uncategorized"
+
+    def test_model_empty_string_category_returns_default(self):
+        """Test model with empty string category returns default."""
+        data = BookMetadata(title="T", category="", language="en")
+        result = extract_category_from_metadata(data)
+        assert result == "Uncategorized"
+
+    def test_backslash_sanitization_in_dict(self):
+        """Test backslash is replaced with ampersand in dict category."""
+        data = {"category": "Fiction\\Sci-Fi"}
+        result = extract_category_from_metadata(data)
+        assert result == "Fiction&Sci-Fi"
+
+    def test_both_slash_and_backslash_sanitization(self):
+        """Test both slash types are replaced in dict category."""
+        data = {"category": "A/B\\C"}
+        result = extract_category_from_metadata(data)
+        assert result == "A&B&C"
+
 
 class TestIsFilenameChanged:
     """Test is_filename_changed function."""

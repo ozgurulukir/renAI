@@ -44,6 +44,10 @@ from renai.utils.rate_limiter import AsyncRateLimiter
 
 console = Console()
 
+_eval_log_buffer: list[dict[str, Any]] = []
+_eval_log_lock = asyncio.Lock()
+_EVAL_LOG_BATCH_SIZE = 50
+
 
 async def setup_engines(
     provider: str,
@@ -191,22 +195,35 @@ class StatusDisplay:
 
 
 async def log_evaluation_result(file_path: Path, provider: str, model: str, metadata: Any) -> None:
-    """Log evaluation result to a file asynchronously."""
+    """Buffer evaluation result for batched async file writing."""
     entry = {
         "file": file_path.name,
         "provider": provider,
         "model": model,
         "metadata": metadata,
     }
+    async with _eval_log_lock:
+        _eval_log_buffer.append(entry)
+        if len(_eval_log_buffer) >= _EVAL_LOG_BATCH_SIZE:
+            await _flush_eval_log()
+
+
+async def _flush_eval_log() -> None:
+    """Write buffered evaluation entries to disk in a single I/O operation."""
+    if not _eval_log_buffer:
+        return
+    entries = _eval_log_buffer.copy()
+    _eval_log_buffer.clear()
     try:
 
         def _write():
             with Path(EVAL_LOG_FILE).open("a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                for entry in entries:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
         await asyncio.to_thread(_write)
     except Exception as e:
-        logging.error(f"Failed to log evaluation result: {e}")
+        logging.error(f"Failed to flush evaluation log: {e}")
 
 
 async def run_pipeline(
@@ -312,6 +329,8 @@ async def run_pipeline(
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
         return
+
+    await _flush_eval_log()
 
     # 4. Final Summary Card (Static, will stay in terminal history)
     success_count = sum(1 for r in results if r.success)

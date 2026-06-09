@@ -70,18 +70,67 @@ class TestVisualProcessor:
         test_file = tmp_path / "test.pdf"
         test_file.write_bytes(b"fake pdf")
 
-        # Mock the helper method that does the conversion
-        with patch.object(
-            visual_processor, "_convert_pdf_page_to_image_async", new_callable=AsyncMock
-        ) as mock_convert:
-            mock_convert.return_value = b"image bytes"
+        with patch("pymupdf.open") as mock_pdf_open:
+            mock_doc = MagicMock()
+            mock_doc.__len__.return_value = 1
+            mock_page = MagicMock()
+            mock_doc.load_page.return_value = mock_page
+            mock_pix = MagicMock()
+            mock_pix.width = 100
+            mock_pix.height = 100
+            mock_pix.samples = b"\x00" * (100 * 100 * 3)
+            mock_page.get_pixmap.return_value = mock_pix
+            mock_pdf_open.return_value.__enter__.return_value = mock_doc
 
-            # Also need to mock page count which is inside extract_metadata_from_pdf
-            with patch("pymupdf.open") as mock_pdf_open:
-                mock_doc = MagicMock()
-                mock_doc.__len__.return_value = 1
-                mock_pdf_open.return_value.__enter__.return_value = mock_doc
+            with patch("PIL.Image.frombytes") as mock_frombytes:
+                mock_img = MagicMock()
+                mock_img.width = 100
+                mock_img.height = 100
+                mock_frombytes.return_value = mock_img
+                mock_img.thumbnail = MagicMock()
 
-                result = await visual_processor.extract_metadata_from_pdf(test_file)
-                assert result.title == "Vision Book"
-                visual_processor.llm_engine.get_book_metadata_from_image.assert_awaited_once()
+                with patch("io.BytesIO") as mock_bytesio:
+                    mock_buffer = MagicMock()
+                    mock_buffer.getvalue.return_value = b"image bytes"
+                    mock_bytesio.return_value = mock_buffer
+
+                    result = await visual_processor.extract_metadata_from_pdf(test_file)
+                    assert result.title == "Vision Book"
+                    visual_processor.llm_engine.get_book_metadata_from_image.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_extract_metadata_from_pdf_llm_returns_none_all_pages(
+        self, visual_processor, tmp_path
+    ):
+        """Test PDF extraction when LLM returns None for all pages."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"fake pdf")
+
+        visual_processor.llm_engine.get_book_metadata_from_image = AsyncMock(return_value=None)
+
+        with patch("pymupdf.open") as mock_pdf_open:
+            mock_doc = MagicMock()
+            mock_doc.__len__.return_value = 3
+            mock_page = MagicMock()
+            mock_doc.load_page.return_value = mock_page
+            mock_pix = MagicMock()
+            mock_pix.width = 100
+            mock_pix.height = 100
+            mock_pix.samples = b"\x00" * (100 * 100 * 3)
+            mock_page.get_pixmap.return_value = mock_pix
+            mock_pdf_open.return_value.__enter__.return_value = mock_doc
+
+            with patch("PIL.Image.frombytes") as mock_frombytes:
+                mock_img = MagicMock()
+                mock_img.width = 100
+                mock_img.height = 100
+                mock_frombytes.return_value = mock_img
+                mock_img.thumbnail = MagicMock()
+
+                with patch("io.BytesIO") as mock_bytesio:
+                    mock_buffer = MagicMock()
+                    mock_buffer.getvalue.return_value = b"image bytes"
+                    mock_bytesio.return_value = mock_buffer
+
+                    result = await visual_processor.extract_metadata_from_pdf(test_file)
+                    assert result is None

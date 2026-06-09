@@ -32,9 +32,12 @@ from unittest.mock import patch  # noqa: E402
 from renai.cache.manager import (  # noqa: E402
     clear_all_cache,
     get_metadata_cache_path,
+    get_text_cache_path,
     invalidate_cache_for_provider_model,
     read_metadata_cache,
+    read_text_cache,
     write_metadata_cache,
+    write_text_cache,
 )
 from renai.models.schemas import BookMetadata  # noqa: E402
 
@@ -199,3 +202,67 @@ def test_clear_all_cache(tmp_path):
         assert not text_dir.exists()
         assert not metadata_dir.exists()
         assert not debug_dir.exists()
+
+
+def test_read_text_cache_success(tmp_path, caplog):
+    """Test reading existing text cache returns content."""
+    cache_file = tmp_path / "cached.txt"
+    cache_file.write_text("cached text content", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        result = read_text_cache(cache_file)
+
+    assert result == "cached text content"
+    assert "Failed to read" not in caplog.text
+
+
+def test_read_text_cache_nonexistent(tmp_path):
+    """Test reading non-existent cache file returns None."""
+    missing = tmp_path / "does_not_exist.txt"
+    result = read_text_cache(missing)
+    assert result is None
+
+
+def test_read_text_cache_io_error(tmp_path, caplog):
+    """Test that IO errors during read are caught and return None."""
+    cache_file = tmp_path / "bad.txt"
+    cache_file.write_text("content", encoding="utf-8")
+
+    with (
+        patch.object(Path, "read_text", side_effect=OSError("Permission denied")),
+        caplog.at_level(logging.WARNING),
+    ):
+        result = read_text_cache(cache_file)
+
+    assert result is None
+    assert "Failed to read text cache" in caplog.text
+    assert "Permission denied" in caplog.text
+
+
+def test_write_text_cache_success(tmp_path, caplog):
+    """Test writing text cache succeeds and returns True."""
+    cache_file = tmp_path / "output" / "cached.txt"
+    content = "new cached content"
+
+    with caplog.at_level(logging.WARNING):
+        result = write_text_cache(cache_file, content)
+
+    assert result is True
+    assert cache_file.exists()
+    assert cache_file.read_text(encoding="utf-8") == content
+    assert "Failed to write" not in caplog.text
+
+
+def test_write_text_cache_io_error(tmp_path, caplog):
+    """Test that IO errors during write are caught and return False."""
+    cache_file = tmp_path / "readonly" / "cached.txt"
+
+    with (
+        patch.object(Path, "mkdir", side_effect=OSError("Disk full")),
+        caplog.at_level(logging.WARNING),
+    ):
+        result = write_text_cache(cache_file, "content")
+
+    assert result is False
+    assert "Failed to write text cache" in caplog.text
+    assert "Disk full" in caplog.text

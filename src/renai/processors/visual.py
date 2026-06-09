@@ -34,20 +34,33 @@ class VisualProcessor:
         """Extract metadata from PDF asynchronously by sampling pages and using vision model."""
         try:
 
-            def _get_page_count():
+            def _get_page_count_and_convert():
                 with pymupdf.open(str(file_path)) as doc:
-                    return len(doc)
+                    total_pages = len(doc)
+                    pages_to_process = self._select_pages(total_pages)
+                    images = []
+                    for page_num in pages_to_process:
+                        if page_num >= total_pages:
+                            continue
+                        page = doc.load_page(page_num)
+                        zoom = app_settings.vision_dpi / 72
+                        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+                        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
-            total_pages = await asyncio.to_thread(_get_page_count)
-            pages_to_process = self._select_pages(total_pages)
+                        if img.width > self.image_max_size or img.height > self.image_max_size:
+                            img.thumbnail(
+                                (self.image_max_size, self.image_max_size),
+                                Image.Resampling.LANCZOS,
+                            )
 
-            for page_num in pages_to_process:
-                img_bytes = await self._convert_pdf_page_to_image_async(
-                    file_path, page_number=page_num
-                )
-                if not img_bytes:
-                    continue
+                        buffer = BytesIO()
+                        img.save(buffer, format="JPEG", quality=self.image_quality, optimize=True)
+                        images.append(buffer.getvalue())
+                    return images
 
+            page_images = await asyncio.to_thread(_get_page_count_and_convert)
+
+            for img_bytes in page_images:
                 if not self.llm_engine:
                     continue
 
