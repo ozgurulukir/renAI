@@ -105,12 +105,12 @@ Açıklama -- [Tarih] -- (Dil).uzantı
 git clone https://github.com/ozgurulukir/renAI.git
 cd renAI
 
-# uv kullanarak yükle ('renai' komutunu oluşturur)
+# uv kullanarak yükle
 uv sync --all-extras
 
 # renAI'yi Hazırla (İnteraktif Sihirbaz)
 # Bu komut sağlayıcı ayarlarını yapar ve gerekli yapılandırma dosyalarını oluşturur
-renai init
+uv run renai init
 ```
 
 ### Kurulum & API Anahtarları
@@ -118,8 +118,9 @@ renai init
 renAI, ilk kurulum için interaktif bir sihirbaz kullanır. Şu komutu çalıştırın:
 
 ```bash
-renai init
+uv run renai init
 ```
+
 
 Bu komut, işletim sisteminize uygun dizinde yapılandırma dosyalarınızı oluşturacaktır:
 

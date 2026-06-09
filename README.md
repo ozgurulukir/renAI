@@ -106,12 +106,12 @@ Description -- [Date] -- (Language).ext
 git clone https://github.com/ozgurulukir/renAI.git
 cd renAI
 
-# Install using uv (creates 'renai' command)
+# Install using uv
 uv sync --all-extras
 
 # Initialize renAI (Interactive Wizard)
 # This will guide you through provider setup and create necessary config files
-renai init
+uv run renai init
 ```
 
 ### Setup & API Keys
@@ -119,8 +119,9 @@ renai init
 renAI uses an interactive wizard for first-time setup. Run the following command:
 
 ```bash
-renai init
+uv run renai init
 ```
+
 
 This will create your configuration files in the appropriate OS directory:
 
