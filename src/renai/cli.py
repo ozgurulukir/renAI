@@ -104,13 +104,22 @@ def handle_clear_cache() -> None:
         console.print("[green]Cache is already empty. Nothing to clear.[/green]")
 
 
-def display_warnings(mode: str, recursive: bool) -> None:
+def display_warnings(
+    mode: str,
+    recursive: bool,
+    provider: str | None = None,
+    model: str | None = None,
+    fallback_mode: FallbackMode | None = None,
+    rename_images: bool = False,
+) -> None:
     """Display important warnings to the user before processing."""
     if not app_settings.show_warnings:
         return
 
     from rich.panel import Panel
     from rich.table import Table
+
+    from renai.config import get_effective_model
 
     # 1. Create Warning Table
     table = Table.grid(padding=(0, 1))
@@ -130,7 +139,23 @@ def display_warnings(mode: str, recursive: bool) -> None:
             "[bold cyan]🔄 RECURSIVE[/bold cyan]", "Files in subdirectories will also be processed."
         )
 
+    # Validate model vision capabilities if vision is requested
+    effective_model = model or (get_effective_model(provider) if provider else None)
+    is_vision_needed = fallback_mode == FallbackMode.VISION or rename_images
+    if is_vision_needed and effective_model:
+        from renai.utils.models_dev import is_vision_supported
+
+        vision_ok = is_vision_supported(effective_model)
+        if vision_ok is False:
+            table.add_row(
+                "[bold red]⚠️  VISION MODEL[/bold red]",
+                f"Model [bold yellow]'{effective_model}'[/bold yellow] "
+                "might not support vision inputs on models.dev.\n"
+                "  Running in vision fallback mode or renaming images may fail.",
+            )
+
     # 2. Show Panel
+
     console.print(
         Panel(
             table,
@@ -205,7 +230,7 @@ def handle_process_command(
         raise typer.Exit(code=1)
 
     _print_process_header(root_dir, mode, provider, model)
-    display_warnings(mode, recursive)
+    display_warnings(mode, recursive, provider, model, final_fallback, rename_images)
 
     try:
         asyncio.run(

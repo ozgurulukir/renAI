@@ -106,6 +106,48 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
         config["custom_api_key"] = Prompt.ask("Custom API Key", default="not-required")
     else:
         default_model = PROVIDERS.get(provider).default_model if provider in PROVIDERS else ""
+
+        # Query models.dev catalog for popular models
+        try:
+            from renai.utils.models_dev import get_models_catalog
+
+            catalog = get_models_catalog()
+            if catalog:
+                suggested_names = []
+                for k in catalog:
+                    parts = k.split("/")
+                    if len(parts) > 1 and parts[0].lower() == provider.lower():
+                        suggested_names.append(parts[1])
+
+                if provider == "openai" and suggested_names:
+                    console.print(
+                        f"[info]Popular models for OpenAI from models.dev:[/info]\n"
+                        f"  {', '.join(suggested_names[:6])}"
+                    )
+                elif provider == "openrouter":
+                    or_suggestions = [
+                        "openai/gpt-4o",
+                        "openai/gpt-4o-mini",
+                        "anthropic/claude-3-7-sonnet-20250219",
+                        "google/gemini-2.0-flash",
+                    ]
+                    console.print(
+                        f"[info]Popular models for OpenRouter from models.dev:[/info]\n"
+                        f"  {', '.join(or_suggestions)}"
+                    )
+                elif provider == "deepinfra":
+                    di_suggestions = [
+                        "meta-llama/Llama-3.2-90B-Vision-Instruct",
+                        "meta-llama/Llama-3.3-70b-instruct",
+                        "Qwen/Qwen2.5-72B-Instruct",
+                    ]
+                    console.print(
+                        f"[info]Popular models for DeepInfra from models.dev:[/info]\n"
+                        f"  {', '.join(di_suggestions)}"
+                    )
+        except Exception:
+            pass
+
         config["model"] = Prompt.ask(
             f"Default Model for {provider.capitalize()}", default=default_model
         )

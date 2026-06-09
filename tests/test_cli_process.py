@@ -69,7 +69,9 @@ def test_handle_process_command_success(tmp_path):
         )
 
         mock_header.assert_called_once()
-        mock_warnings.assert_called_once_with("rename", True)
+        mock_warnings.assert_called_once_with(
+            "rename", True, "openai", "gpt-4", FallbackMode.OCR, True
+        )
         mock_run_pipeline.assert_called_once()
 
         # Verify passed arguments
