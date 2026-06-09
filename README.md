@@ -369,9 +369,8 @@ Compare the performance and accuracy of different PDF extraction libraries on yo
 
 ```bash
 renai process "C:/Path/To/Books" --benchmark
-# or
-renai benchmark "C:/Path/To/Books"
 ```
+
 
 #### Advanced Model Evaluation
 
