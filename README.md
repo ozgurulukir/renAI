@@ -78,7 +78,7 @@ Description -- [Date] -- (Language).ext
 - **`--fallback-mode vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs.
 - **`--fallback-mode move`**: Moves files where text extraction fails to `Needs_Scan/` folder.
 - **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + selected fallback.
-- **`--benchmark`**: Compares PDF extraction library performance on the first few files.
+- **`--benchmark`**: Compares PDF extraction library performance on the first 3 files.
 
 ---
 
@@ -376,7 +376,7 @@ renai process "C:/Path/To/Books" --benchmark
 
 The `evaluate` command performs a competitive test:
 
-1. It takes the first few files from your directory.
+1. It takes the sample files from your directory.
 2. It processes them using **every** model listed in your `eval_models.toml`.
 3. It logs the extracted metadata and a confidence score for each attempt.
 
@@ -482,7 +482,7 @@ When using `--mode organize`:
 - **`--fallback-mode move`**: Moves files with insufficient text to `Needs_Scan` folder (skips fallback processing)
 - **`--move-scan-failures`**: Moves files that fail both standard and fallback extraction to `Scan_Failures` folder
 - **`--fallback-mode none`**: No fallback processing; extraction failures are reported but not retried
-- **`--benchmark`**: Run a benchmark comparing PDF extractors on the first few files
+- **`--benchmark`**: Run a benchmark comparing PDF extractors on the first 3 files
 
 ---
 
@@ -606,7 +606,7 @@ categories = [
 | `--update-metadata` | Force refresh metadata cache |
 | `--fallback-mode` | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`) |
 | `--move-scan-failures` | Move failed files to `Scan_Failures` folder |
-| `--benchmark` | Benchmark PDF extractors on the first few files |
+| `--benchmark` | Benchmark PDF extractors on the first 3 files |
 | `cache` | Command to clear cache |
 | `init` | Command to start interactive setup wizard |
 | `providers` | Command to list configured providers |
