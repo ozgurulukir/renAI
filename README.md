@@ -132,7 +132,7 @@ This will create your configuration files in the appropriate OS directory:
 The wizard helps you configure:
 
 - **LLM Provider**: DeepInfra (default), OpenRouter, OpenAI, or Custom
-- **API Keys**: Stored securely in `secrets.toml`
+- **API Keys**: Stored securely in `secrets.toml` (the wizard automatically validates entered keys against the provider's API during setup, prompting for correction on authentication failure).
 - **General Settings**: Concurrent workers, fallback strategies, etc.
 
 ### Configuration Hierarchy

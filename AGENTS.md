@@ -4,7 +4,7 @@
 
 **renAI** is a Python CLI tool that automatically renames and organizes digital files (PDFs, EPUBs, images, Office docs) using LLMs and OCR. It extracts metadata (title, author, year, category, language) via text extraction or vision-capable models, then produces consistent, descriptive filenames.
 
-- **Version**: 2.0.1
+- **Version**: 2.1.0
 - **Python**: 3.12+ (tested on 3.12 and 3.13)
 - **License**: MIT
 - **Entry point**: `renai.cli:app` (Typer)
@@ -73,7 +73,8 @@ src/renai/                  # Main package
     book.py                 # BookProcessor (unified document + image processing)
     text_extractor.py       # TextExtractor (format detection, caching, fallback strategies)
     visual.py               # VisualProcessor (vision-based extraction for PDFs/images)
-    setup.py                # Interactive init wizard
+    setup.py                # Interactive init wizard runner
+    setup_steps.py          # Interactive wizard steps, prompts, and API validation
   extractors/               # PDF text extraction backends
     base.py                 # BaseExtractor ABC
     pdf_extractors.py       # PyMuPDF, pdfplumber, pypdf, pypdfium2 implementations
@@ -198,6 +199,7 @@ python -m build
 | `src/renai/cli.py` | Typer CLI commands (`process`, `evaluate`, `init`, `version`, `clear-cache`) |
 | `src/renai/processors/orchestrator.py` | Pipeline orchestration, progress display, engine setup |
 | `src/renai/processors/book.py` | `BookProcessor` -- unified file processing (documents + images) |
+| `src/renai/processors/setup.py` | `setup.py` and `setup_steps.py` handle the interactive init wizard, credentials setup, and API key validation. |
 | `src/renai/engines/llm.py` | `LLMEngine` -- LLM API calls, prompt composition, metadata extraction |
 | `src/renai/models/schemas.py` | Pydantic metadata schemas (the SSoT) |
 | `src/renai/config/settings.py` | `AppSettings`, `ProviderSettings` (pydantic-settings) |

@@ -51,6 +51,7 @@ ENV/
 .letta/
 .crush/
 test_files/
+test_docs/
 *.log
 mupdf*
 mutool*
@@ -96,6 +97,7 @@ htmlcov/
 developer/
 devs/
 nul
+scratch/
 
 # =============================================================================
 # Agent workspace metadata

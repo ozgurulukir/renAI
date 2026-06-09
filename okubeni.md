@@ -131,7 +131,7 @@ Bu komut, işletim sisteminize uygun dizinde yapılandırma dosyalarınızı olu
 Sihirbaz şu konularda size yardımcı olur:
 
 - **LLM Sağlayıcısı**: DeepInfra (varsayılan), OpenRouter, OpenAI veya Özel
-- **API Anahtarları**: `secrets.toml` dosyasında güvenli bir şekilde saklanır
+- **API Anahtarları**: `secrets.toml` dosyasında güvenli bir şekilde saklanır (sihirbaz kurulum sırasında anahtarınızı ilgili sağlayıcının API ucu üzerinden otomatik olarak doğrular, yetkilendirme hatası olması durumunda düzeltmeniz için tekrar sorar).
 - **Genel Ayarlar**: Eşzamanlı çalışan sayısı, fallback stratejileri vb.
 
 ### Yapılandırma Hiyerarşisi

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-06-09
+
+### Added
+
+- **API Key Validation**: Interactive setup wizard now automatically validates entered API keys against provider API endpoints (via a lightweight models list call). Catches authorization errors and prompts for the correct key in a loop.
+- **Multiple Provider Configuration**: Enabled configuring multiple LLM providers and multiple models in a single interactive setup run.
+- **Default Selection**: Prompts the user to pick the default provider and model at the end of the interactive setup.
+
+### Changed
+
+- **Wizard Maintenance Split**: Refactored `src/renai/processors/setup.py` by moving CLI prompt steps and style layouts into a separate module, `src/renai/processors/setup_steps.py`, to improve code readability and maintainability.
+- **UI Contrast Enhancements**: Refined `questionary` Autocomplete dropdown menu contrast using custom `noreverse` styles to resolve accessibility issues in dark/light terminal environments.
+
 ## [2.0.1] - 2026-04-28
 
 ### Changed

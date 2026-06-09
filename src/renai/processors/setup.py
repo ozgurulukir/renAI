@@ -7,20 +7,19 @@ import contextlib
 import importlib.util
 import shutil
 
+import questionary
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.theme import Theme
 
 from ..settings import (
     CONFIG_DIR,
     PACKAGE_CONFIG_DIR,
-    PROVIDERS,
     SECRETS_FILE,
     SETTINGS_USER_FILE,
-    app_settings,
     initialize_directories,
 )
+from .setup_steps import _configure_advanced_settings, _configure_provider, custom_style
 
 # Custom theme for a premium look
 custom_theme = Theme(
@@ -58,24 +57,37 @@ def run_init_wizard() -> None:
     console.print(f"[info]Config directory:[/info] {CONFIG_DIR}")
 
     # 2. Check if user config already exists
-    if (SETTINGS_USER_FILE.exists() or SECRETS_FILE.exists()) and not Confirm.ask(
-        "[warning]User configuration files already exist. Overwrite?[/warning]", default=False
-    ):
-        console.print("[info]Setup cancelled.[/info]")
-        return
+    if SETTINGS_USER_FILE.exists() or SECRETS_FILE.exists():
+        overwrite = questionary.confirm(
+            "User configuration files already exist. Overwrite?", default=False, style=custom_style
+        ).ask()
+        if not overwrite:
+            console.print("[info]Setup cancelled.[/info]")
+            return
 
     # 3. Provider Selection & Configuration
     console.print("\n[highlight]Step 1: Provider Setup[/highlight]")
-    config, secrets = _configure_provider()
+    try:
+        config, secrets = _configure_provider()
+    except KeyboardInterrupt:
+        console.print("[info]Setup cancelled.[/info]")
+        return
 
     # 4. Advanced Settings (Optional)
     console.print("\n[highlight]Step 2: General Settings[/highlight]")
     _print_dependency_diagnostics()
 
-    if Confirm.ask("Would you like to configure advanced settings?", default=False):
-        config.update(_configure_advanced_settings())
-    else:
-        console.print("[info]Using factory defaults for general settings.[/info]")
+    try:
+        configure_advanced = questionary.confirm(
+            "Would you like to configure advanced settings?", default=False, style=custom_style
+        ).ask()
+        if configure_advanced:
+            config.update(_configure_advanced_settings())
+        else:
+            console.print("[info]Using factory defaults for general settings.[/info]")
+    except KeyboardInterrupt:
+        console.print("[info]Setup cancelled.[/info]")
+        return
 
     # 5. Save Files
     console.print("\n[highlight]Step 3: Saving Configuration[/highlight]")
@@ -86,81 +98,6 @@ def run_init_wizard() -> None:
 
     console.print("\n[bold green]renAI is now ready to use![/bold green]")
     console.print("Try: [cyan]renai process <directory>[/cyan]")
-
-
-def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
-    """Prompt the user for provider selection and credentials."""
-    available_providers = [*list(PROVIDERS.keys()), "custom"]
-    provider = Prompt.ask(
-        "Select your preferred LLM provider", choices=available_providers, default="deepinfra"
-    )
-
-    secrets: dict[str, str] = {}
-    config: dict[str, str | int] = {"provider": provider}
-
-    if provider == "custom":
-        config["custom_api_base_url"] = Prompt.ask(
-            "Custom API Base URL", default="http://localhost:8000/v1"
-        )
-        config["custom_model"] = Prompt.ask("Custom Model Name", default="llama3")
-        config["custom_api_key"] = Prompt.ask("Custom API Key", default="not-required")
-    else:
-        default_model = PROVIDERS.get(provider).default_model if provider in PROVIDERS else ""
-
-        # Query models.dev catalog for popular models
-        try:
-            from renai.utils.models_dev import get_models_catalog
-
-            catalog = get_models_catalog()
-            if catalog:
-                suggested_names = []
-                for k in catalog:
-                    parts = k.split("/")
-                    if len(parts) > 1 and parts[0].lower() == provider.lower():
-                        suggested_names.append(parts[1])
-
-                if provider == "openai" and suggested_names:
-                    console.print(
-                        f"[info]Popular models for OpenAI from models.dev:[/info]\n"
-                        f"  {', '.join(suggested_names[:6])}"
-                    )
-                elif provider == "openrouter":
-                    or_suggestions = [
-                        "openai/gpt-4o",
-                        "openai/gpt-4o-mini",
-                        "anthropic/claude-3-7-sonnet-20250219",
-                        "google/gemini-2.0-flash",
-                    ]
-                    console.print(
-                        f"[info]Popular models for OpenRouter from models.dev:[/info]\n"
-                        f"  {', '.join(or_suggestions)}"
-                    )
-                elif provider == "deepinfra":
-                    di_suggestions = [
-                        "meta-llama/Llama-3.2-90B-Vision-Instruct",
-                        "meta-llama/Llama-3.3-70b-instruct",
-                        "Qwen/Qwen2.5-72B-Instruct",
-                    ]
-                    console.print(
-                        f"[info]Popular models for DeepInfra from models.dev:[/info]\n"
-                        f"  {', '.join(di_suggestions)}"
-                    )
-        except Exception:
-            pass
-
-        config["model"] = Prompt.ask(
-            f"Default Model for {provider.capitalize()}", default=default_model
-        )
-
-        api_key = Prompt.ask(f"Enter your {provider.capitalize()} API Key", password=True)
-        secrets[f"{provider}_api_key"] = api_key
-        if not api_key.strip():
-            console.print(
-                "[warning]Warning: No API key entered. You must set the\n"
-                f"RENAI_{provider.upper()}_API_KEY env var to use this provider.[/warning]"
-            )
-
-    return config, secrets
 
 
 def _print_dependency_diagnostics() -> None:
@@ -179,18 +116,6 @@ def _print_dependency_diagnostics() -> None:
     else:
         console.print("  - mutool: [info]Not Found (Optional, used for PDF page rendering)[/info]")
     console.print("")
-
-
-def _configure_advanced_settings() -> dict[str, str | int]:
-    """Prompt the user for advanced application settings."""
-    return {
-        "workers": IntPrompt.ask("Concurrent workers", default=app_settings.workers),
-        "fallback_mode": Prompt.ask(
-            "Extraction fallback strategy",
-            choices=["none", "ocr", "vision", "move"],
-            default=app_settings.fallback_mode,
-        ),
-    }
 
 
 def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -> None:
