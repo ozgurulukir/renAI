@@ -3,11 +3,13 @@ setup.py - Interactive initialization wizard for renAI.
 Handles environment setup, provider configuration, and configuration file creation.
 """
 
+import contextlib
+import importlib.util
 import shutil
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.theme import Theme
 
 from ..settings import (
@@ -33,8 +35,16 @@ custom_theme = Theme(
 console = Console(theme=custom_theme)
 
 
-def run_init_wizard():
+def run_init_wizard() -> None:
     """Run the interactive setup wizard."""
+    # 0. Early dependency check (fail-fast)
+    if importlib.util.find_spec("tomli_w") is None:
+        console.print(
+            "[error]Error: Missing 'tomli-w' dependency. "
+            "Please run 'uv sync' or install it manually.[/error]"
+        )
+        return
+
     console.print(
         Panel.fit(
             "[bold cyan]renAI Configuration Wizard[/bold cyan]\n"
@@ -54,8 +64,32 @@ def run_init_wizard():
         console.print("[info]Setup cancelled.[/info]")
         return
 
-    # 3. Provider Selection
+    # 3. Provider Selection & Configuration
     console.print("\n[highlight]Step 1: Provider Setup[/highlight]")
+    config, secrets = _configure_provider()
+
+    # 4. Advanced Settings (Optional)
+    console.print("\n[highlight]Step 2: General Settings[/highlight]")
+    _print_dependency_diagnostics()
+
+    if Confirm.ask("Would you like to configure advanced settings?", default=False):
+        config.update(_configure_advanced_settings())
+    else:
+        console.print("[info]Using factory defaults for general settings.[/info]")
+
+    # 5. Save Files
+    console.print("\n[highlight]Step 3: Saving Configuration[/highlight]")
+    try:
+        _save_configuration(config, secrets)
+    except Exception:
+        return
+
+    console.print("\n[bold green]renAI is now ready to use![/bold green]")
+    console.print("Try: [cyan]renai process <directory>[/cyan]")
+
+
+def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
+    """Prompt the user for provider selection and credentials."""
     available_providers = [*list(PROVIDERS.keys()), "custom"]
     provider = Prompt.ask(
         "Select your preferred LLM provider", choices=available_providers, default="deepinfra"
@@ -71,7 +105,6 @@ def run_init_wizard():
         config["custom_model"] = Prompt.ask("Custom Model Name", default="llama3")
         config["custom_api_key"] = Prompt.ask("Custom API Key", default="not-required")
     else:
-        # Suggest default model from provider pool
         default_model = PROVIDERS.get(provider).default_model if provider in PROVIDERS else ""
         config["model"] = Prompt.ask(
             f"Default Model for {provider.capitalize()}", default=default_model
@@ -79,24 +112,49 @@ def run_init_wizard():
 
         api_key = Prompt.ask(f"Enter your {provider.capitalize()} API Key", password=True)
         secrets[f"{provider}_api_key"] = api_key
+        if not api_key.strip():
+            console.print(
+                "[warning]Warning: No API key entered. You must set the\n"
+                f"RENAI_{provider.upper()}_API_KEY env var to use this provider.[/warning]"
+            )
 
-    # 4. Advanced Settings (Optional)
-    console.print("\n[highlight]Step 2: General Settings[/highlight]")
-    if Confirm.ask("Would you like to configure advanced settings?", default=False):
-        config["workers"] = int(Prompt.ask("Concurrent workers", default=str(app_settings.workers)))
-        config["fallback_mode"] = Prompt.ask(
+    return config, secrets
+
+
+def _print_dependency_diagnostics() -> None:
+    """Check and print status of external binary dependencies (tesseract, mutool)."""
+    tesseract_path = shutil.which("tesseract")
+    mutool_path = shutil.which("mutool")
+
+    console.print("[info]Pre-flight dependency check:[/info]")
+    if tesseract_path:
+        console.print(f"  - Tesseract OCR: [success]Found[/success] ({tesseract_path})")
+    else:
+        console.print("  - Tesseract OCR: [warning]Not Found (OCR fallback unavailable)[/warning]")
+
+    if mutool_path:
+        console.print(f"  - mutool: [success]Found[/success] ({mutool_path})")
+    else:
+        console.print("  - mutool: [info]Not Found (Optional, used for PDF page rendering)[/info]")
+    console.print("")
+
+
+def _configure_advanced_settings() -> dict[str, str | int]:
+    """Prompt the user for advanced application settings."""
+    return {
+        "workers": IntPrompt.ask("Concurrent workers", default=app_settings.workers),
+        "fallback_mode": Prompt.ask(
             "Extraction fallback strategy",
             choices=["none", "ocr", "vision", "move"],
             default=app_settings.fallback_mode,
-        )
-    else:
-        console.print("[info]Using factory defaults for general settings.[/info]")
+        ),
+    }
 
-    # 5. Save Files
-    console.print("\n[highlight]Step 3: Saving Configuration[/highlight]")
 
+def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -> None:
+    """Save user configuration and secrets files, copy defaults."""
     try:
-        import tomli_w  # type: ignore
+        import tomli_w
 
         # A. Propagate default files (Physical copy of all package defaults)
         console.print("[info]Propagating default configuration files...[/info]")
@@ -115,22 +173,14 @@ def run_init_wizard():
 
         # Ensure secure permissions on secrets
         if hasattr(SECRETS_FILE, "chmod"):
-            SECRETS_FILE.chmod(0o600)
+            with contextlib.suppress(Exception):
+                SECRETS_FILE.chmod(0o600)
 
         console.print("[success]✔ Configuration finalized successfully![/success]")
         console.print(f"[info]  - User Settings: {SETTINGS_USER_FILE.name}[/info]")
         console.print(f"[info]  - Secrets (Keys): {SECRETS_FILE.name}[/info]")
         console.print("[info]  - Default files are also available for reference.[/info]")
 
-    except ImportError:
-        console.print(
-            "[error]Missing 'tomli-w' dependency. "
-            "Please install it using 'uv sync' or 'pip install tomli-w'.[/error]"
-        )
-        return
     except Exception as e:
         console.print(f"[error]Failed to save configuration: {e}[/error]")
-        return
-
-    console.print("\n[bold green]renAI is now ready to use![/bold green]")
-    console.print("Try: [cyan]renai process <directory>[/cyan]")
+        raise
