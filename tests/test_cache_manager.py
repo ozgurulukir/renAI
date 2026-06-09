@@ -32,7 +32,6 @@ from unittest.mock import patch  # noqa: E402
 from renai.cache.manager import (  # noqa: E402
     clear_all_cache,
     get_metadata_cache_path,
-    get_text_cache_path,
     invalidate_cache_for_provider_model,
     read_metadata_cache,
     read_text_cache,

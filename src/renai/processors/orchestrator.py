@@ -226,6 +226,99 @@ async def _flush_eval_log() -> None:
         logging.error(f"Failed to flush evaluation log: {e}")
 
 
+async def _execute_processing_loop(
+    processor: BookProcessor,
+    file_paths: list[Path],
+    provider: str,
+    model: str | None,
+    config: ProcessingConfig,
+) -> list[ProcessingResult]:
+    """Execute the file processing loop with real-time progress visualization."""
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=None),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        console=console,
+        expand=True,
+    )
+    main_task = progress.add_task("[cyan]Processing...", total=len(file_paths))
+    status_display = StatusDisplay(progress)
+    semaphore = asyncio.Semaphore(config.workers)
+    results = []
+
+    try:
+        with Live(
+            status_display,
+            console=console,
+            refresh_per_second=4,
+            screen=True,  # Isolate from scrollback to prevent stacking
+        ) as live:
+            if config.benchmark:
+                await _run_benchmark_mode(processor, file_paths, status_display, live)
+                return []
+
+            # Standard Mode (Rename, Organize, Evaluate)
+            async def _process_task(f_path: Path) -> ProcessingResult:
+                async with semaphore:
+                    status_display.update(f"Scanning {f_path.name}")
+
+                    res = await processor.process_file(
+                        f_path,
+                        mode=config.mode,
+                        fallback_mode=config.fallback_mode,
+                        rename_images=config.rename_images,
+                        update_metadata=config.update_metadata,
+                        add_exif_date=config.add_exif_date,
+                    )
+                    if config.mode == "evaluate" and res.success:
+                        await log_evaluation_result(
+                            f_path, provider, model or "unknown", res.metadata
+                        )
+
+                    status_display.update(res)
+                    progress.advance(main_task)
+
+                    return res
+
+            pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
+            results = await asyncio.gather(*pending_tasks)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
+        return []
+
+    return results
+
+
+def _print_final_summary(results: list[ProcessingResult]) -> None:
+    """Print the final static summary card to the terminal."""
+    success_count = sum(1 for r in results if r.success)
+    error_count = len(results) - success_count
+
+    summary_table = Table.grid(padding=(0, 1))
+    summary_table.add_column(justify="left", style="white")
+    summary_table.add_column(justify="right", style="cyan")
+    summary_table.add_row(
+        "[bold green]✅ Successful[/bold green]", f"[bold green]{success_count}[/bold green]"
+    )
+    if error_count > 0:
+        summary_table.add_row(
+            "[bold red]❌ Failed[/bold red]", f"[bold red]{error_count}[/bold red]"
+        )
+
+    console.print()
+    console.print(
+        Panel(
+            summary_table,
+            title="[bold blue]Processing Result Summary[/]",
+            border_style="green" if error_count == 0 else "yellow",
+            padding=(1, 2),
+            expand=False,
+        )
+    )
+
+
 async def run_pipeline(
     root_dir: Path,
     provider: str,
@@ -275,88 +368,15 @@ async def run_pipeline(
 
     console.print(Columns(summary_cols, expand=True))
     console.print()
-    # 3. Execution Setup
-    progress = Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=None),
-        TaskProgressColumn(),
-        TimeRemainingColumn(),
-        console=console,
-        expand=True,
-    )
-    main_task = progress.add_task("[cyan]Processing...", total=len(file_paths))
-    status_display = StatusDisplay(progress)
-    semaphore = asyncio.Semaphore(config.workers)
-    results = []
 
-    try:
-        with Live(
-            status_display,
-            console=console,
-            refresh_per_second=4,
-            screen=True,  # Isolate from scrollback to prevent stacking
-        ) as live:
-            if config.benchmark:
-                await _run_benchmark_mode(processor, file_paths, status_display, live)
-                return
-
-            # Standard Mode (Rename, Organize, Evaluate)
-            async def _process_task(f_path):
-                async with semaphore:
-                    status_display.update(f"Scanning {f_path.name}")
-
-                    res = await processor.process_file(
-                        f_path,
-                        mode=config.mode,
-                        fallback_mode=config.fallback_mode,
-                        rename_images=config.rename_images,
-                        update_metadata=config.update_metadata,
-                        add_exif_date=config.add_exif_date,
-                    )
-                    if config.mode == "evaluate" and res.success:
-                        await log_evaluation_result(
-                            f_path, provider, model or "unknown", res.metadata
-                        )
-
-                    status_display.update(res)
-                    progress.advance(main_task)
-
-                    return res
-
-            pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
-            results = await asyncio.gather(*pending_tasks)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
-        return
+    # 3. Execution Loop
+    results = await _execute_processing_loop(processor, file_paths, provider, model, config)
 
     await _flush_eval_log()
 
     # 4. Final Summary Card (Static, will stay in terminal history)
-    success_count = sum(1 for r in results if r.success)
-    error_count = len(results) - success_count
-
-    summary_table = Table.grid(padding=(0, 1))
-    summary_table.add_column(justify="left", style="white")
-    summary_table.add_column(justify="right", style="cyan")
-    summary_table.add_row(
-        "[bold green]✅ Successful[/bold green]", f"[bold green]{success_count}[/bold green]"
-    )
-    if error_count > 0:
-        summary_table.add_row(
-            "[bold red]❌ Failed[/bold red]", f"[bold red]{error_count}[/bold red]"
-        )
-
-    console.print()
-    console.print(
-        Panel(
-            summary_table,
-            title="[bold blue]Processing Result Summary[/]",
-            border_style="green" if error_count == 0 else "yellow",
-            padding=(1, 2),
-            expand=False,
-        )
-    )
+    if not config.benchmark and results:
+        _print_final_summary(results)
 
 
 async def _run_benchmark_mode(

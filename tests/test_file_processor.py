@@ -1,7 +1,6 @@
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pathlib import Path
 
 from renai.file_ops import safe_move_file
 from renai.models.schemas import BookMetadata
@@ -58,7 +57,7 @@ class TestBookProcessor:
         with (
             patch("renai.processors.book.get_file_hash", return_value=file_hash),
             patch("renai.processors.book.read_metadata_cache", return_value=cached_metadata),
-            patch("renai.processors.book.safe_move_file", side_effect=lambda s, d, **kwargs: d)
+            patch("renai.processors.book.safe_move_file", side_effect=lambda s, d, **kwargs: d),
         ):
             result = await processor.process_file(test_file, mode="rename")
 

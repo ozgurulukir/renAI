@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -220,23 +221,84 @@ class LLMEngine:
         ]
         return await self._generate_json_completion(messages, model_class)
 
-    async def _generate_json_completion(
+    def _prepare_completion_headers(self) -> dict[str, str] | None:
+        """Prepare extra headers for the API request if necessary."""
+        if self.provider == "openrouter":
+            return {"HTTP-Referer": "https://github.com/renAI", "X-Title": "renAI"}
+        return None
+
+    def _parse_json_content(self, content: str) -> dict[str, Any] | None:
+        """Clean markdown formatting and parse JSON content."""
+        content = content.strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\n?|```$", "", content, flags=re.MULTILINE).strip()
+
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return None
+
+    def _validate_and_align_metadata(
+        self,
+        raw_data: dict[str, Any],
+        model_class: type[T],
+        context_name: str,
+    ) -> tuple[T | None, list[str] | None]:
+        """Validate parsed data against Pydantic model and check category constraints."""
+        try:
+            model_fields = model_class.model_fields.keys()
+            filtered_data = {k: v for k, v in raw_data.items() if k in model_fields}
+            validated_model = model_class(**filtered_data)
+        except Exception as e:
+            logging.warning(f"Schema validation failed for {context_name}: {e}")
+            return None, None
+
+        # Category & Language SSoT Alignment
+        lang = validated_model.language.lower()
+        is_image = isinstance(validated_model, ImageMetadata)
+        allowed_dict = get_image_categories() if is_image else self.allowed_categories
+
+        target_lang = lang if lang in allowed_dict else "en"
+        allowed = allowed_dict.get(target_lang, allowed_dict.get("en", []))
+
+        if validated_model.category in allowed:
+            return validated_model, None
+
+        return None, allowed
+
+    def _attempt_final_fallback(
+        self,
+        last_parsed_data: dict[str, Any] | None,
+        model_class: type[T],
+    ) -> T | None:
+        """Fall back to forced 'Other' category if validation initially failed."""
+        if not last_parsed_data:
+            return None
+        try:
+            model_fields = model_class.model_fields.keys()
+            filtered_data = {k: v for k, v in last_parsed_data.items() if k in model_fields}
+            lang = filtered_data.get("language", "en").lower()
+            filtered_data["category"] = "Diğer" if lang == "tr" else "Other"
+            return model_class(**filtered_data)
+        except Exception:
+            return None
+
+    async def _execute_completion_with_backoff(
         self,
         messages: list[ChatCompletionMessageParam],
-        model_class: type[T],
-        context_name: str = "document",
-    ) -> T | None:
-        """Unified LLM caller returning typed Pydantic models with SSoT enforcement."""
-        headers = (
-            {"HTTP-Referer": "https://github.com/renAI", "X-Title": "renAI"}
-            if self.provider == "openrouter"
-            else None
-        )
-        last_parsed_data: dict[str, Any] | None = None
+        temperature: float,
+        headers: dict[str, str] | None,
+        context_name: str,
+    ) -> str | None:
+        """Call the LLM API with progressive exponential backoff on RateLimitError."""
+        from openai import RateLimitError
 
-        for attempt in range(app_settings.llm_max_retries):
+        backoff_sec = 2.0
+        max_backoff_sec = 60.0
+        rate_limit_attempts = 5
+
+        for rl_attempt in range(rate_limit_attempts):
             try:
-                # Rate limiting wait
                 if self.rate_limiter:
                     await self.rate_limiter.acquire()
 
@@ -244,77 +306,85 @@ class LLMEngine:
                     model=self.model_name,
                     messages=messages,
                     max_tokens=app_settings.llm_max_tokens,
-                    temperature=app_settings.llm_temperature
-                    if attempt == 0
-                    else app_settings.llm_temperature_retry,
+                    temperature=temperature,
                     extra_headers=headers,
                 )
+                return completion.choices[0].message.content
+            except RateLimitError as rle:
+                if rl_attempt == rate_limit_attempts - 1:
+                    logging.error(
+                        "Rate limit retries exhausted (%d attempts) for %s.",
+                        rate_limit_attempts,
+                        context_name,
+                    )
+                    raise
+                logging.warning(
+                    "Rate limit exceeded (HTTP 429) for %s. Retrying in %.1fs... Error: %s",
+                    context_name,
+                    backoff_sec,
+                    rle,
+                )
+                await asyncio.sleep(backoff_sec)
+                backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
+            except Exception as e:
+                logging.error(f"LLM call failure for {context_name}: {e}")
+                return None
+        return None
 
-                content = completion.choices[0].message.content
+    async def _generate_json_completion(
+        self,
+        messages: list[ChatCompletionMessageParam],
+        model_class: type[T],
+        context_name: str = "document",
+    ) -> T | None:
+        """Unified LLM caller returning typed Pydantic models with SSoT enforcement."""
+        headers = self._prepare_completion_headers()
+        last_parsed_data: dict[str, Any] | None = None
+
+        for attempt in range(app_settings.llm_max_retries):
+            try:
+                temperature = (
+                    app_settings.llm_temperature
+                    if attempt == 0
+                    else app_settings.llm_temperature_retry
+                )
+
+                content = await self._execute_completion_with_backoff(
+                    messages=messages,
+                    temperature=temperature,
+                    headers=headers,
+                    context_name=context_name,
+                )
                 if not content:
                     continue
 
-                # Cleanup markdown and parse JSON
-                content = content.strip()
-                if content.startswith("```"):
-                    content = re.sub(
-                        r"^```(?:json)?\n?|```$", "", content, flags=re.MULTILINE
-                    ).strip()
-
-                try:
-                    raw_data = json.loads(content)
-                    last_parsed_data = raw_data
-                except json.JSONDecodeError:
+                raw_data = self._parse_json_content(content)
+                if raw_data is None:
                     continue
+                last_parsed_data = raw_data
 
-                # Pydantic Validation (The SSoT Core)
-                try:
-                    # Filter out fields not in model to handle LLM talkativeness
-                    model_fields = model_class.model_fields.keys()
-                    filtered_data = {k: v for k, v in raw_data.items() if k in model_fields}
-
-                    validated_model = model_class(**filtered_data)
-                except Exception as e:
-                    logging.warning(f"Schema validation failed for {context_name}: {e}")
-                    continue
-
-                # Category & Language SSoT Alignment
-                lang = validated_model.language.lower()
-                is_image = isinstance(validated_model, ImageMetadata)
-                allowed_dict = get_image_categories() if is_image else self.allowed_categories
-
-                target_lang = lang if lang in allowed_dict else "en"
-                allowed = allowed_dict.get(target_lang, allowed_dict.get("en", []))
-
-                if validated_model.category in allowed:
+                validated_model, allowed = self._validate_and_align_metadata(
+                    raw_data, model_class, context_name
+                )
+                if validated_model:
                     return validated_model
-                logging.warning(
-                    "Invalid category '%s' for %s (Attempt %d)",
-                    validated_model.category,
-                    context_name,
-                    attempt + 1,
-                )
-                messages.append({"role": "assistant", "content": content})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": f"Category must be ONLY from: {', '.join(allowed)}",
-                    }
-                )
 
+                if allowed:
+                    logging.warning(
+                        "Invalid category '%s' for %s (Attempt %d)",
+                        raw_data.get("category"),
+                        context_name,
+                        attempt + 1,
+                    )
+                    messages.append({"role": "assistant", "content": content})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": f"Category must be ONLY from: {', '.join(allowed)}",
+                        }
+                    )
             except Exception as e:
-                logging.error(f"LLM call failure for {context_name}: {e}")
+                logging.error(f"Failed to generate JSON completion for {context_name}: {e}")
 
         # Final Fallback to "Other" if JSON exists
-        if last_parsed_data:
-            try:
-                model_fields = model_class.model_fields.keys()
-                filtered_data = {k: v for k, v in last_parsed_data.items() if k in model_fields}
-                # Force a safe category
-                lang = filtered_data.get("language", "en").lower()
-                filtered_data["category"] = "Diğer" if lang == "tr" else "Other"
-                return model_class(**filtered_data)
-            except Exception:
-                pass
-
-        return None
+        return self._attempt_final_fallback(last_parsed_data, model_class)

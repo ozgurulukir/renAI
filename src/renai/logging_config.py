@@ -142,6 +142,64 @@ def get_ocr_logger(file_path: str) -> structlog.BoundLogger:
 configure_logging()
 
 
+def _analyze_exception(exc_value: BaseException) -> tuple[str, str]:
+    """Analyze exception to determine potential why and how to fix explanations."""
+    from renai.exceptions import (
+        CacheError,
+        ConfigurationError,
+        ExtractionError,
+        FileOperationError,
+        LLMError,
+        OCRError,
+        RenAIError,
+    )
+
+    why = "An unexpected system error occurred."
+    how = "Please review the error details or open an issue on GitHub."
+    exc_str = str(exc_value)
+
+    if "API Key" in exc_str or "api_key" in exc_str:
+        why = "API Key not found or invalid."
+        how = "Check the RENAI_PROVIDER_API_KEY environment variable or update your .env file."
+    elif "Tesseract" in exc_str or "mutool" in exc_str:
+        why = "A required external tool (OCR or MuTool) was not found."
+        how = "Ensure Tesseract or MuTool is installed and available in your PATH."
+    elif isinstance(exc_value, FileNotFoundError):
+        why = f"The specified file or directory was not found: {exc_value.filename or exc_str}"
+        how = "Verify the accuracy of the file path."
+    elif isinstance(exc_value, PermissionError):
+        why = "Missing required file system permissions."
+        how = "Make sure you have sufficient read/write privileges for the file/directory."
+    elif isinstance(exc_value, ConfigurationError):
+        why = "Error in renAI configuration files or settings."
+        how = "Check the formatting and values inside the settings.toml file."
+    elif isinstance(exc_value, LLMError):
+        why = "The AI (LLM) service provider returned an error."
+        how = (
+            "Check the API provider status (OpenAI, OpenRouter, etc.) and your internet connection."
+        )
+    elif isinstance(exc_value, OCRError):
+        why = "OCR processing on the image or PDF failed."
+        how = "Verify your Tesseract installation and ensure the input file is not corrupted."
+    elif isinstance(exc_value, ExtractionError):
+        why = "Failed to extract text or visual data from the file."
+        how = "Ensure the file format is supported and the file is not corrupted."
+    elif isinstance(exc_value, CacheError):
+        why = "Failed to read from or write to the cache database."
+        how = "Check cache directory permissions or run the 'renai clear-cache' command."
+    elif isinstance(exc_value, FileOperationError):
+        why = "Failed to move, copy, or rename the file."
+        how = (
+            "Ensure the destination directory is writable and "
+            "no locked file with the same name exists."
+        )
+    elif isinstance(exc_value, RenAIError):
+        why = "An internal renAI-specific error occurred."
+        how = f"Please check the error details: {exc_str}"
+
+    return why, how
+
+
 def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
     """
     Empathetic exception handler for the CLI.
@@ -155,33 +213,17 @@ def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
     from rich.panel import Panel
 
     console = Console()
+    why, how = _analyze_exception(exc_value)
 
-    # Determine why it might have happened and how to fix
-    # This is a simple mapping for common issues
-    why = "Beklenmedik bir sistem hatası oluştu."
-    how = "Lütfen hata mesajını inceleyin veya GitHub üzerinden bir issue açın."
-
-    if "API Key" in str(exc_value):
-        why = "API Anahtarı (API Key) bulunamadı veya geçersiz."
-        how = (
-            "RENAI_PROVIDER_API_KEY ortam değişkenini kontrol edin veya .env dosyasını güncelleyin."
-        )
-    elif "Tesseract" in str(exc_value) or "mutool" in str(exc_value):
-        why = "Bağımlı bir dış araç (OCR veya MuTool) bulunamadı."
-        how = "Tesseract veya MuTool'un sisteminizde kurulu ve PATH üzerinde olduğundan emin olun."
-    elif isinstance(exc_value, FileNotFoundError):
-        why = f"Belirtilen dosya veya dizin bulunamadı: {exc_value.filename}"
-        how = "Dosya yolunun doğruluğunu kontrol edin."
-
-    error_msg = f"[bold red]HATA:[/bold red] {exc_value}\n\n"
-    error_msg += f"[bold yellow]NEDEN:[/bold yellow] {why}\n"
-    error_msg += f"[bold green]NASIL ÇÖZÜLÜR:[/bold green] {how}"
+    error_msg = f"[bold red]ERROR:[/bold red] {exc_value}\n\n"
+    error_msg += f"[bold yellow]WHY:[/bold yellow] {why}\n"
+    error_msg += f"[bold green]HOW TO FIX:[/bold green] {how}"
 
     console.print()
     console.print(
         Panel(
             error_msg,
-            title="[bold red]renAI Sistem Hatası[/bold red]",
+            title="[bold red]renAI System Error[/bold red]",
             border_style="red",
             expand=False,
         )

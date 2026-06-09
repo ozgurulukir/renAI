@@ -158,6 +158,88 @@ def display_warnings(mode: str, recursive: bool) -> None:
 # =============================================================================
 
 
+def _print_process_header(root_dir: Path, mode: str, provider: str, model: str | None) -> None:
+    """Print header panel information for file processing."""
+    from rich.columns import Columns
+    from rich.panel import Panel
+
+    title = f"[bold cyan]renAI[/bold cyan] [dim]v{__version__}[/dim]"
+    info_cols = [
+        f"[blue]📂 Dir:[/blue] {root_dir.name}",
+        f"[green]🛠 Mode:[/green] {mode}",
+        f"[yellow]☁ Provider:[/yellow] {provider}/{model or 'default'}",
+    ]
+    console.print(
+        Panel(Columns(info_cols, expand=True), title=title, border_style="cyan", padding=(0, 1))
+    )
+
+
+def handle_process_command(
+    directory: str,
+    mode: Literal["rename", "organize", "evaluate"],
+    provider: str,
+    model: str | None,
+    workers: int,
+    ocr_enhanced: bool,
+    debug_ocr: bool,
+    use_mutool: bool,
+    mutool_path: str,
+    extractor: str,
+    text_length: int,
+    text_extraction: str,
+    extraction_pages: int,
+    recursive: bool,
+    update_metadata: bool,
+    fallback_mode: FallbackMode | None,
+    move_scan_failures: bool,
+    rename_images: bool,
+    exif: bool,
+    benchmark: bool,
+) -> None:
+    """Orchestrate and execute the file processing pipeline."""
+    final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
+    root_dir = Path(directory).resolve()
+
+    if not root_dir.is_dir():
+        console.print(f"[red]Error: Directory not found: {root_dir}[/red]")
+        raise typer.Exit(code=1)
+
+    _print_process_header(root_dir, mode, provider, model)
+    display_warnings(mode, recursive)
+
+    try:
+        asyncio.run(
+            run_pipeline(
+                root_dir=root_dir,
+                provider=provider,
+                model=model,
+                config=ProcessingConfig(
+                    mode=mode,
+                    workers=workers,
+                    recursive=recursive,
+                    ocr_enhanced=ocr_enhanced,
+                    debug_ocr=debug_ocr,
+                    use_mutool=use_mutool,
+                    mutool_path=mutool_path,
+                    extractor=extractor,
+                    text_length=text_length,
+                    text_extraction=text_extraction,
+                    extraction_pages=extraction_pages,
+                    skip_ocr_checks=False,  # default for process cmd
+                    move_scan_failures=move_scan_failures,
+                    fallback_mode=final_fallback,
+                    rename_images=rename_images,
+                    add_exif_date=exif,
+                    update_metadata=update_metadata,
+                    benchmark=benchmark,
+                ),
+            )
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
+        raise typer.Exit(code=0) from None
+
+
 @app.command("process")
 def process_cmd(
     directory: Annotated[
@@ -307,62 +389,28 @@ def process_cmd(
     ] = False,
 ) -> None:
     """Process files in a directory."""
-    final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
-    root_dir = Path(directory).resolve()
-
-    if not root_dir.is_dir():
-        console.print(f"[red]Error: Directory not found: {root_dir}[/red]")
-        raise typer.Exit(code=1)
-
-    from rich.columns import Columns
-    from rich.panel import Panel
-
-    # 1. Header Information
-    title = f"[bold cyan]renAI[/bold cyan] [dim]v{__version__}[/dim]"
-
-    info_cols = [
-        f"[blue]📂 Dir:[/blue] {root_dir.name}",
-        f"[green]🛠 Mode:[/green] {mode}",
-        f"[yellow]☁ Provider:[/yellow] {provider}/{model or 'default'}",
-    ]
-
-    console.print(
-        Panel(Columns(info_cols, expand=True), title=title, border_style="cyan", padding=(0, 1))
+    handle_process_command(
+        directory=directory,
+        mode=mode,
+        provider=provider,
+        model=model,
+        workers=workers,
+        ocr_enhanced=ocr_enhanced,
+        debug_ocr=debug_ocr,
+        use_mutool=use_mutool,
+        mutool_path=mutool_path,
+        extractor=extractor,
+        text_length=text_length,
+        text_extraction=text_extraction,
+        extraction_pages=extraction_pages,
+        recursive=recursive,
+        update_metadata=update_metadata,
+        fallback_mode=fallback_mode,
+        move_scan_failures=move_scan_failures,
+        rename_images=rename_images,
+        exif=exif,
+        benchmark=benchmark,
     )
-
-    display_warnings(mode, recursive)
-
-    try:
-        asyncio.run(
-            run_pipeline(
-                root_dir=root_dir,
-                provider=provider,
-                model=model,
-                config=ProcessingConfig(
-                    mode=mode,
-                    workers=workers,
-                    recursive=recursive,
-                    ocr_enhanced=ocr_enhanced,
-                    debug_ocr=debug_ocr,
-                    use_mutool=use_mutool,
-                    mutool_path=mutool_path,
-                    extractor=extractor,
-                    text_length=text_length,
-                    text_extraction=text_extraction,
-                    extraction_pages=extraction_pages,
-                    skip_ocr_checks=False,  # default for process cmd
-                    move_scan_failures=move_scan_failures,
-                    fallback_mode=final_fallback,
-                    rename_images=rename_images,
-                    add_exif_date=exif,
-                    update_metadata=update_metadata,
-                    benchmark=benchmark,
-                ),
-            )
-        )
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
-        raise typer.Exit(code=0) from None
 
 
 @app.command("evaluate")

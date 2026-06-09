@@ -23,7 +23,6 @@ from renai.utils import (
     read_text_limited,
 )
 
-
 # Supported extensions
 OFFICE_EXTENSIONS: set[str] = {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
 PLAIN_TEXT_EXTENSIONS: set[str] = {".txt", ".md"}
@@ -141,6 +140,38 @@ class TextExtractor:
 
         return extracted_text
 
+    def _apply_mixed_mode_or_trim(self, text: str, target_length: int) -> str:
+        """Trim text based on the configured extraction mode (mixed or regular)."""
+        if self.text_extraction_mode == "mixed":
+            return proportional_chunk_trim(text, target_length, app_settings.mixed_chunk_count)
+        return text[:target_length]
+
+    async def _handle_extraction_fallback(
+        self,
+        file_path: Path,
+        full_text: str,
+        target_length: int,
+        fallback: FallbackMode,
+    ) -> str:
+        """Route and execute fallback strategy when text extraction is insufficient."""
+        match fallback:
+            case FallbackMode.MOVE_TO_FOLDER:
+                logging.info(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
+                await asyncio.to_thread(self._move_to_needs_scan, file_path)
+                return ""
+
+            case FallbackMode.OCR:
+                logging.info(f"Primary text insufficient for {file_path.name}, falling back to OCR")
+                return await self._fallback_to_ocr(file_path, target_length)
+
+            case FallbackMode.VISION:
+                logging.info(
+                    f"Primary text insufficient for {file_path.name}, marking for Vision fallback"
+                )
+                return ""
+
+        return full_text[:target_length]
+
     async def _extract_from_office(
         self,
         file_path: Path,
@@ -160,12 +191,7 @@ class TextExtractor:
                 return md.convert(str(file_path)).text_content
 
             content = await asyncio.to_thread(_convert)
-
-            if self.text_extraction_mode == "mixed":
-                return proportional_chunk_trim(
-                    content, target_length, app_settings.mixed_chunk_count
-                )
-            return content[:target_length]
+            return self._apply_mixed_mode_or_trim(content, target_length)
         except ImportError:
             logging.error(f"MarkItDown not installed, skipping: {file_path.name}")
             return ""
@@ -188,12 +214,7 @@ class TextExtractor:
             content = await asyncio.to_thread(
                 read_text_limited, file_path, get_max_text_read_size()
             )
-
-            if self.text_extraction_mode == "mixed":
-                return proportional_chunk_trim(
-                    content, target_length, app_settings.mixed_chunk_count
-                )
-            return content[:target_length]
+            return self._apply_mixed_mode_or_trim(content, target_length)
         except Exception as e:
             logging.error(f"Text read failed for {file_path.name}: {e}")
             return ""
@@ -218,41 +239,17 @@ class TextExtractor:
 
         # Check if we got meaningful text
         if len(full_text.strip()) > sufficient_threshold:
-            if self.text_extraction_mode == "mixed":
-                return proportional_chunk_trim(
-                    full_text, target_length, app_settings.mixed_chunk_count
-                )
-            return full_text[:target_length]
+            return self._apply_mixed_mode_or_trim(full_text, target_length)
 
         # Insufficient text - Apply fallback strategy
-        match fallback:
-            case FallbackMode.MOVE_TO_FOLDER:
-                logging.info(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
-                await asyncio.to_thread(self._move_to_needs_scan, file_path)
-                return ""
-
-            case FallbackMode.OCR:
-                logging.info(f"Primary text insufficient for {file_path.name}, falling back to OCR")
-                return await self._fallback_to_ocr(file_path, target_length)
-
-            case FallbackMode.VISION:
-                logging.info(
-                    f"Primary text insufficient for {file_path.name}, marking for Vision fallback"
-                )
-                return ""
-
-        return full_text[:target_length]
+        return await self._handle_extraction_fallback(file_path, full_text, target_length, fallback)
 
     async def _fallback_to_ocr(self, file_path: Path, target_length: int) -> str:
         """Attempt to extract text via OCR asynchronously."""
         try:
             ocr_text = await self.ocr_engine.extract_text(file_path)
             if ocr_text.strip():
-                if self.text_extraction_mode == "mixed":
-                    return proportional_chunk_trim(
-                        ocr_text, target_length, app_settings.mixed_chunk_count
-                    )
-                return ocr_text[:target_length]
+                return self._apply_mixed_mode_or_trim(ocr_text, target_length)
             return ""
         except Exception as e:
             logging.error(f"OCR fallback failed for {file_path.name}: {e}")

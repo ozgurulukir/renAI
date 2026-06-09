@@ -58,7 +58,6 @@ class TestGetBookMetadataFromImage:
     @pytest.mark.asyncio
     async def test_generic_exception_during_vision_call(self, llm_engine):
         """Test that generic exceptions in get_book_metadata_from_image are caught and return None."""
-        import base64
 
         llm_engine.client.chat.completions.create = AsyncMock(
             side_effect=RuntimeError("Unexpected LLM failure")

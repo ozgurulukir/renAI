@@ -1,5 +1,3 @@
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,11 +32,11 @@ def processor(mock_engines):
     """Fixture to provide a BookProcessor with mocked engines and extractor."""
     ocr, llm = mock_engines
     proc = BookProcessor(ocr, llm)
-    
+
     mock_extractor = MagicMock()
     mock_extractor.extract = AsyncMock(return_value="AI " * 100)
     proc.text_extractor = mock_extractor
-    
+
     return proc
 
 
@@ -147,9 +145,7 @@ async def test_path_traversal_blocked_with_root_dir(processor, tmp_path):
     with (
         patch("renai.cache.manager.CACHE_DIR", test_cache_dir),
         patch("renai.processors.book.CACHE_DIR", test_cache_dir),
-        patch(
-            "renai.processors.book.extract_category_from_metadata", side_effect=fake_category
-        ),
+        patch("renai.processors.book.extract_category_from_metadata", side_effect=fake_category),
     ):
         result = await processor.process_file(test_file, mode="organize")
 

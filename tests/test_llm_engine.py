@@ -247,3 +247,31 @@ async def test_call_llm_final_fallback_silent_failure_on_exception(llm_engine):
     )
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_call_llm_rate_limit_backoff(llm_engine):
+    """Test that RateLimitError causes backoff and retry."""
+    import httpx
+    from openai import RateLimitError
+
+    mock_request = httpx.Request("POST", "https://api.openai.com")
+    mock_response = httpx.Response(429, request=mock_request)
+    rate_limit_err = RateLimitError("Rate limit exceeded", response=mock_response, body=None)
+
+    mock_success_response = MagicMock()
+    mock_success_response.choices[
+        0
+    ].message.content = '{"title": "Test Book", "category": "Fiction", "language": "en"}'
+
+    llm_engine.client.chat.completions.create = AsyncMock(
+        side_effect=[rate_limit_err, mock_success_response]
+    )
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+
+        assert isinstance(result, BookMetadata)
+        assert result.title == "Test Book"
+        mock_sleep.assert_awaited_once_with(2.0)
+        assert llm_engine.client.chat.completions.create.await_count == 2

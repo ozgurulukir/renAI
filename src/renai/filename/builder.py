@@ -107,7 +107,8 @@ def build_image_filename(
     if not new_name_base:
         new_name_base = "Image"
 
-    return f"{sanitize_filename(new_name_base, app_settings.max_filename_length)} -- ({lang_indicator}){original_extension}"
+    sanitized = sanitize_filename(new_name_base, app_settings.max_filename_length)
+    return f"{sanitized} -- ({lang_indicator}){original_extension}"
 
 
 def extract_category_from_metadata(
@@ -160,4 +161,5 @@ def build_vision_filename(
     if not new_name_base:
         new_name_base = "Document"
 
-    return f"{sanitize_filename(new_name_base, app_settings.max_filename_length)} -- ({lang_indicator}){original_extension}"
+    sanitized = sanitize_filename(new_name_base, app_settings.max_filename_length)
+    return f"{sanitized} -- ({lang_indicator}){original_extension}"

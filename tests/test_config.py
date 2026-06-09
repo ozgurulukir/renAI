@@ -365,7 +365,9 @@ class TestDisplayWarnings:
                     with pytest.raises(SystemExit) as exc_info:
                         display_warnings("rename", False)
                     assert exc_info.value.code == 0
-                    assert any("cancelled" in str(args).lower() for args, _ in mock_print.call_args_list)
+                    assert any(
+                        "cancelled" in str(args).lower() for args, _ in mock_print.call_args_list
+                    )
                     mock_exit.assert_called_with(0)
 
     def test_display_warnings_cancel_eof_error(self):
@@ -377,7 +379,9 @@ class TestDisplayWarnings:
                     with pytest.raises(SystemExit) as exc_info:
                         display_warnings("rename", False)
                     assert exc_info.value.code == 0
-                    assert any("cancelled" in str(args).lower() for args, _ in mock_print.call_args_list)
+                    assert any(
+                        "cancelled" in str(args).lower() for args, _ in mock_print.call_args_list
+                    )
                     mock_exit.assert_called_with(0)
 
 
@@ -533,7 +537,10 @@ class TestLoadEvalModels:
                 raise PermissionError("Permission denied")
             return original_open(file, *args, **kwargs)
 
-        with patch.object(Path, "open", autospec=True, side_effect=mock_open), patch("logging.warning") as mock_warn:
+        with (
+            patch.object(Path, "open", autospec=True, side_effect=mock_open),
+            patch("logging.warning") as mock_warn,
+        ):
             result = load_eval_models("test_provider")
             assert result == ["pkg_model_1"]
             mock_warn.assert_called_once()
@@ -555,7 +562,10 @@ class TestLoadEvalModels:
                 raise PermissionError("Permission denied")
             return original_open(file, *args, **kwargs)
 
-        with patch.object(Path, "open", autospec=True, side_effect=mock_open), patch("logging.warning") as mock_warn:
+        with (
+            patch.object(Path, "open", autospec=True, side_effect=mock_open),
+            patch("logging.warning") as mock_warn,
+        ):
             result = load_eval_models("test_provider")
             assert result == []
             mock_warn.assert_called_once()

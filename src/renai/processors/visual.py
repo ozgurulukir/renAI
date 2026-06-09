@@ -30,6 +30,26 @@ class VisualProcessor:
         self.image_max_size = app_settings.vision_image_max_size
         self.image_quality = app_settings.vision_image_quality
 
+    def _convert_page(self, doc: pymupdf.Document, page_number: int, dpi: int) -> bytes | None:
+        """Helper to convert a loaded PDF page to optimized image bytes (synchronous)."""
+        if page_number >= len(doc):
+            return None
+
+        page = doc.load_page(page_number)
+        zoom = dpi / 72
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+        if img.width > self.image_max_size or img.height > self.image_max_size:
+            img.thumbnail(
+                (self.image_max_size, self.image_max_size),
+                Image.Resampling.LANCZOS,
+            )
+
+        buffer = BytesIO()
+        img.save(buffer, format="JPEG", quality=self.image_quality, optimize=True)
+        return buffer.getvalue()
+
     async def extract_metadata_from_pdf(self, file_path: Path) -> BookMetadata | None:
         """Extract metadata from PDF asynchronously by sampling pages and using vision model."""
         try:
@@ -40,22 +60,9 @@ class VisualProcessor:
                     pages_to_process = self._select_pages(total_pages)
                     images = []
                     for page_num in pages_to_process:
-                        if page_num >= total_pages:
-                            continue
-                        page = doc.load_page(page_num)
-                        zoom = app_settings.vision_dpi / 72
-                        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
-                        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-
-                        if img.width > self.image_max_size or img.height > self.image_max_size:
-                            img.thumbnail(
-                                (self.image_max_size, self.image_max_size),
-                                Image.Resampling.LANCZOS,
-                            )
-
-                        buffer = BytesIO()
-                        img.save(buffer, format="JPEG", quality=self.image_quality, optimize=True)
-                        images.append(buffer.getvalue())
+                        img_bytes = self._convert_page(doc, page_num, app_settings.vision_dpi)
+                        if img_bytes is not None:
+                            images.append(img_bytes)
                     return images
 
             page_images = await asyncio.to_thread(_get_page_count_and_convert)
@@ -135,23 +142,7 @@ class VisualProcessor:
 
             def _convert():
                 with pymupdf.open(str(file_path)) as doc:
-                    if page_number >= len(doc):
-                        return None
-
-                    page = doc.load_page(page_number)
-                    zoom = dpi / 72
-                    pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
-                    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-
-                    if img.width > self.image_max_size or img.height > self.image_max_size:
-                        img.thumbnail(
-                            (self.image_max_size, self.image_max_size),
-                            Image.Resampling.LANCZOS,
-                        )
-
-                    buffer = BytesIO()
-                    img.save(buffer, format="JPEG", quality=self.image_quality, optimize=True)
-                    return buffer.getvalue()
+                    return self._convert_page(doc, page_number, dpi)
 
             return await asyncio.to_thread(_convert)
         except Exception as e:

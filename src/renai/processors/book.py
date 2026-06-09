@@ -89,6 +89,76 @@ class BookProcessor:
             self.text_extractor.setup_move_folders, root_dir, skip_ocr_checks, move_scan_failures
         )
 
+    def _get_cache_parameters(
+        self,
+        file_path: Path,
+        file_hash: str,
+        fallback_mode: FallbackMode,
+        rename_images: bool,
+    ) -> tuple[Path, type[BookMetadata] | type[ImageMetadata], bool]:
+        """Determine cache path, model class, and whether vision cache is used."""
+        is_image = file_path.suffix.lower() in get_image_extensions()
+        cache_mode = "img" if (is_image and rename_images) else "doc"
+        use_vision_cache = (is_image and rename_images) or (
+            fallback_mode == FallbackMode.VISION and file_path.suffix.lower() == ".pdf"
+        )
+        cache_path = get_metadata_cache_path(
+            file_hash,
+            self.provider,
+            self.model,
+            mode=cache_mode,
+            cache_dir=CACHE_DIR,
+            use_vision=use_vision_cache,
+        )
+        model_class = ImageMetadata if (is_image and rename_images) else BookMetadata
+        return cache_path, model_class, use_vision_cache
+
+    async def _resolve_metadata(
+        self,
+        file_path: Path,
+        cache_path: Path,
+        model_class: type[BookMetadata] | type[ImageMetadata],
+        use_vision_cache: bool,
+        fallback_mode: FallbackMode,
+        rename_images: bool,
+        update_metadata: bool,
+        add_exif_date: bool,
+    ) -> tuple[BookMetadata | ImageMetadata | None, bool]:
+        """Resolve metadata by reading from cache or executing extraction engines."""
+        metadata = None
+        is_image = file_path.suffix.lower() in get_image_extensions()
+
+        if not update_metadata:
+            metadata = await asyncio.to_thread(
+                read_metadata_cache,
+                cache_path,
+                self.provider,
+                self.model,
+                model_class=model_class,
+            )
+
+        is_vision_doc = False
+        if metadata:
+            logging.info(f"Cache hit for {file_path.name}")
+            if not (is_image and rename_images) and use_vision_cache:
+                is_vision_doc = True
+        else:
+            if is_image and rename_images:
+                metadata = await self.visual_processor.extract_metadata_from_image(
+                    file_path, add_exif_date=add_exif_date
+                )
+            else:
+                metadata, is_vision_doc = await self._extract_document_metadata(
+                    file_path, fallback_mode
+                )
+
+            if metadata:
+                await asyncio.to_thread(
+                    write_metadata_cache, cache_path, metadata, self.provider, self.model
+                )
+
+        return metadata, is_vision_doc
+
     async def process_file(
         self,
         file_path: Path,
@@ -98,70 +168,27 @@ class BookProcessor:
         update_metadata: bool = False,
         add_exif_date: bool = False,
     ) -> ProcessingResult:
-        """
-        Unified processing entry point for documents and images asynchronously.
-        """
-        metadata: BookMetadata | ImageMetadata | None = None
+        """Unified processing entry point for documents and images asynchronously."""
         try:
             if file_path.is_symlink():
                 logging.warning(f"Skipping symlink: {file_path.name}")
                 return ProcessingResult(success=False, name=file_path.name, error="Symlink skipped")
 
             file_hash = await asyncio.to_thread(get_file_hash, file_path)
-            is_image = file_path.suffix.lower() in get_image_extensions()
-
-            # Determine cache mode and vision usage
-            cache_mode = "img" if (is_image and rename_images) else "doc"
-            use_vision_cache = (is_image and rename_images) or (
-                fallback_mode == FallbackMode.VISION and file_path.suffix.lower() == ".pdf"
+            cache_path, model_class, use_vision = self._get_cache_parameters(
+                file_path, file_hash, fallback_mode, rename_images
             )
 
-            cache_path = get_metadata_cache_path(
-                file_hash,
-                self.provider,
-                self.model,
-                mode=cache_mode,
-                cache_dir=CACHE_DIR,
-                use_vision=use_vision_cache,
+            metadata, is_vision_doc = await self._resolve_metadata(
+                file_path=file_path,
+                cache_path=cache_path,
+                model_class=model_class,
+                use_vision_cache=use_vision,
+                fallback_mode=fallback_mode,
+                rename_images=rename_images,
+                update_metadata=update_metadata,
+                add_exif_date=add_exif_date,
             )
-
-            # Determine which model class to expect
-            model_class = ImageMetadata if (is_image and rename_images) else BookMetadata
-
-            metadata = (
-                None
-                if update_metadata
-                else await asyncio.to_thread(
-                    read_metadata_cache,
-                    cache_path,
-                    self.provider,
-                    self.model,
-                    model_class=model_class,
-                )
-            )
-
-            is_vision_doc = False
-            if metadata:
-                logging.info(f"Cache hit for {file_path.name}")
-                # Infer vision status from cache path parameters
-                if not (is_image and rename_images) and use_vision_cache:
-                    is_vision_doc = True
-            else:
-                if is_image and rename_images:
-                    # Direct Image Vision Mode
-                    metadata = await self.visual_processor.extract_metadata_from_image(
-                        file_path, add_exif_date=add_exif_date
-                    )
-                else:
-                    # Document Mode (Text-First)
-                    metadata, is_vision_doc = await self._extract_document_metadata(
-                        file_path, fallback_mode
-                    )
-
-                if metadata:
-                    await asyncio.to_thread(
-                        write_metadata_cache, cache_path, metadata, self.provider, self.model
-                    )
 
             if not metadata:
                 return ProcessingResult(
@@ -170,11 +197,8 @@ class BookProcessor:
                     error="Extraction failed (No metadata generated)",
                 )
 
-            # 2. Handle final action (rename or organize)
             if mode in ("rename", "organize"):
                 async with self.file_operation_lock:
-                    # Sanity check for type safety
-                    # (handles cases where cache might return dict or Any)
                     if not isinstance(metadata, (BookMetadata, ImageMetadata)):
                         return ProcessingResult(
                             success=False,
@@ -268,9 +292,7 @@ class BookProcessor:
                 resolved_root = self.root_dir.resolve()
                 resolved_dest = target_dest.resolve()
                 if not resolved_dest.is_relative_to(resolved_root):
-                    logging.error(
-                        "Target path %s escapes root %s", target_dest, self.root_dir
-                    )
+                    logging.error("Target path %s escapes root %s", target_dest, self.root_dir)
                     return ProcessingResult(
                         success=False, name=file_path.name, error="Security: Path traversal blocked"
                     )
