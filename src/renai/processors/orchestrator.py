@@ -324,7 +324,7 @@ async def run_pipeline(
     provider: str,
     model: str | None = None,
     config: ProcessingConfig | None = None,
-) -> None:
+) -> list[ProcessingResult]:
     """Core processing pipeline orchestration."""
     if config is None:
         config = ProcessingConfig()
@@ -351,7 +351,7 @@ async def run_pipeline(
 
     if not file_paths:
         console.print("[yellow]No supported files found to process.[/yellow]")
-        return
+        return []
 
     if config.benchmark:
         file_paths = file_paths[:3]
@@ -377,6 +377,8 @@ async def run_pipeline(
     # 4. Final Summary Card (Static, will stay in terminal history)
     if not config.benchmark and results:
         _print_final_summary(results)
+
+    return results
 
 
 async def _run_benchmark_mode(
@@ -441,17 +443,7 @@ async def run_evaluation_pipeline(
     workers: int = 4,
 ) -> None:
     """Run evaluation for multiple models asynchronously."""
-    # Resolve models to a list of (provider, model_name) pairs
-    target_models: list[tuple[str, str]] = []
-    if provider_filter:
-        models = load_eval_models(provider_filter)
-        for m in models:
-            target_models.append((provider_filter, m))
-    else:
-        all_models = load_all_eval_models()
-        for prov, models in all_models.items():
-            for m in models:
-                target_models.append((prov, m))
+    target_models = _resolve_target_models(provider_filter)
 
     if not target_models:
         console.print("[red]No evaluation models found in eval_models.toml.[/red]")
@@ -461,10 +453,12 @@ async def run_evaluation_pipeline(
     console.print(f"Target: [cyan]{root_dir}[/cyan]")
     console.print(f"Models: [green]{len(target_models)} total[/green]\n")
 
+    all_eval_results: dict[str, list[ProcessingResult]] = {}
+
     for provider, model_name in target_models:
         console.print(f"--- [bold yellow]Evaluating: {provider}/{model_name}[/bold yellow] ---")
 
-        await run_pipeline(
+        results = await run_pipeline(
             root_dir=root_dir,
             provider=provider,
             model=model_name,
@@ -479,4 +473,77 @@ async def run_evaluation_pipeline(
                 extraction_pages=app_settings.extraction_pages,
             ),
         )
+        all_eval_results[f"{provider}/{model_name}"] = results
         console.print(f"[dim]Results logged to: {EVAL_LOG_FILE}[/dim]\n")
+
+    _print_evaluation_summary(all_eval_results)
+
+
+def _resolve_target_models(provider_filter: str | None) -> list[tuple[str, str]]:
+    """Resolve configured models to a list of (provider, model_name) pairs."""
+    target_models: list[tuple[str, str]] = []
+    if provider_filter:
+        models = load_eval_models(provider_filter)
+        for m in models:
+            target_models.append((provider_filter, m))
+    else:
+        all_models = load_all_eval_models()
+        for prov, models in all_models.items():
+            for m in models:
+                target_models.append((prov, m))
+    return target_models
+
+
+def _print_evaluation_summary(all_eval_results: dict[str, list[ProcessingResult]]) -> None:
+    """Group and print evaluation comparison tables for each file."""
+    from collections import defaultdict
+
+    file_map = defaultdict(list)
+    for model_key, results in all_eval_results.items():
+        for res in results:
+            if res.file_path:
+                file_map[res.file_path.name].append((model_key, res))
+
+    if not file_map:
+        return
+
+    console.print("\n📊 [bold green]Evaluation Comparison Summary[/bold green]\n")
+    for file_name, runs in file_map.items():
+        table = Table(
+            title=f"File: [cyan]{file_name}[/cyan]",
+            show_header=True,
+            header_style="bold magenta",
+            border_style="dim",
+        )
+        table.add_column("Model/Provider", style="yellow")
+        table.add_column("Status", justify="center")
+        table.add_column("Extracted Title")
+        table.add_column("Author")
+        table.add_column("Category")
+        table.add_column("Year", justify="center")
+
+        for model_key, res in runs:
+            status = "[green]SUCCESS[/green]" if res.success else "[red]FAILED[/red]"
+            title = ""
+            author = ""
+            category = ""
+            year = ""
+
+            if res.success and res.metadata:
+                title = res.metadata.get("title") or ""
+                author = res.metadata.get("author") or ""
+                category = res.metadata.get("category") or ""
+                year = str(res.metadata.get("year") or "")
+            elif res.error:
+                title = f"[dim red]Error: {res.error[:30]}[/dim red]"
+
+            table.add_row(
+                model_key,
+                status,
+                title[:40],
+                author[:30],
+                category[:20],
+                year,
+            )
+        console.print(table)
+        console.print()
