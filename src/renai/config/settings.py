@@ -47,7 +47,9 @@ class AppSettings(BaseSettings):
     # Processing settings
     workers: int = Field(default=4, ge=1, le=32, description="Number of concurrent workers")
     text_length: int = Field(default=10000, ge=100, le=100000, description="Target text length")
-    text_extraction: str = Field(default="mixed", description="Extraction mode: mixed or regular")
+    text_extraction: str = Field(
+        default="head-tail", description="Extraction mode: head-tail or regular"
+    )
     extraction_pages: int = Field(default=10, ge=1, description="Number of pages to read from PDFs")
     extractor: str = Field(default="pymupdf", description="PDF text extractor library")
 
@@ -61,10 +63,11 @@ class AppSettings(BaseSettings):
         ge=10,
         description="Minimum characters for successful extraction",
     )
-    mixed_chunk_count: int = Field(
-        default=10,
-        ge=1,
-        description="Number of chunks for mixed extraction mode",
+    head_ratio: float = Field(
+        default=0.7,
+        ge=0.3,
+        le=0.9,
+        description="Head segment ratio for head-tail extraction (0.3-0.9)",
     )
     max_filename_length: int = Field(
         default=200,

@@ -153,49 +153,45 @@ def _analyze_exception(exc_value: BaseException) -> tuple[str, str]:
         OCRError,
         RenAIError,
     )
+    from renai.messages import errors as err
 
-    why = "An unexpected system error occurred."
-    how = "Please review the error details or open an issue on GitHub."
+    why = err.DEFAULT_WHY
+    how = err.DEFAULT_HOW
     exc_str = str(exc_value)
 
     if "API Key" in exc_str or "api_key" in exc_str:
-        why = "API Key not found or invalid."
-        how = "Check the RENAI_PROVIDER_API_KEY environment variable or update your .env file."
+        why = err.API_KEY_WHY
+        how = err.API_KEY_HOW
     elif "Tesseract" in exc_str or "mutool" in exc_str:
-        why = "A required external tool (OCR or MuTool) was not found."
-        how = "Ensure Tesseract or MuTool is installed and available in your PATH."
+        why = err.TOOL_MISSING_WHY
+        how = err.TOOL_MISSING_HOW
     elif isinstance(exc_value, FileNotFoundError):
-        why = f"The specified file or directory was not found: {exc_value.filename or exc_str}"
-        how = "Verify the accuracy of the file path."
+        why = err.FILE_NOT_FOUND_WHY.format(exc_value.filename or exc_str)
+        how = err.FILE_NOT_FOUND_HOW
     elif isinstance(exc_value, PermissionError):
-        why = "Missing required file system permissions."
-        how = "Make sure you have sufficient read/write privileges for the file/directory."
+        why = err.PERMISSION_WHY
+        how = err.PERMISSION_HOW
     elif isinstance(exc_value, ConfigurationError):
-        why = "Error in renAI configuration files or settings."
-        how = "Check the formatting and values inside the settings.toml file."
+        why = err.CONFIG_WHY
+        how = err.CONFIG_HOW
     elif isinstance(exc_value, LLMError):
-        why = "The AI (LLM) service provider returned an error."
-        how = (
-            "Check the API provider status (OpenAI, OpenRouter, etc.) and your internet connection."
-        )
+        why = err.LLM_WHY
+        how = err.LLM_HOW
     elif isinstance(exc_value, OCRError):
-        why = "OCR processing on the image or PDF failed."
-        how = "Verify your Tesseract installation and ensure the input file is not corrupted."
+        why = err.OCR_WHY
+        how = err.OCR_HOW
     elif isinstance(exc_value, ExtractionError):
-        why = "Failed to extract text or visual data from the file."
-        how = "Ensure the file format is supported and the file is not corrupted."
+        why = err.EXTRACTION_WHY
+        how = err.EXTRACTION_HOW
     elif isinstance(exc_value, CacheError):
-        why = "Failed to read from or write to the cache database."
-        how = "Check cache directory permissions or run the 'renai clear-cache' command."
+        why = err.CACHE_WHY
+        how = err.CACHE_HOW
     elif isinstance(exc_value, FileOperationError):
-        why = "Failed to move, copy, or rename the file."
-        how = (
-            "Ensure the destination directory is writable and "
-            "no locked file with the same name exists."
-        )
+        why = err.FILE_OP_WHY
+        how = err.FILE_OP_HOW
     elif isinstance(exc_value, RenAIError):
-        why = "An internal renAI-specific error occurred."
-        how = f"Please check the error details: {exc_str}"
+        why = err.REN_AI_WHY
+        how = err.REN_AI_HOW.format(exc_str)
 
     return why, how
 
@@ -215,15 +211,17 @@ def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
     console = Console()
     why, how = _analyze_exception(exc_value)
 
-    error_msg = f"[bold red]ERROR:[/bold red] {exc_value}\n\n"
-    error_msg += f"[bold yellow]WHY:[/bold yellow] {why}\n"
-    error_msg += f"[bold green]HOW TO FIX:[/bold green] {how}"
+    from renai.messages import errors as err
+
+    error_msg = err.ERROR_LABEL.format(exc_value) + "\n\n"
+    error_msg += err.WHY_LABEL.format(why) + "\n"
+    error_msg += err.HOW_LABEL.format(how)
 
     console.print()
     console.print(
         Panel(
             error_msg,
-            title="[bold red]renAI System Error[/bold red]",
+            title=err.PANEL_TITLE_SYSTEM_ERROR,
             border_style="red",
             expand=False,
         )

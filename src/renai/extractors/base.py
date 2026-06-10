@@ -6,8 +6,28 @@ class BaseExtractor(ABC):
     """Base class for all text extractors."""
 
     @abstractmethod
-    def extract_text(self, file_path: Path, pages: int = 10) -> str | None:
-        """Extract text from the given file."""
+    def extract_text(
+        self,
+        file_path: Path,
+        target_chars: int = 10000,
+        head_ratio: float = 0.7,
+        max_pages_per_side: int = 10,
+    ) -> str | None:
+        """Extract text from the given file using head-tail page sampling.
+
+        Reads pages from the beginning (head) and end (tail) of the document,
+        accumulating text up to target_chars. The head_ratio determines the
+        split between head and tail segments.
+
+        Args:
+            file_path: Path to the document.
+            target_chars: Maximum total characters to extract.
+            head_ratio: Fraction of target_chars for the head segment (0.0-1.0).
+            max_pages_per_side: Safety limit on pages read per side.
+
+        Returns:
+            Extracted text with head + separator + tail, or None on failure.
+        """
         pass
 
     @property

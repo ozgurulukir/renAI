@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import typer
-from rich.columns import Columns
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -36,6 +35,7 @@ from renai.config.constants import (
 )
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
+from renai.messages import orchestrator as orch_msg
 from renai.models import ProcessingResult
 from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.book import BookProcessor
@@ -173,21 +173,19 @@ class StatusDisplay:
         layout_table.add_row(
             Panel(
                 activity_table,
-                title="[bold blue]Recent Activity[/]",
+                title=orch_msg.Progress.TITLE_ACTIVITY,
                 border_style="blue",
                 padding=(1, 2),
             )
         )
 
-        stats_line = (
-            f" [bold cyan]Files:[/] {self.processed}  "
-            f"[bold green]Success:[/] {self.successful}  "
-            f"[bold red]Failed:[/] {self.failed}"
+        stats_line = orch_msg.Progress.STATS_LINE.format(
+            self.processed, self.successful, self.failed
         )
         layout_table.add_row(
             Panel(
                 Group(stats_line, "\n", self.progress),
-                title="[bold green]Total Progress[/]",
+                title=orch_msg.Progress.TITLE_TOTAL,
                 border_style="green",
             )
         )
@@ -244,7 +242,7 @@ async def _execute_processing_loop(
         console=console,
         expand=True,
     )
-    main_task = progress.add_task("[cyan]Processing...", total=len(file_paths))
+    main_task = progress.add_task(orch_msg.Status.PROCESSING, total=len(file_paths))
     status_display = StatusDisplay(progress)
     semaphore = asyncio.Semaphore(config.workers)
     results = []
@@ -263,7 +261,7 @@ async def _execute_processing_loop(
             # Standard Mode (Rename, Organize, Evaluate)
             async def _process_task(f_path: Path) -> ProcessingResult:
                 async with semaphore:
-                    status_display.update(f"Scanning {f_path.name}")
+                    status_display.update(orch_msg.Status.SCANNING.format(f_path.name))
 
                     res = await processor.process_file(
                         f_path,
@@ -301,18 +299,18 @@ def _print_final_summary(results: list[ProcessingResult]) -> None:
     summary_table.add_column(justify="left", style="white")
     summary_table.add_column(justify="right", style="cyan")
     summary_table.add_row(
-        "[bold green]✅ Successful[/bold green]", f"[bold green]{success_count}[/bold green]"
+        orch_msg.Summary.SUCCESS_BADGE, orch_msg.Summary.SUCCESS_COUNT.format(success_count)
     )
     if error_count > 0:
         summary_table.add_row(
-            "[bold red]❌ Failed[/bold red]", f"[bold red]{error_count}[/bold red]"
+            orch_msg.Summary.FAILED_BADGE, orch_msg.Summary.FAILED_COUNT.format(error_count)
         )
 
     console.print()
     console.print(
         Panel(
             summary_table,
-            title="[bold blue]Processing Result Summary[/]",
+            title=orch_msg.Summary.TITLE,
             border_style="green" if error_count == 0 else "yellow",
             padding=(1, 2),
             expand=False,
@@ -347,27 +345,9 @@ async def run_pipeline(
     try:
         file_paths = collect_files(root_dir, processor, config.recursive, config.rename_images)
     except KeyboardInterrupt:
-        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
+        console.print(orch_msg.Summary.CANCELLED)
         raise typer.Exit(code=0) from None
 
-    if not file_paths:
-        console.print("[yellow]No supported files found to process.[/yellow]")
-        return []
-
-    if config.benchmark:
-        file_paths = file_paths[:3]
-        console.print(
-            f"[yellow]Benchmark mode: only processing first {len(file_paths)} files.[/yellow]"
-        )
-
-    # Initial Info Summary
-    summary_cols = [
-        f"[bold blue]🚀 Files:[/bold blue] {len(file_paths)}",
-        f"[bold cyan]⚙ Workers:[/bold cyan] {config.workers}",
-        f"[bold yellow]⏱ RPM Limit:[/bold yellow] {app_settings.llm_rpm_limit}",
-    ]
-
-    console.print(Columns(summary_cols, expand=True))
     console.print()
 
     # 3. Execution Loop
@@ -393,8 +373,8 @@ async def _run_benchmark_mode(
     benchmark_data = []
 
     for ext_name in extractors_to_test:
-        msg = f"[bold yellow]BENCHMARK[/] Testing [cyan]{ext_name}[/]..."
-        status_display.update(msg)
+        bench_msg = orch_msg.Benchmark.TESTING.format(ext_name)
+        status_display.update(bench_msg)
 
         processor.extractor_name = ext_name
         # Re-initialize TextExtractor with new library
@@ -421,11 +401,11 @@ async def _run_benchmark_mode(
                 "success": f"{success_count}/{len(file_paths)}",
             }
         )
-        status_display.update(f"[green]Completed {ext_name} in {duration:.2f}s[/]")
+        status_display.update(orch_msg.Benchmark.COMPLETED.format(ext_name, duration))
 
     # Show Benchmark Result Table outside live
     live.stop()
-    bench_table = Table(title="PDF Extractor Benchmark Results")
+    bench_table = Table(title=orch_msg.Benchmark.TABLE_TITLE)
     bench_table.add_column("Extractor", style="cyan")
     bench_table.add_column("Time", style="magenta")
     bench_table.add_column("Success Rate", style="green")
@@ -447,17 +427,17 @@ async def run_evaluation_pipeline(
     target_models = _resolve_target_models(provider_filter)
 
     if not target_models:
-        console.print("[red]No evaluation models found in eval_models.toml.[/red]")
+        console.print(orch_msg.Eval.NO_MODELS)
         return
 
-    console.print("🔍 [bold blue]Evaluation Mode[/bold blue]")
-    console.print(f"Target: [cyan]{root_dir}[/cyan]")
-    console.print(f"Models: [green]{len(target_models)} total[/green]\n")
+    console.print(orch_msg.Eval.HEADER)
+    console.print(orch_msg.Eval.TARGET.format(root_dir))
+    console.print(orch_msg.Eval.MODEL_COUNT.format(len(target_models)))
 
     all_eval_results: dict[str, list[ProcessingResult]] = {}
 
     for provider, model_name in target_models:
-        console.print(f"--- [bold yellow]Evaluating: {provider}/{model_name}[/bold yellow] ---")
+        console.print(orch_msg.Eval.PER_PROVIDER.format(provider, model_name))
 
         results = await run_pipeline(
             root_dir=root_dir,
@@ -476,7 +456,7 @@ async def run_evaluation_pipeline(
             ),
         )
         all_eval_results[f"{provider}/{model_name}"] = results
-        console.print(f"[dim]Results logged to: {EVAL_LOG_FILE}[/dim]\n")
+        console.print(orch_msg.Eval.RESULTS_LOGGED.format(EVAL_LOG_FILE))
 
     _print_evaluation_summary(all_eval_results)
 
@@ -509,7 +489,7 @@ def _print_evaluation_summary(all_eval_results: dict[str, list[ProcessingResult]
     if not file_map:
         return
 
-    console.print("\n📊 [bold green]Evaluation Comparison Summary[/bold green]\n")
+    console.print(orch_msg.Eval.COMPARISON_TITLE)
     for file_name, runs in file_map.items():
         table = Table(
             title=f"File: [cyan]{file_name}[/cyan]",

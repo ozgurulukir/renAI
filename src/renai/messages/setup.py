@@ -1,0 +1,76 @@
+"""
+Setup wizard user-facing messages.
+"""
+
+
+class Wizard:
+    MISSING_TOMLI_W = (
+        "[error]Error: Missing 'tomli-w' dependency. "
+        "Please run 'uv sync' or install it manually.[/error]"
+    )
+    WELCOME_TITLE = "[bold cyan]renAI Configuration Wizard[/bold cyan]"
+    WELCOME_SUBTITLE = (
+        "[italic]Setting up your environment for AI-powered document organization.[/italic]"
+    )
+    CONFIG_DIR = "[info]Config directory:[/info] {}"
+    OVERWRITE_PROMPT = "User configuration files already exist. Overwrite?"
+    CANCELLED = "[info]Setup cancelled.[/info]"
+    STEP_1 = "\n[highlight]Step 1: Provider Setup[/highlight]"
+    STEP_2 = "\n[highlight]Step 2: General Settings[/highlight]"
+    STEP_3 = "\n[highlight]Step 3: Saving Configuration[/highlight]"
+    COMPLETE = "\n[bold green]renAI is now ready to use![/bold green]"
+    USAGE_HINT = "Try: [cyan]renai process <directory>[/cyan]"
+    USING_DEFAULTS = "[info]Using factory defaults for general settings.[/info]"
+    ADVANCED_PROMPT = "Would you like to configure advanced settings?"
+
+
+class Preflight:
+    HEADER = "[info]Pre-flight dependency check:[/info]"
+    TESSERACT_FOUND = "  - Tesseract OCR: [success]Found[/success] ({})"
+    TESSERACT_MISSING = "  - Tesseract OCR: [warning]Not Found (OCR fallback unavailable)[/warning]"
+    MUTOOL_FOUND = "  - mutool: [success]Found[/success] ({})"
+    MUTOOL_MISSING = "  - mutool: [info]Not Found (Optional, used for PDF page rendering)[/info]"
+
+
+class Save:
+    PROPAGATING = "[info]Propagating default configuration files...[/info]"
+    PROPAGATED = "  - Propagated: {}"
+    FINALIZED = "[success]✔ Configuration finalized successfully![/success]"
+    USER_SETTINGS = "[info]  - User Settings: {}[/info]"
+    SECRETS = "[info]  - Secrets (Keys): {}[/info]"
+    DEFAULTS_NOTE = "[info]  - Default files are also available for reference.[/info]"
+    FAILED = "[error]Failed to save configuration: {}[/error]"
+
+
+class Provider:
+    DEEPINFRA_DESC = "Fast and highly cost-effective cloud endpoints"
+    OPENROUTER_DESC = "Unified API accessing almost all commercial/open LLMs"
+    CUSTOM_DESC = "Locally hosted LLMs (Ollama, LM Studio, etc.)"
+    SELECT_PROMPT = "Select an LLM provider to configure:"
+    ANOTHER = "Would you like to configure another LLM provider?"
+    DEFAULT_SELECT = "Select the default LLM provider for renAI:"
+    DEFAULT_MODEL = "Select the default model for {}:"
+    MODEL_PROMPT = "Select or type a model for {}\n  (press Tab to show choices):"
+    BASE_URL_PROMPT = "Base URL for {}:"
+    API_KEY_PROMPT = "Enter your {} API Key:"
+    CUSTOM_KEY_PROMPT = "Custom API Key:"
+    CUSTOM_URL_PROMPT = "Custom API Base URL:"
+    CUSTOM_MODEL_PROMPT = "Custom Model Name:"
+    VALIDATING = "[info]Validating {} API Key...[/info]"
+    VALID_WARNING = "[warning]{}[/warning]"
+    KEY_VALID = "[success]✔ API Key is valid![/success]"
+    KEY_INVALID = "[error]API Key validation failed: {}[/error]"
+    CONNECTION_WARN = "Connection warning: {}"
+    VALID_GENERIC_WARN = "Warning: Could not verify key status: {}"
+    VALID_WRAPPER_WARN = "Warning: Could not run validation: {}"
+    ADD_MODEL = "Would you like to add another model for {}?"
+    NO_KEY_WARN = (
+        "[warning]Warning: No API key entered. You must set the\n"
+        "RENAI_{}_API_KEY env var to use this provider.[/warning]"
+    )
+
+
+class Settings:
+    WORKERS_PROMPT = "Concurrent workers:"
+    WORKERS_INVALID = "Please enter a valid integer"
+    FALLBACK_PROMPT = "Extraction fallback strategy:"

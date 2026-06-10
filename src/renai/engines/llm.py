@@ -105,12 +105,12 @@ class LLMEngine:
             logging.error(f"API Key for {self.provider} not found.")
             return None
 
-        truncated_text = text[: app_settings.text_length]
+        prompt = self._build_document_prompt(text)
         system_role = self._get_system_role("book_extractor", BookMetadata)
 
         # 1. Initial Extraction
         initial_model = await self._call_llm(
-            prompt=f"<document_content>\n{truncated_text}\n</document_content>",
+            prompt=prompt,
             system_role=system_role,
             model_class=BookMetadata,
         )
@@ -120,6 +120,20 @@ class LLMEngine:
 
         # 2. Refinement Pass
         return await self._refine_metadata(initial_model)
+
+    @staticmethod
+    def _build_document_prompt(text: str) -> str:
+        """Build LLM prompt with head/tail markers if separator is present."""
+        separator = "\n---\n"
+        if separator in text:
+            head_text, tail_text = text.split(separator, 1)
+            return (
+                f"<document_content>\n"
+                f"<document_head>\n{head_text}\n</document_head>\n"
+                f"<document_tail>\n{tail_text}\n</document_tail>\n"
+                f"</document_content>"
+            )
+        return f"<document_content>\n{text}\n</document_content>"
 
     async def _refine_metadata(self, initial_model: BookMetadata) -> BookMetadata:
         """Refine extracted metadata using the editor persona and SSoT schema."""

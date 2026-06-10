@@ -7,7 +7,7 @@
 provider = "deepinfra"
 workers = 4
 text_length = 10000
-text_extraction = "regular"
+text_extraction = "head-tail"
 extraction_pages = 10
 extractor = "pymupdf"
 show_warnings = true
@@ -15,7 +15,7 @@ recursive = true
 
 # Text and Content heuristics
 min_sufficient_text = 100
-mixed_chunk_count = 10
+head_ratio = 0.7
 max_filename_length = 200
 
 # LLM extraction parameters

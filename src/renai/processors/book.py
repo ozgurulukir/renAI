@@ -44,7 +44,7 @@ class BookProcessor:
         provider: str = "deepinfra",
         model: str = "",
         target_length: int = 10000,
-        text_extraction: str = "mixed",
+        text_extraction: str = "head-tail",
         extraction_pages: int = 10,
         move_scan_failures: bool = False,
         vision_max_pages: int | None = None,
