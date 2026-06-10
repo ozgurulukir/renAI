@@ -2,7 +2,7 @@
 
 `renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı meta veriler (metadata) çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
 
-Son güncelleme: 2026-05-31
+Son güncelleme: 2026-06-10
 
 ---
 
@@ -27,7 +27,7 @@ Araç hem bulut tabanlı LLM'leri (DeepInfra, OpenRouter, OpenAI) hem de yerel �
 Başlık -- Alt Başlık -- Baskı -- Yazar -- (Yıl).uzantı
 ```
 
-*Örnek: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
+_Örnek: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`_
 
 **Belgeler (Multimodal Görüş Modu):**
 
@@ -35,7 +35,7 @@ Başlık -- Alt Başlık -- Baskı -- Yazar -- (Yıl).uzantı
 Başlık -- Yazar -- (Yıl) -- (Dil).uzantı
 ```
 
-*Örnek: `Deep Learning Research -- Ian Goodfellow -- (2016) -- (en).pdf`*
+_Örnek: `Deep Learning Research -- Ian Goodfellow -- (2016) -- (en).pdf`_
 
 **Görseller (Multimodal Görüş Modu):**
 
@@ -43,30 +43,30 @@ Başlık -- Yazar -- (Yıl) -- (Dil).uzantı
 Açıklama -- [Tarih] -- (Dil).uzantı
 ```
 
-*Örnek: `Sunset -- [2024-07-15] -- (en).jpg`*
+_Örnek: `Sunset -- [2024-07-15] -- (en).jpg`_
 
 ---
 
 ## ✨ Özellikler
 
-| Özellik | Açıklama |
-| :--- | :--- |
-| **Çoklu Format Desteği** | PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD ve görüntü dosyalarını (JPG, PNG, HEIC vb.) işler |
-| **Çoklu PDF Çıkarıcıları** | PyMuPDF, pdfplumber, pypdf veya pypdfium2 arasından seçim yapın |
-| **Yapay Zeka Destekli Meta Veri** | Başlıkları, yazarları, yılları ve kategorileri çıkarmak için LLM'leri kullanır |
-| **Multimodal Modu** | Önce metin çıkarmayı dener; başarısız olursa PDF'leri OCR yerine vision model ile işle (daha doğru) |
-| **Görüntü Yeniden Adlandırma** | Yapay zeka görüntü analizi ile görüntü dosyalarını yeniden adlandır |
-| **Gelişmiş OCR** | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu |
-| **mutool Desteği** | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır |
-| **Akıllı Önbellekleme** | SHA256 tabanlı önbellekleme sistemi (Hem metin hem metadata için ayrı katmanlar). |
-| **AsyncIO-First** | Bloklamayan I/O ve yüksek eşzamanlılık için `asyncio` kullanan tamamen asenkron mimari |
-| **Async RPM Sınırı** | `AsyncRateLimiter` ile eşzamanlı görevlerde sağlayıcı limitlerine tam uyum |
-| **Ruff Desteği** | Kod stili tutarlılığı için ultra hızlı linting ve formatlama |
-| **SSoT Mimarisi** | Sıkı tipli Pydantic modelleri kullanarak meta veriler için Tek Gerçek Kaynak (SSoT) |
-| **Modüler Promptlar** | Dinamik JSON şema enjeksiyonuna sahip merkezi ve yeniden kullanılabilir prompt bileşenleri |
-| **Bütünleşik İyileştirme** | Hem metin hem de görsel modları için standartlaştırılmış ikinci geçiş 'Kıdemli Editör' mantığı |
-| **Token Optimizasyonu** | Bağlamdan bağımsız iyileştirme geçişi ile ikincil API maliyetlerinde ~%90 tasarruf |
-| **Özel Kategoriler** | `categories.toml` dosyasında dil başına kendi kategorilerinizi tanımlayın |
+| Özellik                           | Açıklama                                                                                            |
+| :-------------------------------- | :-------------------------------------------------------------------------------------------------- |
+| **Çoklu Format Desteği**          | PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD ve görüntü dosyalarını (JPG, PNG, HEIC vb.) işler        |
+| **Çoklu PDF Çıkarıcıları**        | PyMuPDF, pdfplumber, pypdf veya pypdfium2 arasından seçim yapın                                     |
+| **Yapay Zeka Destekli Meta Veri** | Başlıkları, yazarları, yılları ve kategorileri çıkarmak için LLM'leri kullanır                      |
+| **Multimodal Modu**               | Önce metin çıkarmayı dener; başarısız olursa PDF'leri OCR yerine vision model ile işle (daha doğru) |
+| **Görüntü Yeniden Adlandırma**    | Yapay zeka görüntü analizi ile görüntü dosyalarını yeniden adlandır                                 |
+| **Gelişmiş OCR**                  | Düşük kaliteli taramalar için Enhanced Mode ile Tesseract entegrasyonu                              |
+| **mutool Desteği**                | Sabit düzenli PDF'lerden yüksek kaliteli görüntüler çıkarır                                         |
+| **Akıllı Önbellekleme**           | SHA256 tabanlı önbellekleme sistemi (Hem metin hem metadata için ayrı katmanlar).                   |
+| **AsyncIO-First**                 | Bloklamayan I/O ve yüksek eşzamanlılık için `asyncio` kullanan tamamen asenkron mimari              |
+| **Async RPM Sınırı**              | `AsyncRateLimiter` ile eşzamanlı görevlerde sağlayıcı limitlerine tam uyum                          |
+| **Ruff Desteği**                  | Kod stili tutarlılığı için ultra hızlı linting ve formatlama                                        |
+| **SSoT Mimarisi**                 | Sıkı tipli Pydantic modelleri kullanarak meta veriler için Tek Gerçek Kaynak (SSoT)                 |
+| **Modüler Promptlar**             | Dinamik JSON şema enjeksiyonuna sahip merkezi ve yeniden kullanılabilir prompt bileşenleri          |
+| **Bütünleşik İyileştirme**        | Hem metin hem de görsel modları için standartlaştırılmış ikinci geçiş 'Kıdemli Editör' mantığı      |
+| **Token Optimizasyonu**           | Bağlamdan bağımsız iyileştirme geçişi ile ikincil API maliyetlerinde ~%90 tasarruf                  |
+| **Özel Kategoriler**              | `categories.toml` dosyasında dil başına kendi kategorilerinizi tanımlayın                           |
 
 ### Çalışma Modları
 
@@ -121,7 +121,6 @@ renAI, ilk kurulum için interaktif bir sihirbaz kullanır. Şu komutu çalışt
 uv run renai init
 ```
 
-
 Bu komut, işletim sisteminize uygun dizinde yapılandırma dosyalarınızı oluşturacaktır:
 
 - **Windows**: `%LOCALAPPDATA%\renAI`
@@ -162,7 +161,7 @@ renAI'yi ortam değişkenlerini (`RENAI_` ön eki ile) kullanarak da yapılandı
 
 ### Sıfır Kodlu Varsayılanlar (Zero-Code Defaults)
 
-renAI, "Sıfır Kodlu Varsayılanlar" felsefesini izler. Başlamak için yapılandırma dosyalarını düzenlemenize *gerek yoktur*. Temel fabrika varsayılanları paketle birlikte gelir, böylece basit bir ilklendirmeden sonra "direkt çalışır".
+renAI, "Sıfır Kodlu Varsayılanlar" felsefesini izler. Başlamak için yapılandırma dosyalarını düzenlemenize _gerek yoktur_. Temel fabrika varsayılanları paketle birlikte gelir, böylece basit bir ilklendirmeden sonra "direkt çalışır".
 
 Özelleştirme seçenekleri hiyerarşisi:
 
@@ -248,11 +247,11 @@ renai process "C:/Görüntüler" --fallback-mode vision --rename-images --provid
 
 Aynı klasördeki PDF ve görüntü dosyalarını işleyin:
 
-| Parametre | PDF/Desteklenen | Resim |
-| :--- | :--- | :--- |
-| `--fallback-mode vision` | Normal → Vision fallback | ⏭️ Atlanır |
+| Parametre                                | PDF/Desteklenen          | Resim                          |
+| :--------------------------------------- | :----------------------- | :----------------------------- |
+| `--fallback-mode vision`                 | Normal → Vision fallback | ⏭️ Atlanır                     |
 | `--fallback-mode vision --rename-images` | Normal → Vision fallback | 🔄 Vision ile yeniden adlandır |
-| `--rename-images` | Normal → OCR fallback | 🔄 Vision ile yeniden adlandır |
+| `--rename-images`                        | Normal → OCR fallback    | 🔄 Vision ile yeniden adlandır |
 
 ```bash
 # PDF'ler vision ile, görüntüler vision ile yeniden adlandırılır
@@ -313,28 +312,28 @@ uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-l
 uv run renai process "C:/Kitaplar/Yolu" --text-extraction regular --extraction-pages 5
 ```
 
-| Seçenek | Açıklama | Varsayılan |
-| :--- | :--- | :--- |
-| `--text-length` | LLM'e gönderilen hedef metin uzunluğu | 10000 |
-| `--text-extraction` | Metin çıkarma bölümlendirme mantığı (`mixed` veya `regular`) | `regular` |
-| `--extraction-pages` | Belgeden işlenecek hedef sayfa sayısı | 10 |
+| Seçenek              | Açıklama                                                     | Varsayılan |
+| :------------------- | :----------------------------------------------------------- | :--------- |
+| `--text-length`      | LLM'e gönderilen hedef metin uzunluğu                        | 10000      |
+| `--text-extraction`  | Metin çıkarma bölümlendirme mantığı (`mixed` veya `regular`) | `regular`  |
+| `--extraction-pages` | Belgeden işlenecek hedef sayfa sayısı                        | 10         |
 
 #### Özel Sağlayıcı için Ortam Değişkenleri
 
-| Değişken | Açıklama | Varsayılan |
-| :--- | :--- | :--- |
-| `CUSTOM_API_BASE_URL` | Yerel API sunucunuzun temel URL'si | `http://localhost:8000/v1` |
-| `CUSTOM_MODEL` | Kullanılacak model adı | `llama3` |
-| `CUSTOM_API_KEY` | API anahtarı (yerel sunucular için genellikle gerekmez) | `not-required` |
+| Değişken              | Açıklama                                                | Varsayılan                 |
+| :-------------------- | :------------------------------------------------------ | :------------------------- |
+| `CUSTOM_API_BASE_URL` | Yerel API sunucunuzun temel URL'si                      | `http://localhost:8000/v1` |
+| `CUSTOM_MODEL`        | Kullanılacak model adı                                  | `llama3`                   |
+| `CUSTOM_API_KEY`      | API anahtarı (yerel sunucular için genellikle gerekmez) | `not-required`             |
 
 #### Yaygın Yerel Sunucu URL'leri
 
-| Araç | URL |
-| :--- | :--- |
-| Ollama | `http://localhost:11434/v1` |
-| LM Studio | `http://localhost:1234/v1` |
-| LocalAI | `http://localhost:8080/v1` |
-| Text Generation WebUI | `http://localhost:5001/v1` |
+| Araç                  | URL                         |
+| :-------------------- | :-------------------------- |
+| Ollama                | `http://localhost:11434/v1` |
+| LM Studio             | `http://localhost:1234/v1`  |
+| LocalAI               | `http://localhost:8080/v1`  |
+| Text Generation WebUI | `http://localhost:5001/v1`  |
 
 ### Özel Modeller
 
@@ -424,13 +423,13 @@ renai cache --yes
 
 ### Teknik Sınırlamalar
 
-| Sınırlama | Açıklama |
-| :--- | :--- |
-| **Metin Uzunluğu** | `--text-length` ile yapılandırılabilir (örn. 10000 karakter) |
-| **API Maliyetleri** | İşlenen her dosya metni bir LLM API'ye gönderir |
-| **Oran Sınırları** | Sağlayıcılar oran sınırları uygulayabilir |
-| **OCR Kalitesi** | Taranmış belgeler kaliteli taramalar gerektirir |
-| **Dil Desteği** | Türkçe ve İngilizce için optimize edilmiştir |
+| Sınırlama           | Açıklama                                                     |
+| :------------------ | :----------------------------------------------------------- |
+| **Metin Uzunluğu**  | `--text-length` ile yapılandırılabilir (örn. 10000 karakter) |
+| **API Maliyetleri** | İşlenen her dosya metni bir LLM API'ye gönderir              |
+| **Oran Sınırları**  | Sağlayıcılar oran sınırları uygulayabilir                    |
+| **OCR Kalitesi**    | Taranmış belgeler kaliteli taramalar gerektirir              |
+| **Dil Desteği**     | Türkçe ve İngilizce için optimize edilmiştir                 |
 
 ### OCR İşleme Seçenekleri
 
@@ -445,26 +444,26 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 
 ### Önerilen Görüntü Modelleri
 
-| Sağlayıcı | Model | En İyi İçin |
-| :--- | :--- | :--- |
-| **OpenAI** | `gpt-4o` | En iyi doğruluk, güvenilir |
-| **OpenAI** | `gpt-4o-mini` | Hızlı, uygun maliyetli |
-| **OpenRouter** | `openai/gpt-4o` | Esnek fiyatlandırma |
-| **OpenRouter** | `google/gemini-1.5-flash` | Ücretsiz katman mevcut |
-| **DeepInfra** | `meta-llama/Llama-3.2-90B-Vision-Instruct` | Açık kaynak, güçlü |
-| **DeepInfra** | `Qwen/Qwen2-VL-72B-Instruct` | Mükemmel değer |
-| **Özel** | `llava`, `qwen-vl` | Yerel çıkarım |
+| Sağlayıcı      | Model                                      | En İyi İçin                |
+| :------------- | :----------------------------------------- | :------------------------- |
+| **OpenAI**     | `gpt-4o`                                   | En iyi doğruluk, güvenilir |
+| **OpenAI**     | `gpt-4o-mini`                              | Hızlı, uygun maliyetli     |
+| **OpenRouter** | `openai/gpt-4o`                            | Esnek fiyatlandırma        |
+| **OpenRouter** | `google/gemini-1.5-flash`                  | Ücretsiz katman mevcut     |
+| **DeepInfra**  | `meta-llama/Llama-3.2-90B-Vision-Instruct` | Açık kaynak, güçlü         |
+| **DeepInfra**  | `Qwen/Qwen2-VL-72B-Instruct`               | Mükemmel değer             |
+| **Özel**       | `llava`, `qwen-vl`                         | Yerel çıkarım              |
 
 ### Vision Modu vs OCR
 
-| Özellik | Vision Modu (`--fallback-mode vision`) | OCR Modu (varsayılan) |
-| :--- | :--- | :--- |
-| **Metin Çıkarma** | Önce dener, başarısız olursa vision fallback | Önce dener, başarısız olursa OCR fallback |
-| **Hız** | Metin PDF'leri için daha hızlı | OCR daha yavaş |
-| **Doğruluk** | Temiz metin için daha yüksek | Tarama kalitesine bağlı |
-| **Taranmış Belgeler** | Vision ile işler | Taramalar için optimize |
-| **Diller** | Model ile sınırlı | Türkçe+İngilizce optimize |
-| **API Maliyeti** | Görüntü tokenleri | Metin tokenleri |
+| Özellik               | Vision Modu (`--fallback-mode vision`)       | OCR Modu (varsayılan)                     |
+| :-------------------- | :------------------------------------------- | :---------------------------------------- |
+| **Metin Çıkarma**     | Önce dener, başarısız olursa vision fallback | Önce dener, başarısız olursa OCR fallback |
+| **Hız**               | Metin PDF'leri için daha hızlı               | OCR daha yavaş                            |
+| **Doğruluk**          | Temiz metin için daha yüksek                 | Tarama kalitesine bağlı                   |
+| **Taranmış Belgeler** | Vision ile işler                             | Taramalar için optimize                   |
+| **Diller**            | Model ile sınırlı                            | Türkçe+İngilizce optimize                 |
+| **API Maliyeti**      | Görüntü tokenleri                            | Metin tokenleri                           |
 
 **Görüntü Modu ne zaman kullanılır:**
 
@@ -496,10 +495,10 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 
 renAI, sağlayıcı-model farkındalığına sahip akıllı bir önbellek sistemi kullanır:
 
-| Önbellek Türü | Anahtar Bileşenleri | Geçersiz Kılma |
-| :--- | :--- | :--- |
-| **Metin Önbelleği** | Dosya hash + OCR ayarları | **Dosya İçeriği**: Dosyanın SHA256 karması değiştiğinde önbellek geçersiz kılınır. |
-| **Meta Veri Önbelleği** | Dosya hash + sağlayıcı + model + şema doğrulaması | Dosya içeriği, sağlayıcı, model veya şema değiştiğinde |
+| Önbellek Türü           | Anahtar Bileşenleri                               | Geçersiz Kılma                                                                     |
+| :---------------------- | :------------------------------------------------ | :--------------------------------------------------------------------------------- |
+| **Metin Önbelleği**     | Dosya hash + OCR ayarları                         | **Dosya İçeriği**: Dosyanın SHA256 karması değiştiğinde önbellek geçersiz kılınır. |
+| **Meta Veri Önbelleği** | Dosya hash + sağlayıcı + model + şema doğrulaması | Dosya içeriği, sağlayıcı, model veya şema değiştiğinde                             |
 
 **Nasıl çalışır:**
 
@@ -530,22 +529,22 @@ uv run renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 
 ### Gizlilik Değerlendirmeleri
 
-| Senaryo | Önerilen Sağlayıcı |
-| :------- | :----------------- |
-| Genel belgeler | Herhangi bir bulut sağlayıcısı (DeepInfra, OpenRouter, OpenAI) |
-| Özel/kişisel dosyalar | Yerel LLM ile `custom` sağlayıcısı |
-| Hassas iş belgeleri | Yerel LLM ile `custom` sağlayıcısı |
-| Test/deneme | Kolaylık için bulut sağlayıcıları |
+| Senaryo               | Önerilen Sağlayıcı                                             |
+| :-------------------- | :------------------------------------------------------------- |
+| Genel belgeler        | Herhangi bir bulut sağlayıcısı (DeepInfra, OpenRouter, OpenAI) |
+| Özel/kişisel dosyalar | Yerel LLM ile `custom` sağlayıcısı                             |
+| Hassas iş belgeleri   | Yerel LLM ile `custom` sağlayıcısı                             |
+| Test/deneme           | Kolaylık için bulut sağlayıcıları                              |
 
 Detaylı gizlilik rehberi, veri saklama politikaları ve uyumluluk konuları için bkz. [PRIVACY.md](docs/PRIVACY.md).
 
 ### Maliyet Tahmini
 
-| Dosya | Tahmini Maliyet (~$0.001/dosya) |
-| :--- | :--- |
-| 100 | 0,10$ |
-| 1.000 | 1,00$ |
-| 10.000 | 10,00$ |
+| Dosya  | Tahmini Maliyet (~$0.001/dosya) |
+| :----- | :------------------------------ |
+| 100    | 0,10$                           |
+| 1.000  | 1,00$                           |
+| 10.000 | 10,00$                          |
 
 Gerçek maliyetler sağlayıcı ve modele göre değişir.
 
@@ -559,7 +558,7 @@ renAI artık `platformdirs` kütüphanesi aracılığıyla modern ve işletim si
 
 - **Önbellek Verileri**: Windows'ta `%LOCALAPPDATA%\renAI\Cache` veya Linux'ta `~/.cache/renAI` dizininde yönetilir.
 - **Log ve Hata Ayıklama Verileri**: İşletim sisteminin kullanıcı veri dizininde yönetilir.
-- **Yapılandırma**: Düz işletim sistemi yapılandırma dizinindeki (iç içe klasörler olmadan) `config.toml`, `secrets.toml` ve `categories.toml` dosyaları aracılığıyla yönetilir.
+- **Yapılandırma**: Düz işletim sistemi yapılandırma dizinindeki (iç içe klasörler olmadan) `settings.toml`, `secrets.toml` ve `categories.toml` dosyaları aracılığıyla yönetilir.
 
 ### Özel Kategori Tanımlama
 
@@ -583,31 +582,31 @@ categories = [
 
 ### Komut Seçenekleri
 
-| Seçenek | Açıklama |
-| :--- | :--- |
-| `--provider` | `deepinfra`, `openrouter`, `openai` veya `custom` |
-| `--model` | Metin işleme veya vision modunda kullanılacak model adı |
-| `--workers` | Eşzamanlı çalışanlar (varsayılan: 4) |
-| `--ocr-enhanced` | Geliştirilmiş OCR'yi etkinleştir |
-| `--use-mutool` | Çıkarma için mutool kullan |
-| `--debug-ocr` | Hata ayıklama görüntülerini kaydet |
-| `--recursive` | Alt dizinleri işle (varsayılan: True) |
-| `--text-length` | Hedef metin uzunluğu (varsayılan: 10000) |
-| `--text-extraction` | Metin okuma modu (`mixed` veya `regular`) (varsayılan: `regular`) |
-| `--extraction-pages` | Doküman başına işlenecek sayfa sayısı |
-| `--update-metadata` | Önbelleği zorla yenile |
-| `--fallback-mode` | Çıkarma başarısız olduğundaki strateji (`none`, `ocr`, `vision`, `move`) |
-| `--move-scan-failures` | Başarısız dosyaları `Scan_Failures` klasörüne taşı |
-| `cache` | Önbelleği temizleme komutu |
-| `init` | İnteraktif kurulum sihirbazını başlatma komutu |
-| `providers` | Yapılandırılmış sağlayıcıları listeleme komutu |
-| `--version` | renAI versiyonunu göster |
+| Seçenek                | Açıklama                                                                 |
+| :--------------------- | :----------------------------------------------------------------------- |
+| `--provider`           | `deepinfra`, `openrouter`, `openai` veya `custom`                        |
+| `--model`              | Metin işleme veya vision modunda kullanılacak model adı                  |
+| `--workers`            | Eşzamanlı çalışanlar (varsayılan: 4)                                     |
+| `--ocr-enhanced`       | Geliştirilmiş OCR'yi etkinleştir                                         |
+| `--use-mutool`         | Çıkarma için mutool kullan                                               |
+| `--debug-ocr`          | Hata ayıklama görüntülerini kaydet                                       |
+| `--recursive`          | Alt dizinleri işle (varsayılan: True)                                    |
+| `--text-length`        | Hedef metin uzunluğu (varsayılan: 10000)                                 |
+| `--text-extraction`    | Metin okuma modu (`mixed` veya `regular`) (varsayılan: `regular`)        |
+| `--extraction-pages`   | Doküman başına işlenecek sayfa sayısı                                    |
+| `--update-metadata`    | Önbelleği zorla yenile                                                   |
+| `--fallback-mode`      | Çıkarma başarısız olduğundaki strateji (`none`, `ocr`, `vision`, `move`) |
+| `--move-scan-failures` | Başarısız dosyaları `Scan_Failures` klasörüne taşı                       |
+| `cache`                | Önbelleği temizleme komutu                                               |
+| `init`                 | İnteraktif kurulum sihirbazını başlatma komutu                           |
+| `providers`            | Yapılandırılmış sağlayıcıları listeleme komutu                           |
+| `--version`            | renAI versiyonunu göster                                                 |
 
 ---
 
 ## 🏗️ Mimari
 
-```text
+````text
 ├── src/
 │   └── renai/
 │       ├── cli.py               # CLI giriş noktası (Typer)
@@ -677,7 +676,7 @@ Yapay zeka kullanarak resim dosyalarını (fotoğraflar, ekran görüntüleri) y
 
 ```bash
 renai process "C:/Fotograflar" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
-```
+````
 
 Bu komut her resmi analiz edecek ve görsel içeriğine göre yeniden adlandıracaktır.
 
@@ -706,21 +705,21 @@ Bu komut, mevcutsa fotoğrafın EXIF meta verilerinden tarihi dosya adına ekler
 
 ### Tavsiye Edilen Görüş Modelleri
 
-| Model | Sağlayıcı | Notlar |
-| :--- | :--- | :--- |
-| `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra | Kalite ve hız arasında en iyi denge |
-| `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra | Daha hızlı, büyük partiler için iyi |
-| `openai/gpt-4o` | OpenAI | En yüksek kalite, daha pahalı |
-| `google/gemini-1.5-pro` | OpenRouter | İyi alternatif |
+| Model                                      | Sağlayıcı  | Notlar                              |
+| :----------------------------------------- | :--------- | :---------------------------------- |
+| `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra  | Kalite ve hız arasında en iyi denge |
+| `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra  | Daha hızlı, büyük partiler için iyi |
+| `openai/gpt-4o`                            | OpenAI     | En yüksek kalite, daha pahalı       |
+| `google/gemini-1.5-pro`                    | OpenRouter | İyi alternatif                      |
 
 ### Görüş Modu ve OCR Karşılaştırması
 
-| Özellik | Görüntü Modu | OCR Modu |
-| :--- | :--- | :--- |
-| Hız | Daha hızlı (metin çıkarma yok) | Daha yavaş |
-| Doğruluk | Modele bağlı | Temiz metin için iyi |
-| Maliyet | Dosya başına API çağrısı | Dosya başına API çağrısı |
-| En iyi için | Taranmış PDF'ler, resimler | Metin tabanlı PDF'ler |
+| Özellik     | Görüntü Modu                   | OCR Modu                 |
+| :---------- | :----------------------------- | :----------------------- |
+| Hız         | Daha hızlı (metin çıkarma yok) | Daha yavaş               |
+| Doğruluk    | Modele bağlı                   | Temiz metin için iyi     |
+| Maliyet     | Dosya başına API çağrısı       | Dosya başına API çağrısı |
+| En iyi için | Taranmış PDF'ler, resimler     | Metin tabanlı PDF'ler    |
 
 ---
 

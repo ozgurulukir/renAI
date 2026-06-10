@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-Last updated: 2026-06-06
+Last updated: 2026-06-10
 
 ---
 
@@ -27,7 +27,7 @@ The tool supports both cloud-based LLMs (DeepInfra, OpenRouter, OpenAI) and loca
 Title -- Subtitle -- Edition -- Author -- (Year).ext
 ```
 
-*Example: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`*
+_Example: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`_
 
 **Documents (Vision Mode):**
 
@@ -35,7 +35,7 @@ Title -- Subtitle -- Edition -- Author -- (Year).ext
 Title -- Author -- (Year) -- (Language).ext
 ```
 
-*Example: `Deep Learning Research -- Ian Goodfellow -- (2016) -- (en).pdf`*
+_Example: `Deep Learning Research -- Ian Goodfellow -- (2016) -- (en).pdf`_
 
 **Images (Vision Mode):**
 
@@ -43,30 +43,30 @@ Title -- Author -- (Year) -- (Language).ext
 Description -- [Date] -- (Language).ext
 ```
 
-*Example: `Sunset -- [2024-07-15] -- (en).jpg`*
+_Example: `Sunset -- [2024-07-15] -- (en).jpg`_
 
 ---
 
 ## ✨ Features
 
-| Feature | Description |
-| :--- | :--- |
-| **Multi-Format Support** | Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD, and image files (JPG, PNG, HEIC, etc.) |
-| **Multiple PDF Extractors** | Choose from PyMuPDF, pdfplumber, pypdf, or pypdfium2 |
-| **AI-Driven Metadata** | Uses LLMs to extract titles, authors, years, and categories |
-| **Vision Mode** | Tries text extraction first; falls back to vision-capable LLM for PDFs if text extraction fails (instead of OCR) |
-| **Image Renaming** | Rename image files using AI vision analysis |
-| **Advanced OCR** | Tesseract integration with Enhanced Mode for low-quality scans |
-| **mutool Support** | Extracts high-quality images from fixed-layout PDFs |
-| **Smart Caching** | SHA256-based caching system (separate layers for both text and metadata). |
-| **AsyncIO-First** | Fully asynchronous architecture using `asyncio` for non-blocking I/O and high concurrency |
-| **Async RPM Limiting** | Integrated `AsyncRateLimiter` ensures provider compliance across concurrent tasks |
-| **Ruff Powered** | ultra-fast linting and formatting for consistent code style |
-| **SSoT Architecture** | Single Source of Truth for metadata using strictly-typed Pydantic models |
-| **Modular Prompts** | Centralized, reusable prompt components with dynamic JSON schema injection |
-| **Unified Refinement** | Standardized second-pass 'Senior Editor' logic for both text and vision modes |
-| **Token Optimization** | Context-free refinement pass reduces secondary API costs by ~90% |
-| **Custom Categories** | Define your own categories per language in `categories.toml` |
+| Feature                     | Description                                                                                                      |
+| :-------------------------- | :--------------------------------------------------------------------------------------------------------------- |
+| **Multi-Format Support**    | Processes PDF, EPUB, MOBI, DOCX, PPTX, XLSX, TXT, MD, and image files (JPG, PNG, HEIC, etc.)                     |
+| **Multiple PDF Extractors** | Choose from PyMuPDF, pdfplumber, pypdf, or pypdfium2                                                             |
+| **AI-Driven Metadata**      | Uses LLMs to extract titles, authors, years, and categories                                                      |
+| **Vision Mode**             | Tries text extraction first; falls back to vision-capable LLM for PDFs if text extraction fails (instead of OCR) |
+| **Image Renaming**          | Rename image files using AI vision analysis                                                                      |
+| **Advanced OCR**            | Tesseract integration with Enhanced Mode for low-quality scans                                                   |
+| **mutool Support**          | Extracts high-quality images from fixed-layout PDFs                                                              |
+| **Smart Caching**           | SHA256-based caching system (separate layers for both text and metadata).                                        |
+| **AsyncIO-First**           | Fully asynchronous architecture using `asyncio` for non-blocking I/O and high concurrency                        |
+| **Async RPM Limiting**      | Integrated `AsyncRateLimiter` ensures provider compliance across concurrent tasks                                |
+| **Ruff Powered**            | ultra-fast linting and formatting for consistent code style                                                      |
+| **SSoT Architecture**       | Single Source of Truth for metadata using strictly-typed Pydantic models                                         |
+| **Modular Prompts**         | Centralized, reusable prompt components with dynamic JSON schema injection                                       |
+| **Unified Refinement**      | Standardized second-pass 'Senior Editor' logic for both text and vision modes                                    |
+| **Token Optimization**      | Context-free refinement pass reduces secondary API costs by ~90%                                                 |
+| **Custom Categories**       | Define your own categories per language in `categories.toml`                                                     |
 
 ### Operating Modes
 
@@ -122,7 +122,6 @@ renAI uses an interactive wizard for first-time setup. Run the following command
 uv run renai init
 ```
 
-
 This will create your configuration files in the appropriate OS directory:
 
 - **Windows**: `%LOCALAPPDATA%\renAI`
@@ -163,7 +162,7 @@ You can also configure renAI using environment variables (prefixed with `RENAI_`
 
 ### Zero-Code Defaults
 
-renAI follows a "Zero-Code Defaults" philosophy. You don't *need* to edit configuration files to start. Baseline factory defaults are included within the package, allowing it to "just work" after simple initialization.
+renAI follows a "Zero-Code Defaults" philosophy. You don't _need_ to edit configuration files to start. Baseline factory defaults are included within the package, allowing it to "just work" after simple initialization.
 
 Override options are available via:
 
@@ -242,11 +241,11 @@ renai process "C:/Path/To/Images" --fallback-mode vision --rename-images --provi
 
 Process both PDFs and images in the same folder:
 
-| Parameter | PDF/Supported | Image |
-| :--- | :--- | :--- |
-| `--fallback-mode vision` | Normal → Vision fallback | ⏭️ Skipped |
+| Parameter                                | PDF/Supported            | Image            |
+| :--------------------------------------- | :----------------------- | :--------------- |
+| `--fallback-mode vision`                 | Normal → Vision fallback | ⏭️ Skipped       |
 | `--fallback-mode vision --rename-images` | Normal → Vision fallback | 🔄 Vision rename |
-| `--rename-images` | Normal → OCR fallback | 🔄 Vision rename |
+| `--rename-images`                        | Normal → OCR fallback    | 🔄 Vision rename |
 
 ```bash
 # PDFs with vision, images with vision
@@ -315,28 +314,28 @@ renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 2
 renai process "C:/Path/To/Books" --mode rename --text-extraction regular --extraction-pages 5
 ```
 
-| Option | Description | Default |
-| :--- | :--- | :--- |
-| `--text-length` | Target text length sent to LLM | 10000 |
-| `--text-extraction` | Extraction chunking logic (`mixed` or `regular`) | `mixed` |
-| `--extraction-pages` | Target pages to process from the document | 10 |
+| Option               | Description                                      | Default |
+| :------------------- | :----------------------------------------------- | :------ |
+| `--text-length`      | Target text length sent to LLM                   | 10000   |
+| `--text-extraction`  | Extraction chunking logic (`mixed` or `regular`) | `mixed` |
+| `--extraction-pages` | Target pages to process from the document        | 10      |
 
 ### Environment Variables for Custom Provider
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `CUSTOM_API_BASE_URL` | Base URL of your local API server | `http://localhost:8000/v1` |
-| `CUSTOM_MODEL` | Model name to use | `llama3` |
-| `CUSTOM_API_KEY` | API key (usually not needed for local) | `not-required` |
+| Variable              | Description                            | Default                    |
+| :-------------------- | :------------------------------------- | :------------------------- |
+| `CUSTOM_API_BASE_URL` | Base URL of your local API server      | `http://localhost:8000/v1` |
+| `CUSTOM_MODEL`        | Model name to use                      | `llama3`                   |
+| `CUSTOM_API_KEY`      | API key (usually not needed for local) | `not-required`             |
 
 #### Common Local Server URLs
 
-| Tool | URL |
-| :--- | :--- |
-| Ollama | `http://localhost:11434/v1` |
-| LM Studio | `http://localhost:1234/v1` |
-| LocalAI | `http://localhost:8080/v1` |
-| Text Generation WebUI | `http://localhost:5001/v1` |
+| Tool                  | URL                         |
+| :-------------------- | :-------------------------- |
+| Ollama                | `http://localhost:11434/v1` |
+| LM Studio             | `http://localhost:1234/v1`  |
+| LocalAI               | `http://localhost:8080/v1`  |
+| Text Generation WebUI | `http://localhost:5001/v1`  |
 
 ### Different Models
 
@@ -371,7 +370,6 @@ Compare the performance and accuracy of different PDF extraction libraries on yo
 ```bash
 renai process "C:/Path/To/Books" --benchmark
 ```
-
 
 #### Advanced Model Evaluation
 
@@ -411,25 +409,25 @@ renAI supports vision-capable LLMs that can process PDFs and images as visual co
 
 ### Recommended Vision Models
 
-| Provider | Model | Best For |
-| :--- | :--- | :--- |
-| **OpenAI** | `gpt-4o` | Best accuracy, reliable |
-| **OpenAI** | `gpt-4o-mini` | Fast, cost-effective |
-| **OpenRouter** | `openai/gpt-4o` | Flexible pricing |
-| **OpenRouter** | `google/gemini-1.5-flash` | Free tier available |
-| **DeepInfra** | `meta-llama/Llama-3.2-90B-Vision-Instruct` | Open source, powerful |
-| **DeepInfra** | `Qwen/Qwen2-VL-72B-Instruct` | Excellent value |
-| **Custom** | `llava`, `qwen-vl` | Local inference |
+| Provider       | Model                                      | Best For                |
+| :------------- | :----------------------------------------- | :---------------------- |
+| **OpenAI**     | `gpt-4o`                                   | Best accuracy, reliable |
+| **OpenAI**     | `gpt-4o-mini`                              | Fast, cost-effective    |
+| **OpenRouter** | `openai/gpt-4o`                            | Flexible pricing        |
+| **OpenRouter** | `google/gemini-1.5-flash`                  | Free tier available     |
+| **DeepInfra**  | `meta-llama/Llama-3.2-90B-Vision-Instruct` | Open source, powerful   |
+| **DeepInfra**  | `Qwen/Qwen2-VL-72B-Instruct`               | Excellent value         |
+| **Custom**     | `llava`, `qwen-vl`                         | Local inference         |
 
 ### Vision Mode vs OCR
 
-| Feature | Vision Fallback (`--fallback-mode vision`) | OCR Fallback (`--fallback-mode ocr`) |
-| :--- | :--- | :--- |
-| **Speed** | Faster for text PDFs | Slower |
-| **Accuracy** | Higher for clear text | Depends on scan quality |
-| **Scanned Docs** | May struggle | Optimized for scans |
-| **Languages** | Limited to model | Turkish+English optimized |
-| **API Cost** | Image tokens | Text tokens |
+| Feature          | Vision Fallback (`--fallback-mode vision`) | OCR Fallback (`--fallback-mode ocr`) |
+| :--------------- | :----------------------------------------- | :----------------------------------- |
+| **Speed**        | Faster for text PDFs                       | Slower                               |
+| **Accuracy**     | Higher for clear text                      | Depends on scan quality              |
+| **Scanned Docs** | May struggle                               | Optimized for scans                  |
+| **Languages**    | Limited to model                           | Turkish+English optimized            |
+| **API Cost**     | Image tokens                               | Text tokens                          |
 
 **When to use Vision Mode:**
 
@@ -469,14 +467,14 @@ When using `--mode organize`:
 
 ### Technical Limitations
 
-| Limitation | Description |
-| :--- | :--- |
-| **Text Length** | Configurable via `--text-length` (e.g., 10000 chars) |
-| **API Costs** | Each file processed sends text to an LLM API |
-| **Rate Limits** | Providers may enforce rate limits |
-| **OCR Quality** | Scanned documents require good quality scans |
-| **Language Support** | Optimized for Turkish and English |
-| **Vision Mode** | PDF only (images supported with `--rename-images`) |
+| Limitation           | Description                                          |
+| :------------------- | :--------------------------------------------------- |
+| **Text Length**      | Configurable via `--text-length` (e.g., 10000 chars) |
+| **API Costs**        | Each file processed sends text to an LLM API         |
+| **Rate Limits**      | Providers may enforce rate limits                    |
+| **OCR Quality**      | Scanned documents require good quality scans         |
+| **Language Support** | Optimized for Turkish and English                    |
+| **Vision Mode**      | PDF only (images supported with `--rename-images`)   |
 
 ### OCR Handling Options
 
@@ -502,10 +500,10 @@ When using `--mode organize`:
 
 renAI uses an intelligent caching system that includes provider-model awareness:
 
-| Cache Type | Key Components | Invalidation |
-| :--- | :--- | :--- |
-| **Text Cache** | File hash + OCR settings | **File Content**: Cache is invalidated when the SHA256 hash of the file changes. |
-| **Metadata Cache** | File hash + provider + model + schema validation | When file content, provider, model, or schema changes |
+| Cache Type         | Key Components                                   | Invalidation                                                                     |
+| :----------------- | :----------------------------------------------- | :------------------------------------------------------------------------------- |
+| **Text Cache**     | File hash + OCR settings                         | **File Content**: Cache is invalidated when the SHA256 hash of the file changes. |
+| **Metadata Cache** | File hash + provider + model + schema validation | When file content, provider, model, or schema changes                            |
 
 **How it works:**
 
@@ -536,22 +534,22 @@ renai process "C:/Books" --provider deepinfra --update-metadata
 
 ### Privacy Considerations
 
-| Scenario | Recommended Provider |
-| :--- | :--- |
-| Public documents | Any cloud provider (DeepInfra, OpenRouter, OpenAI) |
-| Private/personal files | `custom` provider with local LLM |
-| Sensitive business documents | `custom` provider with local LLM |
-| Testing/experimentation | Cloud providers for convenience |
+| Scenario                     | Recommended Provider                               |
+| :--------------------------- | :------------------------------------------------- |
+| Public documents             | Any cloud provider (DeepInfra, OpenRouter, OpenAI) |
+| Private/personal files       | `custom` provider with local LLM                   |
+| Sensitive business documents | `custom` provider with local LLM                   |
+| Testing/experimentation      | Cloud providers for convenience                    |
 
 For detailed privacy guidance, data retention policies, and compliance considerations, see [PRIVACY.md](docs/PRIVACY.md).
 
 ### Cost Estimation
 
-| Files | Est. Cost (~$0.001/file) |
-| :--- | :--- |
-| 100 | $0.10 |
-| 1,000 | $1.00 |
-| 10,000 | $10.00 |
+| Files  | Est. Cost (~$0.001/file) |
+| :----- | :----------------------- |
+| 100    | $0.10                    |
+| 1,000  | $1.00                    |
+| 10,000 | $10.00                   |
 
 Actual costs vary by provider and model. Vision mode may have different pricing (image tokens vs text tokens).
 
@@ -589,30 +587,30 @@ categories = [
 
 ### Command Options
 
-| Option | Description |
-| :--- | :--- |
-| `--provider` | `deepinfra`, `openrouter`, `openai`, or `custom` |
-| `--model` | Model name (for text processing or vision if --fallback-mode vision is used) |
-| `--extractor` | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2` |
-| `--workers` | Concurrent workers (default: 4) |
-| `--ocr-enhanced` | Enable enhanced OCR |
-| `--use-mutool` | Use mutool for high-quality PDF-to-image conversion during OCR fallback (recommended for scanned PDFs) |
-| `--debug-ocr` | Save debug images |
-| `--recursive` | Process subdirectories (default: True) |
-| `--no-recursive` | Process root only |
-| `--exif` | Add EXIF date to image filenames when available |
-| `--text-length` | Target text length for LLM (default: 10000) |
-| `--text-extraction` | Extraction mode (`mixed` or `regular`) (default: `regular`) |
-| `--extraction-pages` | Pages to process per document |
-| `--update-metadata` | Force refresh metadata cache |
-| `--fallback-mode` | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`) |
-| `--move-scan-failures` | Move failed files to `Scan_Failures` folder |
-| `--benchmark` | Benchmark PDF extractors on the first 3 files |
-| `--vision-max-pages` | Max pages to sample for vision PDF extraction (default: 3) |
-| `cache` | Command to clear cache |
-| `init` | Command to start interactive setup wizard |
-| `providers` | Command to list configured providers |
-| `--version` | Show renAI version |
+| Option                 | Description                                                                                            |
+| :--------------------- | :----------------------------------------------------------------------------------------------------- |
+| `--provider`           | `deepinfra`, `openrouter`, `openai`, or `custom`                                                       |
+| `--model`              | Model name (for text processing or vision if --fallback-mode vision is used)                           |
+| `--extractor`          | `pymupdf`, `pypdf`, `pdfplumber`, `pypdfium2`                                                          |
+| `--workers`            | Concurrent workers (default: 4)                                                                        |
+| `--ocr-enhanced`       | Enable enhanced OCR                                                                                    |
+| `--use-mutool`         | Use mutool for high-quality PDF-to-image conversion during OCR fallback (recommended for scanned PDFs) |
+| `--debug-ocr`          | Save debug images                                                                                      |
+| `--recursive`          | Process subdirectories (default: True)                                                                 |
+| `--no-recursive`       | Process root only                                                                                      |
+| `--exif`               | Add EXIF date to image filenames when available                                                        |
+| `--text-length`        | Target text length for LLM (default: 10000)                                                            |
+| `--text-extraction`    | Extraction mode (`mixed` or `regular`) (default: `regular`)                                            |
+| `--extraction-pages`   | Pages to process per document                                                                          |
+| `--update-metadata`    | Force refresh metadata cache                                                                           |
+| `--fallback-mode`      | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`)                                       |
+| `--move-scan-failures` | Move failed files to `Scan_Failures` folder                                                            |
+| `--benchmark`          | Benchmark PDF extractors on the first 3 files                                                          |
+| `--vision-max-pages`   | Max pages to sample for vision PDF extraction (default: 3)                                             |
+| `cache`                | Command to clear cache                                                                                 |
+| `init`                 | Command to start interactive setup wizard                                                              |
+| `providers`            | Command to list configured providers                                                                   |
+| `--version`            | Show renAI version                                                                                     |
 
 > **Important:** When using `--fallback-mode vision` or `--rename-images`, you must use a vision-capable model. renAI does not validate vision capability - please ensure your model supports multimodal/vision input.
 
@@ -715,21 +713,21 @@ This adds the photo date from EXIF metadata to the filename when available.
 
 ### Top-Tier Vision Model Options
 
-| Model | Provider | Notes |
-| :--- | :--- | :--- |
-| `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra | Best balance of quality and speed |
-| `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra | Faster, good for large batches |
-| `openai/gpt-4o` | OpenAI | Highest quality, more expensive |
-| `google/gemini-1.5-pro` | OpenRouter | Good alternative |
+| Model                                      | Provider   | Notes                             |
+| :----------------------------------------- | :--------- | :-------------------------------- |
+| `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra  | Best balance of quality and speed |
+| `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra  | Faster, good for large batches    |
+| `openai/gpt-4o`                            | OpenAI     | Highest quality, more expensive   |
+| `google/gemini-1.5-pro`                    | OpenRouter | Good alternative                  |
 
 ### Vision Mode Comparison with OCR Engine
 
-| Feature | Vision Mode | OCR Mode |
-| :--- | :--- | :--- |
-| Speed | Faster (no text extraction) | Slower |
-| Accuracy | Depends on model | Good for clear text |
-| Cost | API calls per file | API calls per file |
-| Best for | Scanned PDFs, images | Text-based PDFs |
+| Feature  | Vision Mode                 | OCR Mode            |
+| :------- | :-------------------------- | :------------------ |
+| Speed    | Faster (no text extraction) | Slower              |
+| Accuracy | Depends on model            | Good for clear text |
+| Cost     | API calls per file          | API calls per file  |
+| Best for | Scanned PDFs, images        | Text-based PDFs     |
 
 ---
 

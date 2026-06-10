@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Vision Max Pages**: Configurable `vision_max_pages` setting (default: 3, range: 1-10) to limit sampled pages for PDF vision extraction.
+- **Atomic Cache Writes**: `write_text_cache` and `write_metadata_cache` now use `tempfile.mkstemp` + `Path.replace` for crash-safe atomic writes.
+- **OCR Cleanup Refactor**: PyMuPDF document close and bulk image cleanup moved to `finally` block in `OCREngine` for guaranteed resource release.
+- **Eval Log Batching**: Evaluation results are buffered (batch size: 50) and flushed via `asyncio.to_thread` to reduce synchronous I/O overhead in async pipeline.
+
+### Changed
+
+- **PDF Vision Optimization**: Inlined page-to-image conversion into `extract_metadata_from_pdf`; PDF opened once per file instead of per-page, reducing redundant I/O.
+- **Cache Invalidation**: Stale metadata cache files are now physically removed from disk on provider/model mismatch.
+
+### Fixed
+
+- **`_get_field` default handling**: Fixed helper to correctly return the default value when a metadata field is explicitly `None`.
+- **Benchmark mode NameError**: Corrected typo `console_print` → `console.print` in `run_pipeline`.
+- **ProcessingConfig.mode validation**: Added strict `Literal["rename", "organize", "evaluate"]` type constraint.
+- **Missing import**: Added `FallbackMode` import in `orchestrator.py` to fix `NameError` in evaluation pipeline.
+
 ## [2.1.0] - 2026-06-09
 
 ### Added

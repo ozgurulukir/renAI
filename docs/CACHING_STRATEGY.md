@@ -25,11 +25,11 @@ The text cache key is generated using:
 {file_hash}[_ocr][_mutool].txt
 ```
 
-| Component | Description | Example |
-| :--- | :--- | :--- |
-| `file_hash` | SHA256 hash of file content | `abc123def456` |
-| `_ocr` | OCR fallback was used | `_ocr` |
-| `_mutool` | mutool was used for PDF conversion | `_mutool` |
+| Component   | Description                        | Example        |
+| :---------- | :--------------------------------- | :------------- |
+| `file_hash` | SHA256 hash of file content        | `abc123def456` |
+| `_ocr`      | OCR fallback was used              | `_ocr`         |
+| `_mutool`   | mutool was used for PDF conversion | `_mutool`      |
 
 **Examples:**
 
@@ -45,11 +45,11 @@ The metadata cache key is generated using:
 {mode}_{file_hash}_{provider_model_hash}[_vision].json
 ```
 
-| Component | Description | Example |
-| :--- | :--- | :--- |
-| `file_hash` | SHA256 hash of file content | `abc123def456` |
-| `provider_model_hash` | Hash of provider:model pair | `a1b2c3d4` |
-| `_vision` | Optional suffix for Vision mode results | `_vision` |
+| Component             | Description                             | Example        |
+| :-------------------- | :-------------------------------------- | :------------- |
+| `file_hash`           | SHA256 hash of file content             | `abc123def456` |
+| `provider_model_hash` | Hash of provider:model pair             | `a1b2c3d4`     |
+| `_vision`             | Optional suffix for Vision mode results | `_vision`      |
 
 **Examples:**
 
@@ -100,9 +100,9 @@ else:
 
 Cache entries are automatically invalidated when:
 
-| Cache Type | Invalidated When |
-| :--- | :--- |
-| Text Cache | File content changes, OCR mode changes (enhanced/basic), mutool usage changes |
+| Cache Type     | Invalidated When                                                                                |
+| :------------- | :---------------------------------------------------------------------------------------------- |
+| Text Cache     | File content changes, OCR mode changes (enhanced/basic), mutool usage changes                   |
 | Metadata Cache | File content changes, provider changes, model changes, processing mode changes (Text vs Vision) |
 
 ### Cache Management
@@ -145,11 +145,11 @@ Cache/
 
 ### Cache Contents
 
-| File Type | Contents | Sensitive? |
-| :--- | :--- | :---: |
-| `*_enhanced.txt` | Extracted text (up to 10000 chars) | ⚠️ Yes |
-| `*_basic.txt` | Extracted text (up to 10000 chars) | ⚠️ Yes |
-| `*_metadata.json` | Title, author, year, category + provider/model info | ⚠️ Yes |
+| File Type         | Contents                                            | Sensitive? |
+| :---------------- | :-------------------------------------------------- | :--------: |
+| `*_enhanced.txt`  | Extracted text (up to 10000 chars)                  |   ⚠️ Yes   |
+| `*_basic.txt`     | Extracted text (up to 10000 chars)                  |   ⚠️ Yes   |
+| `*_metadata.json` | Title, author, year, category + provider/model info |   ⚠️ Yes   |
 
 ### Security Recommendations
 
@@ -282,12 +282,12 @@ class BookProcessor:
 
 Expected cache hit rates:
 
-| Scenario | Expected Hit Rate |
-| :--- | :---: |
-| Same files, same provider/model | ~100% |
-| Same files, different provider | ~0% (new entries created) |
-| Files with minor changes | ~0% (new hashes) |
-| Re-processing after cache clear | ~0% |
+| Scenario                        |     Expected Hit Rate     |
+| :------------------------------ | :-----------------------: |
+| Same files, same provider/model |           ~100%           |
+| Same files, different provider  | ~0% (new entries created) |
+| Files with minor changes        |     ~0% (new hashes)      |
+| Re-processing after cache clear |            ~0%            |
 
 ---
 
@@ -316,17 +316,17 @@ renai cache
 
 ## Changelog
 
-| Date | Change |
-| :--- | :--- |
-| 2025-01-26 | Initial caching strategy implementation |
-| 2025-01-26 | Added provider-model awareness to cache keys |
-| 2025-01-26 | Implemented cache validation on read |
-| 2025-01-27 | Added vision mode and image renaming cache scenarios |
-| 2026-03-11 | Removed unused `_cached_at` field from metadata cache |
-| 2026-03-14 | Unified Vision/Image cache with `_vision` suffix for PDFs |
-| 2026-04-08 | Transitioned to Typer CLI with centralized Orchestration pattern |
-| 2026-04-16 | **v2.0.0 Release**: Fully asynchronous CacheManager using `asyncio.to_thread` |
+| Date       | Change                                                                              |
+| :--------- | :---------------------------------------------------------------------------------- |
+| 2025-01-26 | Initial caching strategy implementation                                             |
+| 2025-01-26 | Added provider-model awareness to cache keys                                        |
+| 2025-01-26 | Implemented cache validation on read                                                |
+| 2025-01-27 | Added vision mode and image renaming cache scenarios                                |
+| 2026-03-11 | Removed unused `_cached_at` field from metadata cache                               |
+| 2026-03-14 | Unified Vision/Image cache with `_vision` suffix for PDFs                           |
+| 2026-04-08 | Transitioned to Typer CLI with centralized Orchestration pattern                    |
+| 2026-06-10 | **v2.2.0 Release**: Atomic cache writes, vision_max_pages config, eval log batching |
 
 ## Status
 
-Last updated: 2026-04-16
+Last updated: 2026-06-10
