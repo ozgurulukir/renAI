@@ -9,6 +9,76 @@ segmentler head/tail marker ile işaretlenecek.
 
 ---
 
+## Faz 0: Kritik Keşif — Extractor Head-Tail Page Sampling
+
+### Sorun
+
+Mevcut extractor'lar (`PyMuPDFExtractor`, `PDFPlumberExtractor`, vb.) **sadece
+ilk N sayfayı** linear okuyor:
+
+```python
+# pdf_extractors.py:15
+for i in range(min(pages, len(doc))):
+    page_text = doc[i].get_text()
+```
+
+Bu demek ki `extraction_pages=10` ile sadece ilk 10 sayfa okunuyor.
+PDF'in **son sayfaları** (referanslar, ISBN, kolofon) hiç extraction'a girmiyor.
+Head-tail trimming ancak **tüm metin elimizdeyse** anlamlıdır.
+
+### Çözüm: Page-level head-tail sampling
+
+Extractor'lar sadece ilk N sayfa değil, **ilk N sayfa + son M sayfa** okumalı:
+
+```python
+def extract_text(self, file_path: Path, pages: int = 10) -> str | None:
+    with pymupdf.open(str(file_path)) as doc:
+        total = len(doc)
+        # Head: ilk `pages` sayfa
+        head_end = min(pages, total)
+        head_pages = range(0, head_end)
+
+        # Tail: son `pages` sayfa (head ile overlap varsa atla)
+        tail_start = max(head_end, total - pages)
+        tail_pages = range(tail_start, total)
+
+        # Deduplicate (kısa PDF'lerde head ve tail overlap edebilir)
+        sampled = sorted(set(head_pages) | set(tail_pages))
+
+        text_parts = [doc[i].get_text() for i in sampled]
+        return "".join(text_parts).strip()
+```
+
+**Sonuç:** 300 sayfalık bir PDF'de `pages=10` ile ilk 10 + son 10 sayfa okunur.
+Kısa bir 8 sayfalık PDF'de tüm sayfalar okunur (overlap merge edilir).
+
+### Değişecek dosyalar
+
+- [ ] `src/renai/extractors/pdf_extractors.py` — tüm 4 extractor güncellenecek:
+  - `PyMuPDFExtractor.extract_text()`
+  - `PDFPlumberExtractor.extract_text()`
+  - `PyPDFExtractor.extract_text()`
+  - `PyPFDFium2Extractor.extract_text()`
+- [ ] `src/renai/extractors/base.py` — `extract_text` docstring güncelle
+- [ ] `extraction_pages` parametresi artık "head için N sayfa, tail için N sayfa"
+  anlamına gelecek. Help text güncelle.
+- [ ] Head ve tail sayfaları arasında marker ekle:
+  ```python
+  head_text = "".join(doc[i].get_text() for i in head_pages)
+  tail_text = "".join(doc[i].get_text() for i in tail_pages)
+  return head_text + "\n--- TAIL PAGES ---\n" + tail_text
+  ```
+  VEYA sadece concatenate et (trimming phase marker'ı ekleyecek).
+- [ ] Test: kısa PDF (overlap), uzun PDF (no overlap), 1 sayfalık PDF
+
+### Performans notu
+
+Head-tail page sampling ile okunan sayfa sayısı ikiye çıkar (10→20).
+Ama sadece metadata için okunuyor ve `text_length` truncation zaten
+gereksiz metni atacak. 20 sayfa ≈ 60.000 karakter → 10.000'e trim.
+
+---
+
 ## Faz 1: Core Logic — `utils/__init__.py`
 
 ### 1.1 `proportional_chunk_trim` → `head_tail_trim`
@@ -255,6 +325,8 @@ LLMEngine.get_book_metadata(text)
 
 | Dosya | Değişiklik |
 |---|---|
+| `src/renai/extractors/pdf_extractors.py` | Head-tail page sampling (ilk N + son N sayfa) |
+| `src/renai/extractors/base.py` | Docstring güncelle |
 | `src/renai/utils/__init__.py` | `proportional_chunk_trim` → `head_tail_trim` |
 | `src/renai/engines/llm.py` | Double truncation kaldır, marker ekle |
 | `src/renai/processors/text_extractor.py` | Import + metot adı güncelle |
@@ -281,12 +353,13 @@ LLMEngine.get_book_metadata(text)
 
 ## Uygulama Sırası
 
-1. **Faz 1** — Core `head_tail_trim` fonksiyonu
-2. **Faz 6.4** — Yeni testler (TDD)
-3. **Faz 3** — TextExtractor entegrasyonu
-4. **Faz 2** — LLM marker + double truncation kaldır
-5. **Faz 4** — Settings + backward compat
-6. **Faz 5** — CLI güncellemeleri
-7. **Faz 6.1-6.3** — Eski testleri temizle/güncelle
-8. **Faz 7** — Dökümantasyon
-9. **Faz 8** — Geçiş kontrolü + ruff + pyright + pytest
+1. **Faz 0** — Extractor head-tail page sampling (kritik — olmadan head-tail çalışmaz)
+2. **Faz 1** — Core `head_tail_trim` fonksiyonu
+3. **Faz 6.4** — Yeni testler (TDD)
+4. **Faz 3** — TextExtractor entegrasyonu
+5. **Faz 2** — LLM marker + double truncation kaldır
+6. **Faz 4** — Settings + backward compat
+7. **Faz 5** — CLI güncellemeleri
+8. **Faz 6.1-6.3** — Eski testleri temizle/güncelle
+9. **Faz 7** — Dökümantasyon
+10. **Faz 8** — Geçiş kontrolü + ruff + pyright + pytest
