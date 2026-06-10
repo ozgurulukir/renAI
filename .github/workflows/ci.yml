@@ -54,9 +54,10 @@ jobs:
           python-version: "3.12"
           cache: 'pip'
 
-      - name: Install linting tools
+      - name: Install linting tools and dependencies
         run: |
           pip install ruff pyright
+          pip install -e ".[pdf-extra]"
 
       - name: Run ruff (linting)
         run: |
