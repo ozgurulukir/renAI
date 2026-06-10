@@ -166,7 +166,7 @@ def _analyze_exception(exc_value: BaseException) -> tuple[str, str]:
         why = err.TOOL_MISSING_WHY
         how = err.TOOL_MISSING_HOW
     elif isinstance(exc_value, FileNotFoundError):
-        why = f"The specified file or directory was not found: {exc_value.filename or exc_str}"
+        why = err.FILE_NOT_FOUND_WHY.format(exc_value.filename or exc_str)
         how = err.FILE_NOT_FOUND_HOW
     elif isinstance(exc_value, PermissionError):
         why = err.PERMISSION_WHY
@@ -191,7 +191,7 @@ def _analyze_exception(exc_value: BaseException) -> tuple[str, str]:
         how = err.FILE_OP_HOW
     elif isinstance(exc_value, RenAIError):
         why = err.REN_AI_WHY
-        how = f"Please check the error details: {exc_str}"
+        how = err.REN_AI_HOW.format(exc_str)
 
     return why, how
 

@@ -8,6 +8,8 @@ from questionary import Style
 from rich.console import Console
 from rich.theme import Theme
 
+from renai.messages import setup as msg
+
 from ..settings import app_settings
 
 # Custom theme for setup messages
@@ -77,12 +79,12 @@ def _build_provider_options(catalog: dict, all_devs: list[str]) -> list[dict]:
     provider_options = [
         {
             "name": "deepinfra",
-            "desc": "Fast and highly cost-effective cloud endpoints",
+            "desc": msg.Provider.DEEPINFRA_DESC,
             "extra": "meta-llama/Llama-3.3-70B-Instruct",
         },
         {
             "name": "openrouter",
-            "desc": "Unified API accessing almost all commercial/open LLMs",
+            "desc": msg.Provider.OPENROUTER_DESC,
             "extra": "google/gemini-2.0-flash-exp:free",
         },
     ]
@@ -113,7 +115,7 @@ def _build_provider_options(catalog: dict, all_devs: list[str]) -> list[dict]:
     provider_options.append(
         {
             "name": "custom",
-            "desc": "Locally hosted LLMs (Ollama, LM Studio, etc.)",
+            "desc": msg.Provider.CUSTOM_DESC,
             "extra": "llama3",
         }
     )
@@ -171,10 +173,7 @@ def _prompt_model_selection(selected_provider: str, catalog: dict, provider_opti
             default_model = opt["extra"]
             break
 
-    prompt_msg = (
-        f"Select or type a model for {selected_provider.capitalize()}\n"
-        "  (press Tab to show choices):"
-    )
+    prompt_msg = msg.Provider.MODEL_PROMPT.format(selected_provider.capitalize())
     selected_model = questionary.autocomplete(
         prompt_msg,
         choices=display_choices,
@@ -214,7 +213,9 @@ def _prompt_base_url(selected_provider: str) -> str:
     }
     default_base = known_base_urls.get(selected_provider, "http://localhost:8000/v1")
     base_url = questionary.text(
-        f"Base URL for {selected_provider.capitalize()}:", default=default_base, style=custom_style
+        msg.Provider.BASE_URL_PROMPT.format(selected_provider.capitalize()),
+        default=default_base,
+        style=custom_style,
     ).ask()
     if base_url is None:
         raise KeyboardInterrupt
@@ -234,12 +235,9 @@ async def _validate_api_key_async(base_url: str, api_key: str) -> tuple[bool, st
         # Invalid API key
         return False, str(e)
     except APIConnectionError as e:
-        # Network/connection error - warn but allow proceeding
-        return True, f"Connection warning: {e}"
+        return True, msg.Provider.CONNECTION_WARN.format(e)
     except Exception as e:
-        # Other errors (e.g., method not allowed 405 on some custom endpoints)
-        # We just warn and allow proceeding to be safe.
-        return True, f"Warning: Could not verify key status: {e}"
+        return True, msg.Provider.VALID_GENERIC_WARN.format(e)
 
 
 def _validate_api_key(base_url: str, api_key: str) -> tuple[bool, str]:
@@ -260,7 +258,7 @@ def _validate_api_key(base_url: str, api_key: str) -> tuple[bool, str]:
         else:
             return asyncio.run(_validate_api_key_async(base_url, api_key))
     except Exception as e:
-        return True, f"Warning: Could not run validation: {e}"
+        return True, msg.Provider.VALID_WRAPPER_WARN.format(e)
 
 
 def _prompt_and_validate_api_key(
@@ -270,11 +268,12 @@ def _prompt_and_validate_api_key(
     while True:
         if is_custom:
             api_key = questionary.text(
-                "Custom API Key:", default="not-required", style=custom_style
+                msg.Provider.CUSTOM_KEY_PROMPT, default="not-required", style=custom_style
             ).ask()
         else:
             api_key = questionary.password(
-                f"Enter your {selected_provider.capitalize()} API Key:", style=custom_style
+                msg.Provider.API_KEY_PROMPT.format(selected_provider.capitalize()),
+                style=custom_style,
             ).ask()
 
         if api_key is None:
@@ -284,16 +283,16 @@ def _prompt_and_validate_api_key(
         if not api_key.strip() or (is_custom and api_key == "not-required"):
             return api_key
 
-        console.print(f"[info]Validating {selected_provider.capitalize()} API Key...[/info]")
+        console.print(msg.Provider.VALIDATING.format(selected_provider.capitalize()))
         is_valid, error_msg = _validate_api_key(base_url, api_key)
         if is_valid:
             if error_msg:
-                console.print(f"[warning]{error_msg}[/warning]")
+                console.print(msg.Provider.VALID_WARNING.format(error_msg))
             else:
-                console.print("[success]✔ API Key is valid![/success]")
+                console.print(msg.Provider.KEY_VALID)
             return api_key
 
-        console.print(f"[error]API Key validation failed: {error_msg}[/error]")
+        console.print(msg.Provider.KEY_INVALID.format(error_msg))
 
 
 def _configure_standard_provider(
@@ -321,7 +320,7 @@ def _configure_standard_provider(
             configured[selected_provider]["models"].append(actual_model)
 
         add_another_model = questionary.confirm(
-            f"Would you like to add another model for {selected_provider.capitalize()}?",
+            msg.Provider.ADD_MODEL.format(selected_provider.capitalize()),
             default=False,
             style=custom_style,
         ).ask()
@@ -341,10 +340,12 @@ def _configure_single_provider(
 
     if selected_provider == "custom":
         base_url = questionary.text(
-            "Custom API Base URL:", default="http://localhost:8000/v1", style=custom_style
+            msg.Provider.CUSTOM_URL_PROMPT,
+            default="http://localhost:8000/v1",
+            style=custom_style,
         ).ask()
         custom_model = questionary.text(
-            "Custom Model Name:", default="llama3", style=custom_style
+            msg.Provider.CUSTOM_MODEL_PROMPT, default="llama3", style=custom_style
         ).ask()
 
         if base_url is None or custom_model is None:
@@ -379,10 +380,7 @@ def _build_final_config_and_secrets(
             config["providers"][name]["api_key"] = data["api_key"]
 
             if not data["api_key"].strip():
-                console.print(
-                    "[warning]Warning: No API key entered. You must set the\n"
-                    f"RENAI_{name.upper()}_API_KEY env var to use this provider.[/warning]"
-                )
+                console.print(msg.Provider.NO_KEY_WARN.format(name.upper()))
 
     return config, secrets
 
@@ -416,7 +414,7 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
             )
 
         selected_provider = questionary.select(
-            "Select an LLM provider to configure:",
+            msg.Provider.SELECT_PROMPT,
             choices=provider_choices,
             default="openai" if "openai" not in configured else None,
             style=custom_style,
@@ -428,7 +426,7 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
         _configure_single_provider(selected_provider, configured, provider_options, catalog)
 
         add_another_provider = questionary.confirm(
-            "Would you like to configure another LLM provider?", default=False, style=custom_style
+            msg.Provider.ANOTHER, default=False, style=custom_style
         ).ask()
 
         if add_another_provider is None:
@@ -438,7 +436,7 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
 
     configured_names = list(configured.keys())
     default_provider = questionary.select(
-        "Select the default LLM provider for renAI:",
+        msg.Provider.DEFAULT_SELECT,
         choices=configured_names,
         default="openai" if "openai" in configured_names else configured_names[0],
         style=custom_style,
@@ -449,7 +447,7 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
 
     default_models = configured[default_provider]["models"]
     default_model = questionary.select(
-        f"Select the default model for {default_provider.capitalize()}:",
+        msg.Provider.DEFAULT_MODEL.format(default_provider.capitalize()),
         choices=default_models,
         default=default_models[0],
         style=custom_style,
@@ -464,9 +462,9 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
 def _configure_advanced_settings() -> dict[str, str | int]:
     """Prompt the user for advanced application settings."""
     workers_str = questionary.text(
-        "Concurrent workers:",
+        msg.Settings.WORKERS_PROMPT,
         default=str(app_settings.workers),
-        validate=lambda text: text.isdigit() or "Please enter a valid integer",
+        validate=lambda text: text.isdigit() or msg.Settings.WORKERS_INVALID,
         style=custom_style,
     ).ask()
     if workers_str is None:
@@ -474,7 +472,7 @@ def _configure_advanced_settings() -> dict[str, str | int]:
     workers = int(workers_str)
 
     fallback_mode = questionary.select(
-        "Extraction fallback strategy:",
+        msg.Settings.FALLBACK_PROMPT,
         choices=["none", "ocr", "vision", "move"],
         default=app_settings.fallback_mode,
         style=custom_style,

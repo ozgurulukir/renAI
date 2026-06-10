@@ -8,6 +8,7 @@ API_KEY_WHY = "API Key not found or invalid."
 API_KEY_HOW = "Check the RENAI_PROVIDER_API_KEY environment variable or update your .env file."
 TOOL_MISSING_WHY = "A required external tool (OCR or MuTool) was not found."
 TOOL_MISSING_HOW = "Ensure Tesseract or MuTool is installed and available in your PATH."
+FILE_NOT_FOUND_WHY = "The specified file or directory was not found: {}"
 FILE_NOT_FOUND_HOW = "Verify the accuracy of the file path."
 PERMISSION_WHY = "Missing required file system permissions."
 PERMISSION_HOW = "Make sure you have sufficient read/write privileges for the file/directory."
@@ -26,6 +27,7 @@ FILE_OP_HOW = (
     "Ensure the destination directory is writable and no locked file with the same name exists."
 )
 REN_AI_WHY = "An internal renAI-specific error occurred."
+REN_AI_HOW = "Please check the error details: {}"
 
 PANEL_TITLE_SYSTEM_ERROR = "[bold red]renAI System Error[/bold red]"
 

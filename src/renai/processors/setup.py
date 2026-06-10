@@ -12,6 +12,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.theme import Theme
 
+from renai.messages import setup as msg
+
 from ..settings import (
     CONFIG_DIR,
     PACKAGE_CONFIG_DIR,
@@ -38,66 +40,60 @@ def run_init_wizard() -> None:
     """Run the interactive setup wizard."""
     # 0. Early dependency check (fail-fast)
     if importlib.util.find_spec("tomli_w") is None:
-        console.print(
-            "[error]Error: Missing 'tomli-w' dependency. "
-            "Please run 'uv sync' or install it manually.[/error]"
-        )
+        console.print(msg.Wizard.MISSING_TOMLI_W)
         return
 
     console.print(
         Panel.fit(
-            "[bold cyan]renAI Configuration Wizard[/bold cyan]\n"
-            "[italic]Setting up your environment for AI-powered document organization.[/italic]",
+            f"{msg.Wizard.WELCOME_TITLE}\n{msg.Wizard.WELCOME_SUBTITLE}",
             border_style="cyan",
         )
     )
 
     # 1. Ensure directories exist
     initialize_directories()
-    console.print(f"[info]Config directory:[/info] {CONFIG_DIR}")
+    console.print(msg.Wizard.CONFIG_DIR.format(CONFIG_DIR))
 
     # 2. Check if user config already exists
     if SETTINGS_USER_FILE.exists() or SECRETS_FILE.exists():
         overwrite = questionary.confirm(
-            "User configuration files already exist. Overwrite?", default=False, style=custom_style
+            msg.Wizard.OVERWRITE_PROMPT, default=False, style=custom_style
         ).ask()
         if not overwrite:
-            console.print("[info]Setup cancelled.[/info]")
+            console.print(msg.Wizard.CANCELLED)
             return
 
     # 3. Provider Selection & Configuration
-    console.print("\n[highlight]Step 1: Provider Setup[/highlight]")
+    console.print(msg.Wizard.STEP_1)
     try:
         config, secrets = _configure_provider()
     except KeyboardInterrupt:
-        console.print("[info]Setup cancelled.[/info]")
+        console.print(msg.Wizard.CANCELLED)
         return
 
-    # 4. Advanced Settings (Optional)
-    console.print("\n[highlight]Step 2: General Settings[/highlight]")
+    console.print(msg.Wizard.STEP_2)
     _print_dependency_diagnostics()
 
     try:
         configure_advanced = questionary.confirm(
-            "Would you like to configure advanced settings?", default=False, style=custom_style
+            msg.Wizard.ADVANCED_PROMPT, default=False, style=custom_style
         ).ask()
         if configure_advanced:
             config.update(_configure_advanced_settings())
         else:
-            console.print("[info]Using factory defaults for general settings.[/info]")
+            console.print(msg.Wizard.USING_DEFAULTS)
     except KeyboardInterrupt:
-        console.print("[info]Setup cancelled.[/info]")
+        console.print(msg.Wizard.CANCELLED)
         return
 
-    # 5. Save Files
-    console.print("\n[highlight]Step 3: Saving Configuration[/highlight]")
+    console.print(msg.Wizard.STEP_3)
     try:
         _save_configuration(config, secrets)
     except Exception:
         return
 
-    console.print("\n[bold green]renAI is now ready to use![/bold green]")
-    console.print("Try: [cyan]renai process <directory>[/cyan]")
+    console.print(msg.Wizard.COMPLETE)
+    console.print(msg.Wizard.USAGE_HINT)
 
 
 def _print_dependency_diagnostics() -> None:
@@ -105,16 +101,16 @@ def _print_dependency_diagnostics() -> None:
     tesseract_path = shutil.which("tesseract")
     mutool_path = shutil.which("mutool")
 
-    console.print("[info]Pre-flight dependency check:[/info]")
+    console.print(msg.Preflight.HEADER)
     if tesseract_path:
-        console.print(f"  - Tesseract OCR: [success]Found[/success] ({tesseract_path})")
+        console.print(msg.Preflight.TESSERACT_FOUND.format(tesseract_path))
     else:
-        console.print("  - Tesseract OCR: [warning]Not Found (OCR fallback unavailable)[/warning]")
+        console.print(msg.Preflight.TESSERACT_MISSING)
 
     if mutool_path:
-        console.print(f"  - mutool: [success]Found[/success] ({mutool_path})")
+        console.print(msg.Preflight.MUTOOL_FOUND.format(mutool_path))
     else:
-        console.print("  - mutool: [info]Not Found (Optional, used for PDF page rendering)[/info]")
+        console.print(msg.Preflight.MUTOOL_MISSING)
     console.print("")
 
 
@@ -123,31 +119,27 @@ def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -
     try:
         import tomli_w
 
-        # A. Propagate default files (Physical copy of all package defaults)
-        console.print("[info]Propagating default configuration files...[/info]")
+        console.print(msg.Save.PROPAGATING)
         for default_file in PACKAGE_CONFIG_DIR.glob("*.default.toml"):
             dest = CONFIG_DIR / default_file.name
             shutil.copy2(default_file, dest)
-            console.print(f"  - Propagated: {dest.name}")
+            console.print(msg.Save.PROPAGATED.format(dest.name))
 
-        # B. Save settings.toml (User overrides)
         with SETTINGS_USER_FILE.open("wb") as f:
             tomli_w.dump(config, f)
 
-        # C. Save secrets.toml
         with SECRETS_FILE.open("wb") as f:
             tomli_w.dump(secrets, f)
 
-        # Ensure secure permissions on secrets
         if hasattr(SECRETS_FILE, "chmod"):
             with contextlib.suppress(Exception):
                 SECRETS_FILE.chmod(0o600)
 
-        console.print("[success]✔ Configuration finalized successfully![/success]")
-        console.print(f"[info]  - User Settings: {SETTINGS_USER_FILE.name}[/info]")
-        console.print(f"[info]  - Secrets (Keys): {SECRETS_FILE.name}[/info]")
-        console.print("[info]  - Default files are also available for reference.[/info]")
+        console.print(msg.Save.FINALIZED)
+        console.print(msg.Save.USER_SETTINGS.format(SETTINGS_USER_FILE.name))
+        console.print(msg.Save.SECRETS.format(SECRETS_FILE.name))
+        console.print(msg.Save.DEFAULTS_NOTE)
 
     except Exception as e:
-        console.print(f"[error]Failed to save configuration: {e}[/error]")
+        console.print(msg.Save.FAILED.format(e))
         raise
