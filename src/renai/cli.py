@@ -21,6 +21,7 @@ from renai.config import (
     initialize_directories,
 )
 from renai.logging_config import configure_logging
+from renai.messages import cli as msg
 from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.orchestrator import run_evaluation_pipeline, run_pipeline
 from renai.processors.setup import run_init_wizard
@@ -41,7 +42,7 @@ app = typer.Typer(
 
 def version_callback(value: bool):
     if value:
-        console.print(f"renAI version [bold cyan]{__version__}[/bold cyan]")
+        console.print(msg.Info.VERSION.format(__version__))
         raise typer.Exit()
 
 
@@ -61,11 +62,6 @@ def main_callback(
     """Global initializations for renAI CLI."""
     setup_environment()
     initialize_directories()
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
 
 
 def setup_environment() -> None:
@@ -99,9 +95,9 @@ def handle_clear_cache() -> None:
     total = sum(results.values())
     if total > 0:
         details = ", ".join([f"{count} {ctype}" for ctype, count in results.items() if count > 0])
-        console.print(f"[green]Cache cleared: {total} items removed ({details})[/green]")
+        console.print(msg.Info.CACHE_CLEARED.format(total, details))
     else:
-        console.print("[green]Cache is already empty. Nothing to clear.[/green]")
+        console.print(msg.Info.CACHE_EMPTY)
 
 
 def display_warnings(
@@ -125,24 +121,14 @@ def display_warnings(
     table = Table.grid(padding=(0, 1))
 
     if mode == "rename":
-        table.add_row(
-            "[bold yellow]🏷️  RENAME[/bold yellow]",
-            "Files will be [bold]renamed in-place[/bold] with AI-generated names.\n"
-            "  Original filenames will be lost.",
-        )
+        table.add_row(msg.Warn.BADGE_RENAME, msg.Warn.DESC_RENAME)
         has_warnings = True
     elif mode == "organize":
-        table.add_row(
-            "[bold yellow]📁 ORGANIZE[/bold yellow]",
-            "Files will be [bold]renamed and moved[/bold] into category subfolders.\n"
-            "  Original filenames and locations will change.",
-        )
+        table.add_row(msg.Warn.BADGE_ORGANIZE, msg.Warn.DESC_ORGANIZE)
         has_warnings = True
 
     if recursive:
-        table.add_row(
-            "[bold cyan]🔄 RECURSIVE[/bold cyan]", "Files in subdirectories will also be processed."
-        )
+        table.add_row(msg.Warn.BADGE_RECURSIVE, msg.Warn.DESC_RECURSIVE)
         has_warnings = True
 
     effective_model = model or (get_effective_model(provider) if provider else None)
@@ -153,10 +139,8 @@ def display_warnings(
         vision_ok = is_vision_supported(effective_model)
         if vision_ok is False:
             table.add_row(
-                "[bold red]⚠️  VISION MODEL[/bold red]",
-                f"Model [bold yellow]'{effective_model}'[/bold yellow] "
-                "might not support vision inputs on models.dev.\n"
-                "  Running in vision fallback mode or renaming images may fail.",
+                msg.Warn.BADGE_VISION,
+                msg.Warn.desc_vision(effective_model),
             )
             has_warnings = True
 
@@ -166,7 +150,7 @@ def display_warnings(
     console.print(
         Panel(
             table,
-            title="[bold yellow]⚠️  Review Before Proceeding[/bold yellow]",
+            title=msg.PANEL_TITLE_REVIEW,
             border_style="yellow",
             expand=False,
             padding=(1, 2),
@@ -174,13 +158,10 @@ def display_warnings(
     )
 
     try:
-        console.print(
-            "\n[dim]Press [bold]ENTER[/bold] to proceed, or [bold red]Ctrl+C[/] to cancel...[/dim]",
-            end="",
-        )
+        console.print(msg.Prompt.PROCEED, end="")
         input("")
     except (KeyboardInterrupt, EOFError):
-        console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+        console.print(msg.Prompt.CANCELLED)
         sys.exit(0)
 
 
@@ -194,11 +175,11 @@ def _print_process_header(root_dir: Path, mode: str, provider: str, model: str |
     from rich.columns import Columns
     from rich.panel import Panel
 
-    title = f"[bold cyan]renAI[/bold cyan] [dim]v{__version__}[/dim]"
+    title = msg.Info.HEADER_TITLE.format(__version__)
     info_cols = [
-        f"[blue]📂 Dir:[/blue] {root_dir.name}",
-        f"[green]🛠 Mode:[/green] {mode}",
-        f"[yellow]☁ Provider:[/yellow] {provider}/{model or 'default'}",
+        msg.Info.HEADER_DIR.format(root_dir.name),
+        msg.Info.HEADER_MODE.format(mode),
+        msg.Info.HEADER_PROVIDER.format(provider, model or "default"),
     ]
     console.print(
         Panel(Columns(info_cols, expand=True), title=title, border_style="cyan", padding=(0, 1))
@@ -233,7 +214,7 @@ def handle_process_command(
     root_dir = Path(directory).resolve()
 
     if not root_dir.is_dir():
-        console.print(f"[red]Error: Directory not found: {root_dir}[/red]")
+        console.print(msg.Info.DIR_NOT_FOUND.format(root_dir))
         raise typer.Exit(code=1)
 
     _print_process_header(root_dir, mode, provider, model)
@@ -269,7 +250,7 @@ def handle_process_command(
             )
         )
     except KeyboardInterrupt:
-        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
+        console.print(msg.Prompt.CANCELLED_EXIT)
         raise typer.Exit(code=0) from None
 
 
@@ -278,7 +259,7 @@ def process_cmd(
     directory: Annotated[
         str,
         typer.Argument(
-            help="Directory to process",
+            help=msg.Help.DIRECTORY,
         ),
     ] = ".",
     mode: Annotated[
@@ -286,10 +267,7 @@ def process_cmd(
         typer.Option(
             "--mode",
             "-m",
-            help=(
-                "Action: 'rename' (renames files), 'organize' (moves to category) "
-                "or 'evaluate' (no changes, just extraction test)"
-            ),
+            help=msg.Help.MODE,
         ),
     ] = "rename",
     provider: Annotated[
@@ -297,14 +275,14 @@ def process_cmd(
         typer.Option(
             "--provider",
             "-p",
-            help="LLM Provider (deepinfra, openrouter, openai, custom)",
+            help=msg.Help.PROVIDER,
         ),
     ] = app_settings.provider,
     model: Annotated[
         str | None,
         typer.Option(
             "--model",
-            help="Specific model name override",
+            help=msg.Help.MODEL,
         ),
     ] = app_settings.model,
     workers: Annotated[
@@ -312,119 +290,119 @@ def process_cmd(
         typer.Option(
             "--workers",
             "-w",
-            help="Concurrency level",
+            help=msg.Help.WORKERS,
         ),
     ] = app_settings.workers,
     ocr_enhanced: Annotated[
         bool,
         typer.Option(
             "--ocr-enhanced/--no-ocr-enhanced",
-            help="Advanced OCR preprocessing",
+            help=msg.Help.OCR_ENHANCED,
         ),
     ] = app_settings.ocr_enhanced,
     debug_ocr: Annotated[
         bool,
         typer.Option(
             "--debug-ocr",
-            help="Save OCR debug images",
+            help=msg.Help.DEBUG_OCR,
         ),
     ] = app_settings.debug_ocr,
     use_mutool: Annotated[
         bool,
         typer.Option(
             "--use-mutool/--no-mutool",
-            help="Use mutool for PDF extraction",
+            help=msg.Help.USE_MUTOOL,
         ),
     ] = app_settings.use_mutool,
     mutool_path: Annotated[
         str,
         typer.Option(
             "--mutool-path",
-            help="Path to mutool",
+            help=msg.Help.MUTOOL_PATH,
         ),
     ] = app_settings.mutool_path,
     extractor: Annotated[
         str,
         typer.Option(
             "--extractor",
-            help="PDF extractor: pymupdf, pdfplumber, pypdf, pypdfium2",
+            help=msg.Help.EXTRACTOR,
         ),
     ] = app_settings.extractor,
     text_length: Annotated[
         int,
         typer.Option(
             "--text-length",
-            help="Max characters for LLM",
+            help=msg.Help.TEXT_LENGTH,
         ),
     ] = app_settings.text_length,
     text_extraction: Annotated[
         str,
         typer.Option(
             "--text-extraction",
-            help="Extraction mode: head-tail or regular",
+            help=msg.Help.TEXT_EXTRACTION,
         ),
     ] = app_settings.text_extraction,
     extraction_pages: Annotated[
         int,
         typer.Option(
             "--extraction-pages",
-            help="Pages for text extraction",
+            help=msg.Help.EXTRACTION_PAGES,
         ),
     ] = app_settings.extraction_pages,
     recursive: Annotated[
         bool,
         typer.Option(
             "--recursive/--no-recursive",
-            help="Process subdirectories",
+            help=msg.Help.RECURSIVE,
         ),
     ] = app_settings.recursive,
     update_metadata: Annotated[
         bool,
         typer.Option(
             "--update-metadata",
-            help="Ignore cache",
+            help=msg.Help.UPDATE_METADATA,
         ),
     ] = False,
     fallback_mode: Annotated[
         FallbackMode | None,
         typer.Option(
             "--fallback-mode",
-            help="Fallback: none, ocr, vision, move",
+            help=msg.Help.FALLBACK_MODE,
         ),
     ] = None,
     move_scan_failures: Annotated[
         bool,
         typer.Option(
             "--move-scan-failures",
-            help="Move failed files to Scan_Failures",
+            help=msg.Help.MOVE_SCAN_FAILURES,
         ),
     ] = app_settings.move_scan_failures,
     rename_images: Annotated[
         bool,
         typer.Option(
             "--rename-images",
-            help="Enable vision-based image renaming",
+            help=msg.Help.RENAME_IMAGES,
         ),
     ] = app_settings.rename_images,
     exif: Annotated[
         bool,
         typer.Option(
             "--exif",
-            help="Use EXIF date in filenames",
+            help=msg.Help.EXIF,
         ),
     ] = app_settings.exif,
     benchmark: Annotated[
         bool,
         typer.Option(
             "--benchmark",
-            help="Benchmarking on first 3 files",
+            help=msg.Help.BENCHMARK,
         ),
     ] = False,
     vision_max_pages: Annotated[
         int,
         typer.Option(
             "--vision-max-pages",
-            help="Max pages to sample for vision PDF extraction",
+            help=msg.Help.VISION_MAX_PAGES,
         ),
     ] = app_settings.vision_max_pages,
 ) -> None:
@@ -459,28 +437,28 @@ def evaluate_cmd(
     directory: Annotated[
         str | None,
         typer.Argument(
-            help="Directory containing sample book files for evaluation",
+            help=msg.Help.EVAL_DIR,
         ),
     ] = None,
     provider: Annotated[
         str | None,
         typer.Option(
             "--provider",
-            help="LLM Provider to evaluate",
+            help=msg.Help.EVAL_PROVIDER,
         ),
     ] = None,
     workers: Annotated[
         int,
         typer.Option(
             "--workers",
-            help="Number of concurrent workers",
+            help=msg.Help.EVAL_WORKERS,
         ),
     ] = app_settings.workers,
 ) -> None:
     """Evaluate multiple models and providers."""
     target_dir = Path(directory or ".").resolve()
     if not target_dir.is_dir():
-        console.print(f"[red]Error: Directory not found: {target_dir}[/red]")
+        console.print(msg.Info.DIR_NOT_FOUND.format(target_dir))
         raise typer.Exit(code=1)
 
     try:
@@ -492,16 +470,16 @@ def evaluate_cmd(
             )
         )
     except KeyboardInterrupt:
-        console.print("\n[yellow]Evaluation cancelled.[/yellow]")
+        console.print(msg.Prompt.EVAL_CANCELLED)
         raise typer.Exit(code=0) from None
 
 
 @app.command("providers")
 def list_providers() -> None:
     """List available LLM providers."""
-    table = Table(title="Available LLM Providers")
-    table.add_column("Provider", style="cyan")
-    table.add_column("Model Default", style="green")
+    table = Table(title=msg.Info.PROVIDER_TABLE_TITLE)
+    table.add_column(msg.Info.COL_PROVIDER, style="cyan")
+    table.add_column(msg.Info.COL_MODEL, style="green")
 
     for name, config in PROVIDERS.items():
         table.add_row(name, config.default_model)
@@ -515,9 +493,9 @@ def clear_cache_cmd(
 ) -> None:
     """Clear the cache directory."""
     if not confirm:
-        response = input("This will delete all cached text and metadata. Continue? [y/N]: ")
+        response = input(msg.Prompt.CACHE_CONFIRM)
         if response.lower() not in ("y", "yes"):
-            console.print("[cyan]Cancelled.[/cyan]")
+            console.print(msg.Prompt.CACHE_CANCELLED)
             raise typer.Exit()
 
     handle_clear_cache()
