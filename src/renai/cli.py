@@ -128,7 +128,7 @@ def display_warnings(
         table.add_row(
             "[bold yellow]🏷️  RENAME[/bold yellow]",
             "Files will be [bold]renamed in-place[/bold] with AI-generated names.\n"
-            "  Original filenames will be lost. Use [cyan]--mode evaluate[/cyan] to preview first.",
+            "  Original filenames will be lost. [dim]Run with --no-warnings to suppress.[/dim]",
         )
         has_warnings = True
     elif mode == "organize":
@@ -136,7 +136,7 @@ def display_warnings(
             "[bold yellow]📁 ORGANIZE[/bold yellow]",
             "Files will be [bold]renamed and moved[/bold] into category subfolders.\n"
             "  Original filenames and locations will change. "
-            "Use [cyan]--mode evaluate[/cyan] to preview first.",
+            "[dim]Run with --no-warnings to suppress.[/dim]",
         )
         has_warnings = True
 
