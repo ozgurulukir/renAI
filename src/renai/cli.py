@@ -112,7 +112,7 @@ def display_warnings(
     fallback_mode: FallbackMode | None = None,
     rename_images: bool = False,
 ) -> None:
-    """Display important warnings to the user before processing."""
+    """Display contextual warnings to the user before processing."""
     if not app_settings.show_warnings:
         return
 
@@ -121,25 +121,31 @@ def display_warnings(
 
     from renai.config import get_effective_model
 
-    # 1. Create Warning Table
+    has_warnings = False
     table = Table.grid(padding=(0, 1))
 
     if mode == "rename":
         table.add_row(
-            "[bold yellow]🏷️  RENAMING[/bold yellow]", "Files WILL be renamed in place or moved."
+            "[bold yellow]🏷️  RENAME[/bold yellow]",
+            "Files will be [bold]renamed in-place[/bold] with AI-generated names.\n"
+            "  Original filenames will be lost. Use [cyan]--mode evaluate[/cyan] to preview first.",
         )
+        has_warnings = True
     elif mode == "organize":
         table.add_row(
             "[bold yellow]📁 ORGANIZE[/bold yellow]",
-            "Files will be moved to category-based subfolders.",
+            "Files will be [bold]renamed and moved[/bold] into category subfolders.\n"
+            "  Original filenames and locations will change. "
+            "Use [cyan]--mode evaluate[/cyan] to preview first.",
         )
+        has_warnings = True
 
     if recursive:
         table.add_row(
             "[bold cyan]🔄 RECURSIVE[/bold cyan]", "Files in subdirectories will also be processed."
         )
+        has_warnings = True
 
-    # Validate model vision capabilities if vision is requested
     effective_model = model or (get_effective_model(provider) if provider else None)
     is_vision_needed = fallback_mode == FallbackMode.VISION or rename_images
     if is_vision_needed and effective_model:
@@ -153,20 +159,21 @@ def display_warnings(
                 "might not support vision inputs on models.dev.\n"
                 "  Running in vision fallback mode or renaming images may fail.",
             )
+            has_warnings = True
 
-    # 2. Show Panel
+    if not has_warnings:
+        return
 
     console.print(
         Panel(
             table,
-            title="[bold red]⚠️  IMPORTANT WARNINGS[/bold red]",
-            border_style="red",
+            title="[bold yellow]⚠️  Review Before Proceeding[/bold yellow]",
+            border_style="yellow",
             expand=False,
             padding=(1, 2),
         )
     )
 
-    # 3. Interactive confirmation
     try:
         console.print(
             "\n[dim]Press [bold]ENTER[/bold] to proceed, or [bold red]Ctrl+C[/] to cancel...[/dim]",
