@@ -137,7 +137,7 @@ class LLMEngine:
 
     async def _refine_metadata(self, initial_model: BookMetadata) -> BookMetadata:
         """Refine extracted metadata using the editor persona and SSoT schema."""
-        logging.info("Refining metadata using SSoT-based validation pass...")
+        logging.debug("Refining metadata using SSoT-based validation pass...")
 
         system_role = self._get_system_role("refinement", BookMetadata)
         refinement_prompt = (

@@ -145,7 +145,7 @@ class BookProcessor:
 
         is_vision_doc = False
         if metadata:
-            logging.info(f"Cache hit for {file_path.name}")
+            logging.debug(f"Cache hit for {file_path.name}")
             if not (is_image and rename_images) and use_vision_cache:
                 is_vision_doc = True
         else:
@@ -305,7 +305,7 @@ class BookProcessor:
 
             # 4. Check if file is already in the correct place with correct name
             if file_path.resolve() == target_dest.resolve():
-                logging.info(f"Skipping (Already organized/renamed): {file_path.name}")
+                logging.debug(f"Skipping (Already organized/renamed): {file_path.name}")
                 m_data = (
                     metadata.model_dump()
                     if hasattr(metadata, "model_dump")
@@ -328,7 +328,7 @@ class BookProcessor:
             final_path = await asyncio.to_thread(_do_move)
 
             if final_path:
-                logging.info(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
+                logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
                 m_data = (
                     metadata.model_dump()
                     if hasattr(metadata, "model_dump")

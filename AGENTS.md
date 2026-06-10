@@ -4,7 +4,7 @@
 
 **renAI** is a Python CLI tool that automatically renames and organizes digital files (PDFs, EPUBs, images, Office docs) using LLMs and OCR. It extracts metadata (title, author, year, category, language) via text extraction or vision-capable models, then produces consistent, descriptive filenames.
 
-- **Version**: 2.1.0
+- **Version**: 2.2.0
 - **Python**: 3.12+ (tested on 3.12 and 3.13)
 - **License**: MIT
 - **Entry point**: `renai.cli:app` (Typer)
@@ -43,6 +43,7 @@ File Operations (file_ops/operations.py) -> safe_move_file / safe_copy_file
 ```
 
 **Key flows:**
+
 1. **Text extraction mode**: Extract text -> LLM extracts metadata -> refine -> build filename -> rename/organize
 2. **Vision fallback**: Text extraction fails -> send PDF pages as images to vision LLM -> metadata -> filename
 3. **Image renaming**: Send image to vision LLM -> ImageMetadata -> build image filename -> rename
@@ -55,7 +56,13 @@ src/renai/                  # Main package
   cli.py                    # CLI entry point (Typer commands)
   settings.py               # Backward-compat shim -> renai.config
   exceptions.py             # RenAIError hierarchy
-  logging_config.py         # structlog configuration
+  logging_config.py         # structlog configuration (stderr output)
+  messages/                  # Centralized user-facing messages
+    __init__.py             # Package init
+    cli.py                  # CLI warnings, prompts, help texts (Msg.Warn, Msg.Prompt, etc.)
+    orchestrator.py         # Pipeline status, progress, summary, benchmark, eval messages
+    setup.py                # Wizard, preflight, save, provider setup messages
+    errors.py               # Exception why/how-to-fix strings, error panel labels
   models/                   # Pydantic models & results
     __init__.py             # ProcessingResult dataclass
     schemas.py              # Pydantic SSoT: BaseMetadata, BookMetadata, ImageMetadata
@@ -133,6 +140,7 @@ python -m build
 ## Code Conventions & Common Patterns
 
 ### Formatting & Style
+
 - **Linter/Formatter**: Ruff (line length 100, Python 3.12 target)
 - **Indentation**: 4 spaces (`.editorconfig`)
 - **Quotes**: Double quotes (`ruff.format.quote-style = "double"`)
@@ -140,6 +148,7 @@ python -m build
 - **Type checking**: Pyright (standard mode)
 
 ### Ruff Rules (active)
+
 - pycodestyle (E, W), pyflakes (F), isort (I), mccabe (C90, max 12)
 - pyupgrade (UP), flake8-bugbear (B), comprehensions (C4), simplify (SIM)
 - flake8-print (T20) -- print allowed in CLI (T201 ignored)
@@ -149,6 +158,7 @@ python -m build
 - Local imports allowed (PLC0415 ignored) -- used for lazy loading / circularity avoidance
 
 ### Naming Conventions
+
 - **Classes**: PascalCase (`BookProcessor`, `LLMEngine`, `ProcessingResult`)
 - **Functions/methods**: snake_case (`get_book_metadata`, `safe_move_file`)
 - **Constants**: UPPER_SNAKE_CASE (`CACHE_DIR`, `DEFAULT_CATEGORIES`, `MAX_DISPLAY_NAME_LENGTH`)
@@ -157,60 +167,77 @@ python -m build
 - **Enum values**: UPPER_SNAKE_CASE (`FallbackMode.OCR`, `FallbackMode.VISION`)
 
 ### Async Patterns
+
 - **AsyncIO-first**: All I/O-bound operations are async
 - **Blocking calls**: Wrapped with `asyncio.to_thread()` (e.g., file hashing, text extraction, file moves)
 - **Concurrency**: `asyncio.Semaphore` for worker limiting; `AsyncRateLimiter` for API rate limiting
 - **Test mode**: `pytest-asyncio` with `asyncio_mode = "auto"` (no need for `@pytest.mark.asyncio`)
 
 ### Settings & Configuration
+
 - **pydantic-settings** with TOML config sources (`settings.default.toml`, `settings.toml`)
 - **Environment variables**: `RENAI_` prefix (e.g., `RENAI_PROVIDER`, `RENAI_MODEL`, `RENAI_WORKERS`)
 - **Priority**: CLI flags > env vars > user TOML > default TOML > factory defaults
+- **Head-Tail Sampling**: `text_extraction` default is `"head-tail"`; `head_ratio` (default: 0.7, range 0.3-0.9) controls head/tail split; `"mixed"` auto-normalized to `"head-tail"`.
 - **Vision Fallback Pages**: Configurable `vision_max_pages` (default: 3, range 1-10) to limit sampled pages for PDF vision extraction.
 - **Lazy loading**: Heavy attributes (`PROVIDERS`, `EVAL_MODELS`) use PEP 562 `__getattr__`
 - **Backward compat**: `renai.settings` re-exports from `renai.config` -- new code should import from `renai.config`
 
 ### SSoT (Single Source of Truth)
+
 - **Metadata schemas**: Pydantic models in `models/schemas.py` (`BookMetadata`, `ImageMetadata`)
 - LLM responses are validated against Pydantic schemas; invalid fields are filtered out
 - Category validation ensures LLM output matches allowed categories per language
 
 ### Error Handling
+
 - Custom exception hierarchy rooted at `RenAIError` (see `exceptions.py`)
 - Subtypes: `ExtractionError`, `CacheError`, `ConfigurationError`, `FileOperationError`, `LLMError`, `OCRError`
 - Processing results use `ProcessingResult` dataclass (success/error/name/category)
 
 ### Security Patterns
+
 - Path traversal prevention in file operations (resolved paths checked against root)
 - Symlink rejection in text extraction
 - `ensure_secure_dir()` for directory permissions (chmod 700 on Unix, icacls on Windows)
 - Subprocess command validation (e.g., mutool path whitelist)
 
 ### Prompt System
+
 - Templates stored as `.txt` files in `prompts/`
 - JSON schema dynamically injected from Pydantic models via `model_json_schema()`
 - Category tables injected per language
 - Two-pass extraction: initial extraction + refinement ("Senior Editor" persona)
+- Head-tail text split: LLM receives `<document_head>` and `<document_tail>` XML markers separated by `"\n---\n"`
+
+### Centralized Messages
+
+- All user-facing strings in `src/renai/messages/` organized by domain (cli, orchestrator, setup, errors)
+- Dynamic messages use `str.format()` (e.g., `msg.Info.VERSION.format(__version__)`), static messages are class constants
+- Import aliases avoid name collisions (e.g., `orch_msg` for orchestrator messages)
+- Exception analysis strings (`*_WHY`, `*_HOW`) in `messages/errors.py` used by `logging_config.py` error handler
+- Logging output directed to **stderr** (not stdout) to avoid interfering with Rich Live progress display
 
 ## Important Files
 
-| File | Purpose |
-|---|---|
-| `pyproject.toml` | Build config, dependencies, ruff settings, pytest config, CLI entry point |
-| `src/renai/cli.py` | Typer CLI commands (`process`, `evaluate`, `init`, `version`, `clear-cache`) |
-| `src/renai/processors/orchestrator.py` | Pipeline orchestration, progress display, engine setup |
-| `src/renai/processors/book.py` | `BookProcessor` -- unified file processing (documents + images) |
-| `src/renai/processors/setup.py` | `setup.py` and `setup_steps.py` handle the interactive init wizard, credentials setup, and API key validation. |
-| `src/renai/engines/llm.py` | `LLMEngine` -- LLM API calls, prompt composition, metadata extraction |
-| `src/renai/models/schemas.py` | Pydantic metadata schemas (the SSoT) |
-| `src/renai/config/settings.py` | `AppSettings`, `ProviderSettings` (pydantic-settings) |
-| `src/renai/config/constants.py` | App directories, categories, helper functions |
-| `src/renai/filename/builder.py` | Filename generation from metadata |
-| `src/renai/cache/manager.py` | Two-layer cache (text + metadata) |
-| `src/renai/exceptions.py` | Exception hierarchy |
-| `src/renai/logging_config.py` | structlog setup with JSON/console output |
-| `tests/conftest.py` | Conditional dependency mocking for minimal CI environments |
-| `.github/workflows/ci.yml` | CI: test (3.12/3.13), lint, build |
+| File                                   | Purpose                                                                                                        |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `pyproject.toml`                       | Build config, dependencies, ruff settings, pytest config, CLI entry point                                      |
+| `src/renai/cli.py`                     | Typer CLI commands (`process`, `evaluate`, `init`, `version`, `clear-cache`)                                   |
+| `src/renai/processors/orchestrator.py` | Pipeline orchestration, progress display, engine setup                                                         |
+| `src/renai/processors/book.py`         | `BookProcessor` -- unified file processing (documents + images)                                                |
+| `src/renai/processors/setup.py`        | `setup.py` and `setup_steps.py` handle the interactive init wizard, credentials setup, and API key validation. |
+| `src/renai/engines/llm.py`             | `LLMEngine` -- LLM API calls, prompt composition, metadata extraction                                          |
+| `src/renai/models/schemas.py`          | Pydantic metadata schemas (the SSoT)                                                                           |
+| `src/renai/messages/`                  | Centralized user-facing messages (cli, orchestrator, setup, errors)                                            |
+| `src/renai/config/settings.py`         | `AppSettings`, `ProviderSettings` (pydantic-settings)                                                          |
+| `src/renai/config/constants.py`        | App directories, categories, helper functions                                                                  |
+| `src/renai/filename/builder.py`        | Filename generation from metadata                                                                              |
+| `src/renai/cache/manager.py`           | Two-layer cache (text + metadata)                                                                              |
+| `src/renai/exceptions.py`              | Exception hierarchy                                                                                            |
+| `src/renai/logging_config.py`          | structlog setup with JSON/console output                                                                       |
+| `tests/conftest.py`                    | Conditional dependency mocking for minimal CI environments                                                     |
+| `.github/workflows/ci.yml`             | CI: test (3.12/3.13), lint, build                                                                              |
 
 ## Runtime/Tooling Preferences
 
@@ -228,16 +255,19 @@ python -m build
 ## Testing & QA
 
 ### Framework
+
 - **pytest** with `asyncio_mode = "auto"` (no explicit `@pytest.mark.asyncio` needed)
 - **pytest-cov** for coverage
 - Tests run against `src/` (configured in both `pytest.ini` and `pyproject.toml`)
 
 ### Test Structure
+
 - Tests live in `tests/` with `test_*.py` naming
 - `tests/conftest.py` provides conditional dependency mocking (`mock_if_missing`) so tests run in CI without all heavy dependencies (openai, pymupdf, cv2, etc.)
 - Individual test files may also pre-mock dependencies before importing renai modules
 
 ### Running Tests
+
 ```bash
 # All tests
 pytest tests/ -v
@@ -253,11 +283,13 @@ pytest tests/ -v --tb=short --cov=src/renai --cov-report=xml --cov-report=term-m
 ```
 
 ### CI Pipeline (`.github/workflows/ci.yml`)
+
 - **test** job: Python 3.12 + 3.13 matrix, install deps, run tests with coverage, upload to Codecov
 - **lint** job: `ruff check src/ tests/` + `pyright src/renai --ignoreexternal`
 - **build** job: `python -m build`, verify package install + `renai --help`
 
 ### Test Conventions
+
 - Tests may use `unittest.mock.patch` to mock file paths and configuration
 - `tmp_path` fixture for filesystem tests
 - `caplog` for log assertion tests
@@ -267,6 +299,7 @@ pytest tests/ -v --tb=short --cov=src/renai --cov-report=xml --cov-report=term-m
 ## Naming Conventions for Output Files
 
 The tool produces filenames following these patterns:
+
 - **Documents (text mode)**: `Title -- Subtitle -- 'Edition' -- Author -- (Year).ext`
 - **Documents (vision mode)**: `Title -- Author -- (Year) -- (Language).ext`
 - **Images (vision mode)**: `Description -- [Date] -- (Language).ext`

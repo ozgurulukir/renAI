@@ -7,24 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-06-10
+
 ### Added
 
-- **Vision Max Pages**: Configurable `vision_max_pages` setting (default: 3, range: 1-10) to limit sampled pages for PDF vision extraction.
-- **Atomic Cache Writes**: `write_text_cache` and `write_metadata_cache` now use `tempfile.mkstemp` + `Path.replace` for crash-safe atomic writes.
-- **OCR Cleanup Refactor**: PyMuPDF document close and bulk image cleanup moved to `finally` block in `OCREngine` for guaranteed resource release.
-- **Eval Log Batching**: Evaluation results are buffered (batch size: 50) and flushed via `asyncio.to_thread` to reduce synchronous I/O overhead in async pipeline.
+- **Head-Tail Sampling**: Replaced proportional chunking with head-tail text extraction. PDF extractors now read pages procedurally from the start until `head_target` characters, then from the end until `tail_target` characters, controlled by `head_ratio` setting (default: 0.7, range: 0.3-0.9).
+- **Centralized Messages Package**: All user-facing strings moved to `src/renai/messages/` organized by domain — `cli.py` (warnings, prompts, help texts), `orchestrator.py` (status, progress, summary), `setup.py` (wizard, preflight, save), `errors.py` (exception why/how-to-fix strings).
+- **`head_ratio` Setting**: New `head_ratio` float setting in `settings.toml` replaces removed `mixed_chunk_count`. Controls the head/tail text split ratio for LLM metadata extraction.
+- **Procedural PDF Extraction**: New `_extract_head_tail()` function reads pages one-by-one from start/end of document, stopping when target character count is reached. Avoids reading entire large PDFs unnecessarily.
+- **`_build_document_prompt()`**: New method in `LLMEngine` that splits extracted text on `"\n---\n"` separator and wraps in `<document_head>` / `<document_tail>` XML markers for the LLM.
+- **`FILE_NOT_FOUND_WHY` and `REN_AI_HOW`**: Added missing exception analysis constants to `messages/errors.py` for complete why/how coverage.
 
 ### Changed
 
-- **PDF Vision Optimization**: Inlined page-to-image conversion into `extract_metadata_from_pdf`; PDF opened once per file instead of per-page, reducing redundant I/O.
-- **Cache Invalidation**: Stale metadata cache files are now physically removed from disk on provider/model mismatch.
+- **Text Extraction Default**: `text_extraction` default changed from `"mixed"` to `"head-tail"`. The `"mixed"` value is silently normalized to `"head-tail"` for backward compatibility.
+- **Logging to stderr**: All structlog and standard `logging` output now directed to `sys.stderr` instead of `stdout`, preventing interference with Rich Live progress display during file processing.
+- **Processing diagnostics to DEBUG**: All `logging.info()` calls in the processing path (SSoT refinement, cache hits, OCR init, file moves, etc.) downgraded to `logging.debug()` to keep the terminal clean during Live progress display.
+- **Progress layout**: Progress bar + stats panel moved above activity feed panel in the Live display for better visual hierarchy.
+- **All PDF extractors updated**: PyMuPDF, PDFPlumber, PyPDF, and PyPdfium2 extractors now use `target_chars`, `head_ratio`, and `max_pages_per_side` parameters instead of fixed page counts.
+- **OCR page sampling**: `_get_page_sampling()` in `OCREngine` changed from first 15 pages + mid + last 2 to first 5 head + last 3 tail pages.
+- **Setup wizard messages**: All inline strings in `setup.py` and `setup_steps.py` now reference `messages.setup` constants (`Wizard.*`, `Preflight.*`, `Save.*`, `Provider.*`, `Settings.*`).
+- **CLI messages**: All inline strings in `cli.py` now reference `messages.cli` constants (`Msg.Warn.*`, `Msg.Prompt.*`, `Msg.Info.*`).
+- **Orchestrator messages**: All inline strings in `orchestrator.py` now reference `messages.orchestrator` constants (`Status.*`, `Progress.*`, `Summary.*`, `Benchmark.*`, `Eval.*`).
+- **Error handler messages**: All inline strings in `logging_config.py` now reference `messages.errors` constants.
+
+### Removed
+
+- **`proportional_chunk_trim`**: Removed from `utils/__init__.py`, replaced by `head_tail_trim()`.
+- **`mixed_chunk_count` setting**: Removed from settings; `head_ratio` replaces it.
+- **`test_trimming.py` and `test_weighted_preservation.py`**: Removed; replaced by head-tail tests in `test_utils.py`.
 
 ### Fixed
 
-- **`_get_field` default handling**: Fixed helper to correctly return the default value when a metadata field is explicitly `None`.
-- **Benchmark mode NameError**: Corrected typo `console_print` → `console.print` in `run_pipeline`.
-- **ProcessingConfig.mode validation**: Added strict `Literal["rename", "organize", "evaluate"]` type constraint.
-- **Missing import**: Added `FallbackMode` import in `orchestrator.py` to fix `NameError` in evaluation pipeline.
+- **Warning message audit**: Clarified rename/organize warnings, fixed panel border color (red → yellow), suppressed empty warning panel in evaluate mode, removed non-existent `--no-warnings` flag reference.
+- **Double truncation bug**: Removed redundant `text[:text_length]` truncation in `LLMEngine` that was discarding head-tail text before it reached the LLM.
 
 ## [2.1.0] - 2026-06-09
 

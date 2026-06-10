@@ -116,7 +116,7 @@ def test_configure_logging_defaults():
 
         # Verify basic config is called
         mock_basic_config.assert_called_once_with(
-            format="%(message)s", stream=sys.stdout, level=logging.INFO
+            format="%(message)s", stream=sys.stderr, level=logging.INFO
         )
 
         # Verify third-party loggers are silenced
@@ -145,7 +145,7 @@ def test_configure_logging_explicit_args():
         assert not any(isinstance(p, structlog.dev.ConsoleRenderer) for p in processors)
 
         mock_basic_config.assert_called_once_with(
-            format="%(message)s", stream=sys.stdout, level=logging.DEBUG
+            format="%(message)s", stream=sys.stderr, level=logging.DEBUG
         )
 
 

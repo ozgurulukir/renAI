@@ -122,7 +122,7 @@ class TextExtractor:
 
         cached_text = await asyncio.to_thread(read_text_cache, cache_path)
         if cached_text is not None:
-            logging.info(f"Using cached text for {file_path.name}")
+            logging.debug(f"Using cached text for {file_path.name}")
             return cached_text
 
         # Extract based on file type
@@ -159,16 +159,18 @@ class TextExtractor:
         """Route and execute fallback strategy when text extraction is insufficient."""
         match fallback:
             case FallbackMode.MOVE_TO_FOLDER:
-                logging.info(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
+                logging.debug(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
                 await asyncio.to_thread(self._move_to_needs_scan, file_path)
                 return ""
 
             case FallbackMode.OCR:
-                logging.info(f"Primary text insufficient for {file_path.name}, falling back to OCR")
+                logging.debug(
+                    f"Primary text insufficient for {file_path.name}, falling back to OCR"
+                )
                 return await self._fallback_to_ocr(file_path, target_length)
 
             case FallbackMode.VISION:
-                logging.info(
+                logging.debug(
                     f"Primary text insufficient for {file_path.name}, marking for Vision fallback"
                 )
                 return ""
@@ -279,7 +281,7 @@ class TextExtractor:
                 target_path = self.needs_scan_dir / f"{file_path.stem}{suffix}"
 
             shutil.move(str(file_path), str(target_path))
-            logging.info(f"Moved {file_path.name} to Needs_Scan directory")
+            logging.debug(f"Moved {file_path.name} to Needs_Scan directory")
         except Exception as e:
             logging.error(f"Failed to move {file_path.name} to {self.needs_scan_dir}: {e}")
 

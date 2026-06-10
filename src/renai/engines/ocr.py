@@ -79,7 +79,7 @@ class OCREngine:
                 "threshold": True,
             }
             if not self.silent:
-                logging.info(
+                logging.debug(
                     "OCR Engine initialized in ENHANCED mode (300 DPI, deskew, threshold, sharpen)"
                 )
         else:
@@ -92,7 +92,7 @@ class OCREngine:
                 "threshold": False,
             }
             if not self.silent:
-                logging.info("OCR Engine initialized in MINIMAL mode (150 DPI)")
+                logging.debug("OCR Engine initialized in MINIMAL mode (150 DPI)")
 
         self.MAX_DIMENSION = 2000
 
@@ -526,7 +526,7 @@ class OCREngine:
                 if total_chars > target_chars:
                     break
 
-            logging.info(
+            logging.debug(
                 f"OCR extracted text from {len(pages_to_extract)} pages of {file_path.name}"
             )
             return "\n\n".join(extracted_text).strip()

@@ -297,7 +297,7 @@ uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom
 uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --model mistral
 ```
 
-#### Çıkarım Uzunluğu ve Bölümlendirmeyi (Chunking) Kontrol Etme
+#### Çıkarım Uzunluğu ve Örnekleme (Sampling) Kontrolü
 
 Tüketici donanımlarında yerel modeller çalıştırırken veya token tasarrufu sağlamak için LLM'e gönderilen metin uzunluğunu ve okuma mantığını ayarlayabilirsiniz:
 
@@ -308,15 +308,22 @@ uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-l
 # Modeliniz kaldırabiliyorsa daha iyi bağlam için artırın
 uv run renai process "C:/Kitaplar/Yolu" --mode rename --provider custom --text-length 20000
 
-# Düzenli (regular) mod: Sadece ilk 5 sayfayı okur ve boşluk atlamaz
+# Düzenli (regular) mod: Sadece ilk 5 sayfayı sırayla okur, head-tail bölme yapmaz
 uv run renai process "C:/Kitaplar/Yolu" --text-extraction regular --extraction-pages 5
 ```
 
-| Seçenek              | Açıklama                                                     | Varsayılan |
-| :------------------- | :----------------------------------------------------------- | :--------- |
-| `--text-length`      | LLM'e gönderilen hedef metin uzunluğu                        | 10000      |
-| `--text-extraction`  | Metin çıkarma bölümlendirme mantığı (`mixed` veya `regular`) | `regular`  |
-| `--extraction-pages` | Belgeden işlenecek hedef sayfa sayısı                        | 10         |
+| Seçenek              | Açıklama                                                    | Varsayılan  |
+| :------------------- | :---------------------------------------------------------- | :---------- |
+| `--text-length`      | LLM'e gönderilen hedef metin uzunluğu                       | 10000       |
+| `--text-extraction`  | Metin çıkarma modu (`head-tail` veya `regular`)             | `head-tail` |
+| `--extraction-pages` | Belgenin her bir tarafından işlenecek maksimum sayfa sayısı | 10          |
+
+#### Head-Tail Örnekleme (Sampling)
+
+Varsayılan `head-tail` modu, belgenin başından (head) ve sonundan (tail) prosedürel olarak sayfaları okur. Bu, başlangıçtaki meta veri açısından zengin içeriği (başlık, yazar, telif hakkı) ve sondaki referansları/ISBN'yi yakalarken, meta veri açısından fakir olan orta bölümü atlar.
+
+- **`head_ratio`** (varsayılan: 0.7): Head/tail karakter bölme oranını kontrol eder. 0.7, hedef metnin %70'inin head'den, %30'unun tail'den geldiği anlamına gelir.
+- **`"mixed"`** değeri geriye dönük uyumluluk için sessizce `"head-tail"` olarak normalize edilir.
 
 #### Özel Sağlayıcı için Ortam Değişkenleri
 
@@ -592,7 +599,7 @@ categories = [
 | `--debug-ocr`          | Hata ayıklama görüntülerini kaydet                                       |
 | `--recursive`          | Alt dizinleri işle (varsayılan: True)                                    |
 | `--text-length`        | Hedef metin uzunluğu (varsayılan: 10000)                                 |
-| `--text-extraction`    | Metin okuma modu (`mixed` veya `regular`) (varsayılan: `regular`)        |
+| `--text-extraction`    | Metin okuma modu (`head-tail` veya `regular`) (varsayılan: `head-tail`)  |
 | `--extraction-pages`   | Doküman başına işlenecek sayfa sayısı                                    |
 | `--update-metadata`    | Önbelleği zorla yenile                                                   |
 | `--fallback-mode`      | Çıkarma başarısız olduğundaki strateji (`none`, `ocr`, `vision`, `move`) |
@@ -618,6 +625,11 @@ categories = [
 │       ├── cache/               # [YENİ] Atomik yazma ile önbellek yönetimi
 │       │   ├── manager.py       # Metin ve metadata önbellek işlemleri
 │       │   └── __init__.py
+│       ├── messages/            # [YENİ] Merkezi kullanıcı mesajları
+│       │   ├── cli.py           # CLI uyarıları, komut istemleri, yardım metinleri
+│       │   ├── orchestrator.py  # İşlem hattı durumu, ilerleme, özet
+│       │   ├── setup.py         # Sihirbaz, uçuş öncesi, kayıt mesajları
+│       │   └── errors.py        # İstisna analizi (neden/nasıl düzeltilir)
 │       ├── prompts/             # Modüler .txt prompt şablonları
 │       ├── models/              # SSoT Pydantic Şemaları (Book, Image)
 │       ├── engines/             # Görüş ve OCR motorları

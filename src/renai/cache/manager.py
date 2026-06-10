@@ -148,7 +148,7 @@ def read_metadata_cache(
                         )
                         return None
                 return cache_data
-            logging.info(
+            logging.debug(
                 f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
             )
             try:

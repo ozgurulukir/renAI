@@ -299,7 +299,7 @@ renai process "C:/Path/To/Books" --mode rename --provider custom
 renai process "C:/Path/To/Books" --mode rename --provider custom --model mistral
 ```
 
-## Controlling Extraction Length & Chunking
+## Controlling Extraction Length & Sampling
 
 When running local models on consumer hardware, or to save tokens, you can control how much text is extracted and sent to the LLM:
 
@@ -310,15 +310,22 @@ renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 5
 # Increase for better context if your model can handle it
 renai process "C:/Path/To/Books" --mode rename --provider custom --text-length 20000
 
-# Regular mode: Stop reading after 5 pages, no skipping
+# Regular mode: Read first N pages sequentially, no head-tail split
 renai process "C:/Path/To/Books" --mode rename --text-extraction regular --extraction-pages 5
 ```
 
-| Option               | Description                                      | Default |
-| :------------------- | :----------------------------------------------- | :------ |
-| `--text-length`      | Target text length sent to LLM                   | 10000   |
-| `--text-extraction`  | Extraction chunking logic (`mixed` or `regular`) | `mixed` |
-| `--extraction-pages` | Target pages to process from the document        | 10      |
+| Option               | Description                                   | Default     |
+| :------------------- | :-------------------------------------------- | :---------- |
+| `--text-length`      | Target text length sent to LLM                | 10000       |
+| `--text-extraction`  | Extraction mode (`head-tail` or `regular`)    | `head-tail` |
+| `--extraction-pages` | Max pages to process per side of the document | 10          |
+
+### Head-Tail Sampling
+
+The default `head-tail` mode reads pages procedurally from the start (head) and end (tail) of the document. This captures metadata-rich content (title, author, copyright) from the beginning and references/ISBN from the end, while skipping the metadata-poor middle section.
+
+- **`head_ratio`** (default: 0.7): Controls the head/tail character split. 0.7 means 70% of the target text comes from the head, 30% from the tail.
+- **`"mixed"`** is silently normalized to `"head-tail"` for backward compatibility.
 
 ### Environment Variables for Custom Provider
 
@@ -600,7 +607,7 @@ categories = [
 | `--no-recursive`       | Process root only                                                                                      |
 | `--exif`               | Add EXIF date to image filenames when available                                                        |
 | `--text-length`        | Target text length for LLM (default: 10000)                                                            |
-| `--text-extraction`    | Extraction mode (`mixed` or `regular`) (default: `regular`)                                            |
+| `--text-extraction`    | Extraction mode (`head-tail` or `regular`) (default: `head-tail`)                                      |
 | `--extraction-pages`   | Pages to process per document                                                                          |
 | `--update-metadata`    | Force refresh metadata cache                                                                           |
 | `--fallback-mode`      | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`)                                       |
@@ -630,6 +637,11 @@ categories = [
 │       ├── cache/               # [NEW] Cache management with atomic writes
 │       │   ├── manager.py       # Text & metadata cache operations
 │       │   └── __init__.py
+│       ├── messages/            # [NEW] Centralized user-facing messages
+│       │   ├── cli.py           # CLI warnings, prompts, help texts
+│       │   ├── orchestrator.py  # Pipeline status, progress, summary
+│       │   ├── setup.py         # Wizard, preflight, save messages
+│       │   └── errors.py        # Exception analysis (why/how-to-fix)
 │       ├── prompts/             # Modular .txt prompt templates
 │       ├── models/              # SSoT Pydantic Schemas (Book, Image)
 │       ├── engines/             # Vision & OCR engines

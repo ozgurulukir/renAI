@@ -60,7 +60,7 @@ def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
     write_metadata_cache(cache_path, metadata, provider, model)
 
     # Test provider mismatch
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG):
         result = read_metadata_cache(cache_path, "different_provider", model)
         assert result is None
         assert "Cache invalidated" in caplog.text

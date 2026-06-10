@@ -162,22 +162,12 @@ class StatusDisplay:
             self.activities.pop(0)
 
     def __rich__(self) -> Table:
-        # 1. Activity Panel
         activity_table = Table.grid(expand=True)
         activity_table.add_column(no_wrap=True, overflow="ellipsis")
         for act in self.activities:
             activity_table.add_row(act)
 
-        # 2. Stats and Progress combined
         layout_table = Table.grid(expand=True)
-        layout_table.add_row(
-            Panel(
-                activity_table,
-                title=orch_msg.Progress.TITLE_ACTIVITY,
-                border_style="blue",
-                padding=(1, 2),
-            )
-        )
 
         stats_line = orch_msg.Progress.STATS_LINE.format(
             self.processed, self.successful, self.failed
@@ -187,6 +177,14 @@ class StatusDisplay:
                 Group(stats_line, "\n", self.progress),
                 title=orch_msg.Progress.TITLE_TOTAL,
                 border_style="green",
+            )
+        )
+        layout_table.add_row(
+            Panel(
+                activity_table,
+                title=orch_msg.Progress.TITLE_ACTIVITY,
+                border_style="blue",
+                padding=(1, 2),
             )
         )
 
@@ -252,7 +250,7 @@ async def _execute_processing_loop(
             status_display,
             console=console,
             refresh_per_second=4,
-            screen=True,  # Isolate from scrollback to prevent stacking
+            screen=True,
         ) as live:
             if config.benchmark:
                 await _run_benchmark_mode(processor, file_paths, status_display, live)

@@ -116,8 +116,7 @@ def safe_move_file(
         new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
 
         if existing_hash == new_hash:
-            # Same content - skip moving
-            logging.info(
+            logging.debug(
                 f"File {dest_path.name} already exists with same content, skipping {operation_type}"
             )
             return dest_path
@@ -130,7 +129,7 @@ def safe_move_file(
         if ensure_dirs:
             final_dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source_path), str(final_dest_path))
-        logging.info(
+        logging.debug(
             f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
         )
         return final_dest_path
@@ -172,7 +171,7 @@ def safe_copy_file(
         if ensure_dirs:
             dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(source_path), str(dest_path))
-        logging.info(
+        logging.debug(
             f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {dest_path.name}"
         )
         return dest_path
