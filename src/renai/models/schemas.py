@@ -35,6 +35,7 @@ class ProcessingConfig(BaseModel):
     update_metadata: bool = False
     add_exif_date: bool = False
     benchmark: bool = False
+    vision_max_pages: int = 3
 
 
 class BaseMetadata(BaseModel):

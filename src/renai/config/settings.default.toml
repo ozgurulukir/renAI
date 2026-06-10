@@ -31,6 +31,7 @@ exif = false
 vision_image_max_size = 1024
 vision_image_quality = 85
 vision_dpi = 150
+vision_max_pages = 3
 
 # Fallback and Error Handling
 fallback_mode = "none"

@@ -56,6 +56,26 @@ class TestGetBookMetadataFromImage:
         assert llm_engine.client.chat.completions.create.await_count == 2
 
     @pytest.mark.asyncio
+    async def test_successful_vision_call_multiple_images(self, llm_engine):
+        """Test successful vision model call for document with multiple images."""
+        img_data = [
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde",
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde",
+        ]
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = json.dumps(
+            {"title": "Multi-Image Document", "category": "Article", "language": "en"}
+        )
+
+        llm_engine.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await llm_engine.get_book_metadata_from_image(Path("test.pdf"), img_data)
+
+        assert isinstance(result, BookMetadata)
+        assert result.title == "Multi-Image Document"
+        assert llm_engine.client.chat.completions.create.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_generic_exception_during_vision_call(self, llm_engine):
         """Test that generic exceptions in get_book_metadata_from_image are caught and return None."""
 

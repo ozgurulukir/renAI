@@ -47,6 +47,7 @@ class BookProcessor:
         text_extraction: str = "mixed",
         extraction_pages: int = 10,
         move_scan_failures: bool = False,
+        vision_max_pages: int | None = None,
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
@@ -63,7 +64,12 @@ class BookProcessor:
             text_extraction=text_extraction,
             extraction_pages=extraction_pages,
         )
-        self.visual_processor = VisualProcessor(llm_engine=llm_engine)
+        self.visual_processor = VisualProcessor(
+            llm_engine=llm_engine,
+            provider=provider,
+            model=self.model,
+            vision_max_pages=vision_max_pages,
+        )
         self.file_operation_lock = asyncio.Lock()
 
         # Tracking for reporting/failure handling

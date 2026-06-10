@@ -124,7 +124,7 @@ ruff check src/ tests/
 ruff format --check src/ tests/
 
 # Type checking
-pyright src/renai --ignoreexternal
+pyright src/renai
 
 # Build package
 python -m build
@@ -166,6 +166,7 @@ python -m build
 - **pydantic-settings** with TOML config sources (`settings.default.toml`, `settings.toml`)
 - **Environment variables**: `RENAI_` prefix (e.g., `RENAI_PROVIDER`, `RENAI_MODEL`, `RENAI_WORKERS`)
 - **Priority**: CLI flags > env vars > user TOML > default TOML > factory defaults
+- **Vision Fallback Pages**: Configurable `vision_max_pages` (default: 3, range 1-10) to limit sampled pages for PDF vision extraction.
 - **Lazy loading**: Heavy attributes (`PROVIDERS`, `EVAL_MODELS`) use PEP 562 `__getattr__`
 - **Backward compat**: `renai.settings` re-exports from `renai.config` -- new code should import from `renai.config`
 

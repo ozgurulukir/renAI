@@ -99,6 +99,7 @@ async def setup_engines(
         text_extraction=config.text_extraction,
         extraction_pages=config.extraction_pages,
         move_scan_failures=config.move_scan_failures,
+        vision_max_pages=config.vision_max_pages,
     )
 
     return ocr_engine, llm_engine, processor
@@ -471,6 +472,7 @@ async def run_evaluation_pipeline(
                 text_length=app_settings.text_length,
                 text_extraction=app_settings.text_extraction,
                 extraction_pages=app_settings.extraction_pages,
+                vision_max_pages=app_settings.vision_max_pages,
             ),
         )
         all_eval_results[f"{provider}/{model_name}"] = results

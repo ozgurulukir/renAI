@@ -53,16 +53,14 @@ class TestVisualProcessor:
 
     def test_select_pages_short(self, visual_processor):
         """Test page selection for short documents."""
-        pages = visual_processor._select_pages(3)
-        assert pages == [0, 1, 2]
+        pages = visual_processor._select_pages(2)
+        assert pages == [0, 1]
 
     def test_select_pages_long(self, visual_processor):
         """Test page selection for long documents."""
         pages = visual_processor._select_pages(20)
-        assert 0 in pages
-        assert 19 in pages
-        assert 10 in pages  # total_pages // 2
-        assert len(pages) == 5
+        assert pages == [0, 1, 2]
+        assert len(pages) == 3
 
     @pytest.mark.asyncio
     async def test_extract_metadata_from_pdf(self, visual_processor, tmp_path):
@@ -89,14 +87,16 @@ class TestVisualProcessor:
                 mock_frombytes.return_value = mock_img
                 mock_img.thumbnail = MagicMock()
 
-                with patch("io.BytesIO") as mock_bytesio:
+                with patch("renai.processors.visual.BytesIO") as mock_bytesio:
                     mock_buffer = MagicMock()
                     mock_buffer.getvalue.return_value = b"image bytes"
                     mock_bytesio.return_value = mock_buffer
 
                     result = await visual_processor.extract_metadata_from_pdf(test_file)
                     assert result.title == "Vision Book"
-                    visual_processor.llm_engine.get_book_metadata_from_image.assert_awaited_once()
+                    visual_processor.llm_engine.get_book_metadata_from_image.assert_awaited_once_with(
+                        test_file, [b"image bytes"]
+                    )
 
     @pytest.mark.asyncio
     async def test_extract_metadata_from_pdf_llm_returns_none_all_pages(
@@ -127,7 +127,7 @@ class TestVisualProcessor:
                 mock_frombytes.return_value = mock_img
                 mock_img.thumbnail = MagicMock()
 
-                with patch("io.BytesIO") as mock_bytesio:
+                with patch("renai.processors.visual.BytesIO") as mock_bytesio:
                     mock_buffer = MagicMock()
                     mock_buffer.getvalue.return_value = b"image bytes"
                     mock_bytesio.return_value = mock_buffer

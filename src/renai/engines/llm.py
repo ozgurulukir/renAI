@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -141,7 +141,7 @@ class LLMEngine:
         return refined_model if refined_model else initial_model
 
     async def get_book_metadata_from_image(
-        self, image_path: Path, image_data: bytes
+        self, image_path: Path, image_data: bytes | list[bytes]
     ) -> BookMetadata | None:
         """Extract book metadata via vision using modular prompts."""
         if not self.client.api_key:
@@ -149,7 +149,13 @@ class LLMEngine:
             return None
 
         try:
-            image_base64 = base64.b64encode(image_data).decode("utf-8")
+            if isinstance(image_data, list):
+                image_base64: str | list[str] = [
+                    base64.b64encode(img).decode("utf-8") for img in image_data
+                ]
+            else:
+                image_base64 = base64.b64encode(image_data).decode("utf-8")
+
             system_role = self._get_system_role("book_extractor", BookMetadata)
 
             initial_model = await self._call_vision_llm(
@@ -188,29 +194,44 @@ class LLMEngine:
             return None
 
     async def _call_vision_llm(
-        self, image_base64: str, system_role: str, file_name: str, model_class: type[T]
+        self,
+        image_base64: str | list[str],
+        system_role: str,
+        file_name: str,
+        model_class: type[T],
     ) -> T | None:
         """Helper for vision calls with type-safe model validation."""
         image_format = Path(file_name).suffix.lower().replace(".", "") or "jpeg"
         if image_format not in ("jpeg", "png", "gif", "webp"):
             image_format = "jpeg"
 
-        messages: list[ChatCompletionMessageParam] = [
-            {"role": "system", "content": system_role},
+        images = [image_base64] if isinstance(image_base64, str) else image_base64
+
+        content: list[dict[str, Any]] = []
+        for img in images:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/{image_format};base64,{img}"},
+                }
+            )
+        content.append(
             {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/{image_format};base64,{image_base64}"},
-                    },
-                    {
-                        "type": "text",
-                        "text": "Analyze this document/image and extract metadata as JSON.",
-                    },
-                ],
-            },
-        ]
+                "type": "text",
+                "text": "Analyze the provided pages/images and extract metadata as JSON.",
+            }
+        )
+
+        messages = cast(
+            "list[ChatCompletionMessageParam]",
+            [
+                {"role": "system", "content": system_role},
+                {
+                    "role": "user",
+                    "content": content,
+                },
+            ],
+        )
         return await self._generate_json_completion(messages, model_class, file_name)
 
     async def _call_llm(self, prompt: str, system_role: str, model_class: type[T]) -> T | None:

@@ -32,6 +32,7 @@ def test_handle_process_command_nonexistent_directory():
                 rename_images=False,
                 exif=False,
                 benchmark=False,
+                vision_max_pages=3,
             )
         assert exc_info.value.exit_code == 1
         mock_console.print.assert_called_once()
@@ -66,6 +67,7 @@ def test_handle_process_command_success(tmp_path):
             rename_images=True,
             exif=True,
             benchmark=False,
+            vision_max_pages=4,
         )
 
         mock_header.assert_called_once()
@@ -89,6 +91,7 @@ def test_handle_process_command_success(tmp_path):
         assert config.fallback_mode == FallbackMode.OCR
         assert config.rename_images is True
         assert config.add_exif_date is True
+        assert config.vision_max_pages == 4
 
 
 def test_handle_process_command_keyboard_interrupt(tmp_path):
@@ -121,6 +124,7 @@ def test_handle_process_command_keyboard_interrupt(tmp_path):
                 rename_images=False,
                 exif=False,
                 benchmark=False,
+                vision_max_pages=3,
             )
         assert exc_info.value.exit_code == 0
         mock_console.print.assert_any_call("\n[yellow]Cancelled by user. Exiting...[/yellow]")

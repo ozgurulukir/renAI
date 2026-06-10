@@ -220,6 +220,7 @@ def handle_process_command(
     rename_images: bool,
     exif: bool,
     benchmark: bool,
+    vision_max_pages: int,
 ) -> None:
     """Orchestrate and execute the file processing pipeline."""
     final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
@@ -257,6 +258,7 @@ def handle_process_command(
                     add_exif_date=exif,
                     update_metadata=update_metadata,
                     benchmark=benchmark,
+                    vision_max_pages=vision_max_pages,
                 ),
             )
         )
@@ -412,6 +414,13 @@ def process_cmd(
             help="Benchmarking on first 3 files",
         ),
     ] = False,
+    vision_max_pages: Annotated[
+        int,
+        typer.Option(
+            "--vision-max-pages",
+            help="Max pages to sample for vision PDF extraction",
+        ),
+    ] = app_settings.vision_max_pages,
 ) -> None:
     """Process files in a directory."""
     handle_process_command(
@@ -435,6 +444,7 @@ def process_cmd(
         rename_images=rename_images,
         exif=exif,
         benchmark=benchmark,
+        vision_max_pages=vision_max_pages,
     )
 
 

@@ -23,12 +23,16 @@ class VisualProcessor:
         llm_engine: LLMEngine | None = None,
         provider: str = "deepinfra",
         model: str = "",
+        vision_max_pages: int | None = None,
     ):
         self.llm_engine = llm_engine
         self.provider = provider
         self.model = model or (llm_engine.model_name if llm_engine else "")
         self.image_max_size = app_settings.vision_image_max_size
         self.image_quality = app_settings.vision_image_quality
+        self.vision_max_pages = (
+            vision_max_pages if vision_max_pages is not None else app_settings.vision_max_pages
+        )
 
     def _convert_page(self, doc: pymupdf.Document, page_number: int, dpi: int) -> bytes | None:
         """Helper to convert a loaded PDF page to optimized image bytes (synchronous)."""
@@ -67,15 +71,12 @@ class VisualProcessor:
 
             page_images = await asyncio.to_thread(_get_page_count_and_convert)
 
-            for img_bytes in page_images:
-                if not self.llm_engine:
-                    continue
+            if not page_images or not self.llm_engine:
+                return None
 
-                metadata = await self.llm_engine.get_book_metadata_from_image(file_path, img_bytes)
-                if metadata:
-                    return metadata
+            # Pass all extracted page images together for a consolidated vision analysis
+            return await self.llm_engine.get_book_metadata_from_image(file_path, page_images)
 
-            return None
         except Exception as e:
             logging.error(f"Vision extraction failed for PDF {file_path.name}: {e}")
             return None
@@ -126,10 +127,10 @@ class VisualProcessor:
 
     def _select_pages(self, total_pages: int) -> list[int]:
         """Select pages to process based on document length."""
-        MIN_PAGES_FOR_SAMPLING = 5
-        if total_pages <= MIN_PAGES_FOR_SAMPLING:
+        max_pages = self.vision_max_pages
+        if total_pages <= max_pages:
             return list(range(total_pages))
-        return [0, 1, 2, total_pages // 2, total_pages - 1]
+        return list(range(max_pages))
 
     async def _convert_pdf_page_to_image_async(
         self, file_path: Path, page_number: int = 0, dpi: int | None = None

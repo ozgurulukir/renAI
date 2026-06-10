@@ -107,6 +107,12 @@ class AppSettings(BaseSettings):
         description="JPEG quality for vision images",
     )
     vision_dpi: int = Field(default=150, ge=72, description="DPI for PDF-to-image conversion")
+    vision_max_pages: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Max pages to sample for vision PDF extraction",
+    )
 
     # Fallback settings
     fallback_mode: str = Field(default="none", description="Extraction failure strategy")

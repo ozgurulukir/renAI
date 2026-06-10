@@ -608,6 +608,7 @@ categories = [
 | `--fallback-mode` | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`) |
 | `--move-scan-failures` | Move failed files to `Scan_Failures` folder |
 | `--benchmark` | Benchmark PDF extractors on the first 3 files |
+| `--vision-max-pages` | Max pages to sample for vision PDF extraction (default: 3) |
 | `cache` | Command to clear cache |
 | `init` | Command to start interactive setup wizard |
 | `providers` | Command to list configured providers |
