@@ -9,7 +9,7 @@ from renai.utils import (
     generate_cache_key,
     get_file_hash,
     get_provider_model_key,
-    proportional_chunk_trim,
+    head_tail_trim,
     read_text_limited,
     sanitize_filename,
 )
@@ -155,57 +155,40 @@ def test_sanitize_filename_length():
     assert sanitize_filename("a" * 50 + " .", max_length=50) == "a" * 50
 
 
-def test_proportional_chunk_trim_basic():
-    """Test basic functionality of proportional_chunk_trim."""
-    # Empty text
-    assert proportional_chunk_trim("", 10, 2) == ""
-
-    # No trim needed
+def test_head_tail_trim_basic():
+    """Test basic functionality of head_tail_trim."""
+    assert head_tail_trim("", 10) == ""
     text = "Short text"
-    assert proportional_chunk_trim(text, 50, 2) == text
+    assert head_tail_trim(text, 50) == text
 
-    # Basic trim (50%)
-    # 12345678, target 4, 2 chunks
-    # Chunks: "1234", "5678"
-    # total_length = 8, reduction_factor = 4/8 = 0.5
-    # allowed_length = int(4 * 0.5) = 2
-    # result: "12" + "56" = "1256"
-    assert proportional_chunk_trim("12345678", 4, 2) == "1256"
-
-
-def test_proportional_chunk_trim_edge_cases():
-    """Test edge cases for proportional_chunk_trim."""
-    # num_chunks = 0 (defaults to 1 chunk)
-    assert proportional_chunk_trim("abcdef", 3, 0) == "abc"
-
-    # num_chunks = 1
-    assert proportional_chunk_trim("abcdef", 3, 1) == "abc"
-
-    # target_length = 0
-    assert proportional_chunk_trim("abcdef", 0, 2) == ""
-
-    # chunk_size = 0 (should not happen if num_chunks > 0 and len(text) > 0,
-    # but let's see how it handles it via code path)
-    # Actually if len(text) > 0 and num_chunks > len(text), chunk_size = 0
-    # The code handles chunk_size == 0 by returning text[:target_length]
-    assert proportional_chunk_trim("abc", 2, 10) == "ab"
+    result = head_tail_trim("A" * 100, 40, head_ratio=0.7)
+    assert len(result) <= 40
+    assert "\n...\n" in result
+    head_part, tail_part = result.split("\n...\n")
+    assert head_part.startswith("A")
+    assert tail_part.endswith("A")
 
 
-def test_proportional_chunk_trim_rounding_behavior():
-    """
-    Demonstrate current rounding behavior where many small chunks
-    may lead to excessive trimming (even returning empty string).
-    """
-    # 10 chars, target 5, 10 chunks
-    # Each chunk is 1 char. reduction_factor = 0.5
-    # allowed_length = int(1 * 0.5) = 0
-    # Result will be "" instead of 5 chars
-    text = "1234567890"
-    assert proportional_chunk_trim(text, 5, 10) == ""
+def test_head_tail_trim_edge_cases():
+    """Test edge cases for head_tail_trim."""
+    assert head_tail_trim("abcdef", 3) == "abc"
+    assert head_tail_trim("abcdef", 0) == ""
+    assert head_tail_trim("abcdef", 100) == "abcdef"
+    assert head_tail_trim("abc", 2, head_ratio=0.7) == "ab"
 
-    # Another example: 10 chars, target 9, 10 chunks
-    # reduction_factor = 0.9. allowed_length = int(1 * 0.9) = 0
-    assert proportional_chunk_trim(text, 9, 10) == ""
+    with pytest.raises(ValueError):
+        head_tail_trim("abc", 10, head_ratio=0.0)
+    with pytest.raises(ValueError):
+        head_tail_trim("abc", 10, head_ratio=1.0)
+
+
+def test_head_tail_trim_head_tail_preservation():
+    """Test that head and tail content are preserved."""
+    text = "HEADER_CONTENT_" + "X" * 200 + "_TAIL_CONTENT"
+    result = head_tail_trim(text, 50, head_ratio=0.7)
+    assert "HEADER_CONTENT" in result
+    assert "TAIL_CONTENT" in result
+    assert len(result) <= 50
 
 
 def test_read_text_limited_small(tmp_path):

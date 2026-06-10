@@ -355,7 +355,7 @@ def process_cmd(
         str,
         typer.Option(
             "--text-extraction",
-            help="Extraction mode: mixed or regular",
+            help="Extraction mode: head-tail or regular",
         ),
     ] = app_settings.text_extraction,
     extraction_pages: Annotated[

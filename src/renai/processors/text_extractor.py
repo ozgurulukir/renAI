@@ -19,7 +19,7 @@ from renai.extractors import get_extractor
 from renai.models.schemas import FallbackMode
 from renai.utils import (
     get_file_hash,
-    proportional_chunk_trim,
+    head_tail_trim,
     read_text_limited,
 )
 
@@ -53,7 +53,7 @@ class TextExtractor:
         ocr_engine: OCREngine,
         extractor_name: str = "pymupdf",
         target_length: int = 10000,
-        text_extraction: str = "mixed",
+        text_extraction: str = "head-tail",
         extraction_pages: int = 10,
     ):
         """
@@ -63,16 +63,19 @@ class TextExtractor:
             ocr_engine: OCR engine instance for fallback
             extractor_name: Name of PDF extractor to use
             target_length: Target text length for LLM processing
+            text_extraction: Extraction mode ("head-tail" or "regular")
+            extraction_pages: Safety limit for pages per side
         """
         self.ocr_engine = ocr_engine
         self.extractor_name = extractor_name
         self.extractor = get_extractor(extractor_name)
         self.target_length = target_length
+        if text_extraction == "mixed":
+            text_extraction = "head-tail"
         self.text_extraction_mode = text_extraction
         self.extraction_pages = extraction_pages
         self.office_extensions = OFFICE_EXTENSIONS
         self.plain_text_extensions = PLAIN_TEXT_EXTENSIONS
-        # Move to folder management
         self.needs_scan_dir = None
         self.skip_scan_files = False
         self.scan_failures_dir = None
@@ -140,10 +143,10 @@ class TextExtractor:
 
         return extracted_text
 
-    def _apply_mixed_mode_or_trim(self, text: str, target_length: int) -> str:
-        """Trim text based on the configured extraction mode (mixed or regular)."""
-        if self.text_extraction_mode == "mixed":
-            return proportional_chunk_trim(text, target_length, app_settings.mixed_chunk_count)
+    def _apply_extraction_mode(self, text: str, target_length: int) -> str:
+        """Trim text based on the configured extraction mode (head-tail or regular)."""
+        if self.text_extraction_mode == "head-tail":
+            return head_tail_trim(text, target_length, app_settings.head_ratio)
         return text[:target_length]
 
     async def _handle_extraction_fallback(
@@ -191,7 +194,7 @@ class TextExtractor:
                 return md.convert(str(file_path)).text_content
 
             content = await asyncio.to_thread(_convert)
-            return self._apply_mixed_mode_or_trim(content, target_length)
+            return self._apply_extraction_mode(content, target_length)
         except ImportError:
             logging.error(f"MarkItDown not installed, skipping: {file_path.name}")
             return ""
@@ -214,7 +217,7 @@ class TextExtractor:
             content = await asyncio.to_thread(
                 read_text_limited, file_path, get_max_text_read_size()
             )
-            return self._apply_mixed_mode_or_trim(content, target_length)
+            return self._apply_extraction_mode(content, target_length)
         except Exception as e:
             logging.error(f"Text read failed for {file_path.name}: {e}")
             return ""
@@ -231,7 +234,15 @@ class TextExtractor:
 
         # Libraries like PyMuPDF are blocking
         def _extract():
-            return self.extractor.extract_text(file_path, pages=self.extraction_pages) or ""
+            return (
+                self.extractor.extract_text(
+                    file_path,
+                    target_chars=target_length,
+                    head_ratio=app_settings.head_ratio,
+                    max_pages_per_side=self.extraction_pages,
+                )
+                or ""
+            )
 
         full_text = await asyncio.to_thread(_extract)
 
@@ -239,7 +250,7 @@ class TextExtractor:
 
         # Check if we got meaningful text
         if len(full_text.strip()) > sufficient_threshold:
-            return self._apply_mixed_mode_or_trim(full_text, target_length)
+            return self._apply_extraction_mode(full_text, target_length)
 
         # Insufficient text - Apply fallback strategy
         return await self._handle_extraction_fallback(file_path, full_text, target_length, fallback)
@@ -249,7 +260,7 @@ class TextExtractor:
         try:
             ocr_text = await self.ocr_engine.extract_text(file_path)
             if ocr_text.strip():
-                return self._apply_mixed_mode_or_trim(ocr_text, target_length)
+                return self._apply_extraction_mode(ocr_text, target_length)
             return ""
         except Exception as e:
             logging.error(f"OCR fallback failed for {file_path.name}: {e}")

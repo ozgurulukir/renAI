@@ -272,15 +272,17 @@ class OCREngine:
             return image
 
     def _get_page_sampling(self, total_pages: int) -> list[int]:
-        """Page sampling strategy."""
-        SAMPLE_THRESHOLD = 30
-        pages_to_extract = list(range(min(15, total_pages)))
-        if total_pages > SAMPLE_THRESHOLD:
-            mid = total_pages // 2
-            pages_to_extract += [mid, mid + 1]
-        if total_pages > SAMPLE_THRESHOLD:
-            pages_to_extract += [total_pages - 1, total_pages]
-        return sorted({p for p in pages_to_extract if 0 <= p < total_pages})
+        """Head-tail page sampling strategy for OCR.
+
+        Samples the first HEAD_PAGES and last TAIL_PAGES of the document,
+        which is where metadata (title, author, references, ISBN) is located.
+        """
+        HEAD_PAGES = 5
+        TAIL_PAGES = 3
+        head = list(range(min(HEAD_PAGES, total_pages)))
+        tail_start = max(HEAD_PAGES, total_pages - TAIL_PAGES)
+        tail = list(range(tail_start, total_pages))
+        return sorted(set(head + tail))
 
     async def _bulk_extract_images(
         self, file_path: Path, pages: list[int], target_dpi: int
@@ -460,7 +462,7 @@ class OCREngine:
             logging.error(f"Tesseract failed for page {pno + 1}: {e}")
             return ""
 
-    async def extract_text(self, file_path: Path) -> str:  # noqa: C901, PLR0912, PLR0915
+    async def extract_text(self, file_path: Path, target_chars: int = 10000) -> str:  # noqa: C901, PLR0912, PLR0915
         """Extract text from a document asynchronously using OCR."""
         doc = None
         bulk_images: dict[int, Path] = {}
@@ -521,8 +523,7 @@ class OCREngine:
                         except Exception as e:
                             logging.debug(f"Cleanup of temp_img failed: {e}")
 
-                MAX_OCR_CHARS = 10000
-                if total_chars > MAX_OCR_CHARS:
+                if total_chars > target_chars:
                     break
 
             logging.info(

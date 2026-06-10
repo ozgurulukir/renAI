@@ -141,36 +141,45 @@ def read_text_limited(file_path: Path, max_chars: int) -> str:
         return ""
 
 
-def proportional_chunk_trim(text: str, target_length: int, num_chunks: int) -> str:
+def head_tail_trim(text: str, target_length: int, head_ratio: float = 0.7) -> str:
     """
-    Trim text to a target length by dividing it into equal chunks and applying a reduction factor.
-    """
-    if not text:
-        return ""
+    Trim text to target_length by preserving the head and tail segments.
 
-    # Calculate the size of each chunk
-    chunk_size = len(text) // num_chunks if num_chunks > 0 else len(text)
-    if chunk_size == 0:
+    Head captures title, author, publisher (beginning of document).
+    Tail captures references, ISBN, colophon (end of document).
+    The middle (body text, least useful for metadata) is discarded.
+
+    Args:
+        text: Input text to trim.
+        target_length: Maximum character count for the result.
+        head_ratio: Fraction of target_length allocated to the head (0.3-0.9).
+
+    Returns:
+        Trimmed text with head + separator + tail, or original if short enough.
+    """
+    if not text or target_length <= 0:
+        return ""
+    if not 0.0 < head_ratio < 1.0:
+        raise ValueError(f"head_ratio must be between 0 and 1 (exclusive), got {head_ratio}")
+    if len(text) <= target_length:
+        return text
+
+    head_len = int(target_length * head_ratio)
+    tail_len = target_length - head_len
+
+    MIN_TARGET_WITH_SEPARATOR = 3
+
+    if target_length < MIN_TARGET_WITH_SEPARATOR:
         return text[:target_length]
 
-    # Divide the text into equal chunks
-    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    separator = "\n...\n"
+    sep_len = len(separator)
+    adjusted_head = head_len - (sep_len // 2)
+    adjusted_tail = tail_len - (sep_len - sep_len // 2)
 
-    # Calculate the reduction factor
-    total_length = sum(len(chunk) for chunk in chunks)
-    reduction_factor = min(1.0, target_length / total_length) if total_length > 0 else 0
+    if adjusted_head <= 0:
+        return text[:target_length]
+    if adjusted_tail <= 0:
+        return text[:target_length]
 
-    # Apply the reduction factor to each chunk
-    trimmed_text = ""
-    current_length = 0
-    for chunk in chunks:
-        allowed_length = int(len(chunk) * reduction_factor)
-        trimmed_chunk = chunk[:allowed_length]
-        trimmed_text += trimmed_chunk
-        current_length += len(trimmed_chunk)
-
-        # Stop if we've reached the target length
-        if current_length >= target_length:
-            break
-
-    return trimmed_text
+    return text[:adjusted_head] + separator + text[-adjusted_tail:]

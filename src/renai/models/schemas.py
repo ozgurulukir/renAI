@@ -26,7 +26,7 @@ class ProcessingConfig(BaseModel):
     mutool_path: str = "mutool"
     extractor: str = "pymupdf"
     text_length: int = 10000
-    text_extraction: str = "mixed"
+    text_extraction: str = "head-tail"
     extraction_pages: int = 10
     skip_ocr_checks: bool = False
     move_scan_failures: bool = False

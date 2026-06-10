@@ -3,6 +3,12 @@ Your task is to extract or generate metadata for the document based on the provi
 
 {system_base}
 
+### **Document Structure:**
+The document content may be split into two segments:
+- <document_head>: Beginning of the document (title, author, publisher, copyright)
+- <document_tail>: End of the document (references, ISBN, colophon, publication info)
+Extract metadata from both segments when present.
+
 ### **Output Format (JSON Schema):**
 Your response must strictly conform to this JSON schema:
 {json_schema}
