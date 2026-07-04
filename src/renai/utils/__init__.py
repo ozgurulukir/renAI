@@ -63,8 +63,8 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     # Remove consecutive dots
     sanitized = RE_CONSECUTIVE_DOTS.sub(".", sanitized)
 
-    # Trim leading/trailing spaces and dots
-    sanitized = sanitized.strip(" .")
+    # Trim leading/trailing spaces, dots, and quotes
+    sanitized = sanitized.strip(" .\"'")
 
     # Prevent empty or traversal paths
     if not sanitized or sanitized in {".", ".."}:

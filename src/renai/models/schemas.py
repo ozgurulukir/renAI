@@ -72,6 +72,41 @@ class BookMetadata(BaseMetadata):
     )
     author: str | None = Field(None, description="The full name of the author(s) or editor(s).")
     year: int | None = Field(None, description="The 4-digit publication year.")
+    isbn: str | None = Field(
+        None,
+        description=(
+            "ISBN-10 or ISBN-13 identifier (digits only, may include hyphens). "
+            "Extract from copyright page or back cover."
+        ),
+    )
+    publisher: str | None = Field(
+        None,
+        description="The publisher or imprint name (e.g., 'Penguin Books', 'İletişim Yayınları').",
+    )
+    series: str | None = Field(
+        None,
+        description=(
+            "The series name if the document belongs to a series "
+            "(e.g., 'Harry Potter', 'Dune Chronicles')."
+        ),
+    )
+    volume: str | None = Field(
+        None,
+        description="Volume or installment number within a series (e.g., '2', 'Vol. 3', 'Book 5').",
+    )
+    doi: str | None = Field(
+        None,
+        description=(
+            "Digital Object Identifier for academic papers (e.g., '10.1000/xyz123'). "
+            "Extract if present."
+        ),
+    )
+    translator: str | None = Field(
+        None, description="The translator's name if this is a translated work."
+    )
+    page_count: int | None = Field(
+        None, description="Total number of pages in the document, if stated."
+    )
 
     @field_validator("year", mode="before")
     @classmethod
@@ -95,7 +130,41 @@ class BookMetadata(BaseMetadata):
             return int(v)
         return None
 
-    @field_validator("author", "title", mode="before")
+    @field_validator("page_count", mode="before")
+    @classmethod
+    def sanitize_page_count(cls, v: Any) -> int | None:
+        """Convert messy page count values to a valid integer or None."""
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            result = int(v)
+            return result if result > 0 else None
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() in ("unknown", "n/a", "-", "null", "none"):
+                return None
+            match = re.search(r"\d+", v)
+            if match:
+                result = int(match.group())
+                return result if result > 0 else None
+        return None
+
+    @field_validator("isbn", mode="before")
+    @classmethod
+    def sanitize_isbn(cls, v: Any) -> str | None:
+        """Normalize ISBN — keep original format but reject obvious non-ISBNs."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() in ("unknown", "n/a", "-", "null", "none"):
+                return None
+            return v
+        return None
+
+    @field_validator(
+        "author", "title", "publisher", "series", "volume", "translator", mode="before"
+    )
     @classmethod
     def sanitize_strings(cls, v: Any) -> str | None:
         """Convert empty or placeholder strings in text fields to None or clean strings."""

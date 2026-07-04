@@ -8,6 +8,58 @@ from renai.filename.builder import (
 from renai.models.schemas import BookMetadata, ImageMetadata
 
 
+class TestBookMetadataSchemaValidation:
+    """Test new BookMetadata field validators."""
+
+    def test_isbn_valid(self):
+        data = BookMetadata(title="T", isbn="978-0-13-235088-4", language="en", category="Other")
+        assert data.isbn == "978-0-13-235088-4"
+
+    def test_isbn_none_for_unknown(self):
+        data = BookMetadata(title="T", isbn="unknown", language="en", category="Other")
+        assert data.isbn is None
+
+    def test_isbn_none_for_empty(self):
+        data = BookMetadata(title="T", isbn="  ", language="en", category="Other")
+        assert data.isbn is None
+
+    def test_page_count_int(self):
+        data = BookMetadata(title="T", page_count=464, language="en", category="Other")
+        assert data.page_count == 464
+
+    def test_page_count_from_string(self):
+        data = BookMetadata(title="T", page_count="350 pages", language="en", category="Other")
+        assert data.page_count == 350
+
+    def test_page_count_none_for_unknown(self):
+        data = BookMetadata(title="T", page_count="N/A", language="en", category="Other")
+        assert data.page_count is None
+
+    def test_page_count_none_for_zero(self):
+        data = BookMetadata(title="T", page_count=0, language="en", category="Other")
+        assert data.page_count is None
+
+    def test_publisher_none_for_empty(self):
+        data = BookMetadata(title="T", publisher="", language="en", category="Other")
+        assert data.publisher is None
+
+    def test_series_none_for_na(self):
+        data = BookMetadata(title="T", series="N/A", language="en", category="Other")
+        assert data.series is None
+
+    def test_translator_stripped(self):
+        data = BookMetadata(title="T", translator="  Jane Doe  ", language="en", category="Other")
+        assert data.translator == "Jane Doe"
+
+    def test_doi_preserved(self):
+        data = BookMetadata(title="T", doi="10.1000/xyz123", language="en", category="Other")
+        assert data.doi == "10.1000/xyz123"
+
+    def test_volume_none_for_dash(self):
+        data = BookMetadata(title="T", volume="-", language="en", category="Other")
+        assert data.volume is None
+
+
 class TestBuildBookFilename:
     """Test build_book_filename function with SSoT models."""
 
@@ -44,6 +96,81 @@ class TestBuildBookFilename:
         data = BookMetadata(title="My Book", category="Other", language="en")
         result = build_book_filename(data, ".pdf")
         assert result == "My Book.pdf"
+
+
+class TestQuotedFieldStripping:
+    """Test that LLM-returned quoted values are stripped in filenames."""
+
+    def test_single_quoted_title_and_author(self):
+        data = BookMetadata(
+            title="'Clean Code'",
+            author="'Robert C. Martin'",
+            year=2008,
+            category="Other",
+            language="en",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert result.startswith("Clean Code")
+        assert "'Clean Code'" not in result
+        assert "'Robert C. Martin'" not in result
+
+    def test_double_quoted_title_and_author(self):
+        data = BookMetadata(
+            title='"Clean Code"',
+            author='"Robert C. Martin"',
+            year=2008,
+            category="Other",
+            language="en",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert result.startswith("Clean Code")
+        assert '"Clean Code"' not in result
+
+    def test_quoted_edition_no_double_quotes(self):
+        data = BookMetadata(
+            title="Clean Code",
+            edition="'2nd'",
+            author="Bob",
+            year=2008,
+            category="Other",
+            language="en",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert "'2nd'" in result
+        assert "''2nd''" not in result
+
+    def test_quoted_subtitle_stripped(self):
+        data = BookMetadata(
+            title="Clean Code",
+            subtitle="'A Handbook of Agile Software'",
+            author="Bob",
+            year=2008,
+            category="Other",
+            language="en",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert "'A Handbook" not in result
+        assert "A Handbook" in result
+
+    def test_dict_single_quoted_fields(self):
+        data = {"title": "'Clean Code'", "author": "'Bob'", "year": 2008}
+        result = build_book_filename(data, ".pdf")
+        assert result.startswith("Clean Code")
+        assert "'Clean Code'" not in result
+
+    def test_image_quoted_description_stripped(self):
+        data = ImageMetadata(description="'A beautiful sunset'", language="en", category="Photo")
+        result = build_image_filename(data, ".jpg")
+        assert "'A beautiful" not in result
+        assert "A beautiful sunset" in result
+
+    def test_vision_quoted_fields_stripped(self):
+        data = BookMetadata(
+            title="'Clean Code'", author="'Bob'", year=2008, category="Other", language="en"
+        )
+        result = build_vision_filename(data, ".pdf")
+        assert "'Clean Code'" not in result
+        assert "Clean Code" in result
 
 
 class TestBuildImageFilename:
@@ -169,3 +296,101 @@ class TestIsFilenameChanged:
 
         result = is_filename_changed(Path("old.pdf"), "new.pdf")
         assert result is True
+
+
+class TestSeriesAndVolumeInFilename:
+    """Test series and volume fields in book and vision filenames."""
+
+    def test_series_with_volume(self):
+        data = BookMetadata(
+            title="The Two Towers",
+            author="J.R.R. Tolkien",
+            year=1954,
+            series="Lord of the Rings",
+            volume="2",
+            language="en",
+            category="Other",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert "Lord of the Rings #2" in result
+
+    def test_series_without_volume(self):
+        data = BookMetadata(
+            title="Dune",
+            author="Frank Herbert",
+            year=1965,
+            series="Dune Chronicles",
+            language="en",
+            category="Other",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert "Dune Chronicles" in result
+        assert "#" not in result
+
+    def test_volume_without_series(self):
+        data = BookMetadata(
+            title="Collected Works",
+            author="Author",
+            year=2000,
+            volume="3",
+            language="en",
+            category="Other",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert "Vol. 3" in result
+
+    def test_no_series_no_volume(self):
+        data = BookMetadata(
+            title="Clean Code",
+            author="Robert C. Martin",
+            year=2008,
+            language="en",
+            category="Other",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert "Vol." not in result
+        assert "#" not in result
+
+    def test_vision_series_with_volume(self):
+        data = BookMetadata(
+            title="The Two Towers",
+            author="J.R.R. Tolkien",
+            year=1954,
+            series="Lord of the Rings",
+            volume="2",
+            language="en",
+            category="Other",
+        )
+        result = build_vision_filename(data, ".pdf")
+        assert "Lord of the Rings #2" in result
+
+    def test_dict_series_and_volume(self):
+        data = {
+            "title": "Dune",
+            "author": "Frank Herbert",
+            "year": 1965,
+            "series": "Dune Chronicles",
+            "volume": "1",
+        }
+        result = build_book_filename(data, ".pdf")
+        assert "Dune Chronicles #1" in result
+
+    def test_metadata_only_fields_not_in_filename(self):
+        data = BookMetadata(
+            title="Clean Code",
+            author="Robert C. Martin",
+            year=2008,
+            isbn="978-0-13-235088-4",
+            publisher="Prentice Hall",
+            doi="10.1234/test",
+            translator="Jane Doe",
+            page_count=464,
+            language="en",
+            category="Other",
+        )
+        result = build_book_filename(data, ".pdf")
+        assert "978-0-13-235088-4" not in result
+        assert "Prentice Hall" not in result
+        assert "10.1234" not in result
+        assert "Jane Doe" not in result
+        assert "464" not in result

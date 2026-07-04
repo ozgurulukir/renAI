@@ -18,7 +18,7 @@ def _get_field(data: BaseMetadata | dict[str, Any], field_name: str, default: An
         return default
 
     if isinstance(val, str):
-        return val.strip()
+        return val.strip().strip("\"'")
     return val
 
 
@@ -30,13 +30,16 @@ def build_book_filename(
     Build a filename from book metadata for document processing.
     Uses SSoT BookMetadata model or compatible dict.
 
-    Format: Title -- Subtitle -- 'Edition' -- Author -- (Year).ext
+    Format: Title -- Subtitle -- Series #Vol -- 'Edition' -- Author -- (Year).ext
+    isbn, publisher, doi, translator, page_count are stored in metadata only, not filenames.
     """
     title = _get_field(book_data, "title")
     subtitle = _get_field(book_data, "subtitle")
     edition = _get_field(book_data, "edition")
     author = _get_field(book_data, "author")
     year_val = _get_field(book_data, "year", None)
+    series = _get_field(book_data, "series")
+    volume = _get_field(book_data, "volume")
 
     name_parts = []
 
@@ -44,10 +47,14 @@ def build_book_filename(
         name_parts.append(title)
     if subtitle:
         name_parts.append(subtitle)
+    if series:
+        series_label = f"{series} #{volume}" if volume else series
+        name_parts.append(series_label)
+    elif volume:
+        name_parts.append(f"Vol. {volume}")
     if edition:
         name_parts.append(f"'{edition}'")
     if author:
-        # Standardize author name by trimming and removing potential placeholder strings
         name_parts.append(author)
 
     # Handle year separately to ensure correct formatting
@@ -145,11 +152,16 @@ def build_vision_filename(
     author = _get_field(book_data, "author")
     year = str(_get_field(book_data, "year") or "")
     language = _get_field(book_data, "language", "en")
+    series = _get_field(book_data, "series")
+    volume = _get_field(book_data, "volume")
 
     name_parts = []
 
     if title:
         name_parts.append(title)
+    if series:
+        series_label = f"{series} #{volume}" if volume else series
+        name_parts.append(series_label)
     if author:
         name_parts.append(author)
     if year and year.isdigit():
