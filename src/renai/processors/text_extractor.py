@@ -95,7 +95,7 @@ class TextExtractor:
             file_path: Path to the file
             target_length: Target text length (defaults to self.target_length)
             fallback: Fallback strategy for insufficient text
-            file_hash: Pre-computed MD5 hash of the file (optional)
+            file_hash: Pre-computed SHA256 hash of the file (optional)
 
         Returns:
             Extracted text or empty string on failure

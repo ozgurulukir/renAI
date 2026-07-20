@@ -129,6 +129,7 @@ class BookProcessor:
         rename_images: bool,
         update_metadata: bool,
         add_exif_date: bool,
+        file_hash: str | None = None,
     ) -> tuple[BookMetadata | ImageMetadata | None, bool]:
         """Resolve metadata by reading from cache or executing extraction engines."""
         metadata = None
@@ -155,7 +156,7 @@ class BookProcessor:
                 )
             else:
                 metadata, is_vision_doc = await self._extract_document_metadata(
-                    file_path, fallback_mode
+                    file_path, fallback_mode, file_hash
                 )
 
             if metadata:
@@ -194,6 +195,7 @@ class BookProcessor:
                 rename_images=rename_images,
                 update_metadata=update_metadata,
                 add_exif_date=add_exif_date,
+                file_hash=file_hash,
             )
 
             if not metadata:
@@ -239,10 +241,10 @@ class BookProcessor:
             return ProcessingResult(success=False, name=file_path.name, error=str(e))
 
     async def _extract_document_metadata(
-        self, file_path: Path, fallback_mode: FallbackMode
+        self, file_path: Path, fallback_mode: FallbackMode, file_hash: str | None = None
     ) -> tuple[BookMetadata | None, bool]:
         """Internal helper to extract document metadata using text first, then vision."""
-        text = await self.text_extractor.extract(file_path)
+        text = await self.text_extractor.extract(file_path, file_hash=file_hash)
 
         if not text.strip() and fallback_mode == FallbackMode.VISION:
             # Fallback to PDF Vision Page Sampling

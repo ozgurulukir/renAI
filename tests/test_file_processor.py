@@ -140,7 +140,10 @@ class TestBookProcessor:
 
         with patch.object(processor.text_extractor, "extract", AsyncMock(return_value="")):
             metadata, is_vision = await processor._extract_document_metadata(
-                test_file, fallback_mode=FallbackMode.VISION
+                test_file, fallback_mode=FallbackMode.VISION, file_hash="dummyhash"
+            )
+            processor.text_extractor.extract.assert_awaited_once_with(
+                test_file, file_hash="dummyhash"
             )
 
         assert metadata == mock_metadata
