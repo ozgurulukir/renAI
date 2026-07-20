@@ -129,7 +129,7 @@ class BookProcessor:
         rename_images: bool,
         update_metadata: bool,
         add_exif_date: bool,
-        file_hash: str,
+        file_hash: str | None = None,
     ) -> tuple[BookMetadata | ImageMetadata | None, bool]:
         """Resolve metadata by reading from cache or executing extraction engines."""
         metadata = None
@@ -241,7 +241,7 @@ class BookProcessor:
             return ProcessingResult(success=False, name=file_path.name, error=str(e))
 
     async def _extract_document_metadata(
-        self, file_path: Path, fallback_mode: FallbackMode, file_hash: str
+        self, file_path: Path, fallback_mode: FallbackMode, file_hash: str | None = None
     ) -> tuple[BookMetadata | None, bool]:
         """Internal helper to extract document metadata using text first, then vision."""
         text = await self.text_extractor.extract(file_path, file_hash=file_hash)
