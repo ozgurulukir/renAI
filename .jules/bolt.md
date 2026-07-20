@@ -1,0 +1,3 @@
+## 2024-07-19 - [Redundant file reads due to missing hash passing]
+**Learning:** In asynchronous orchestrators like `BookProcessor` and `TextExtractor`, a pre-computed file hash (`get_file_hash`) was obtained at the top level but NOT passed down through helper methods (`_resolve_metadata` and `_extract_document_metadata`). Because the downstream `extract` method handles its own hashing if `file_hash=None`, it resulted in reading the whole file *twice* per document processed—a major I/O overhead for large PDFs.
+**Action:** When working with tiered method calls that rely on a shared pre-computed asset (like a file hash or API key), ensure the parameter is explicitly plumbed down the entire stack rather than relying on default behaviors inside leaf nodes to re-compute it.
