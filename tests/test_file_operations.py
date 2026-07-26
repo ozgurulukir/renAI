@@ -258,4 +258,3 @@ class TestSafeMoveFile:
         assert reverted >= 1
         assert source.exists()
         assert not dest.exists()
-

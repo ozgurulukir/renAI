@@ -291,23 +291,20 @@ def test_prompt_model_selection_autocomplete_roundtrip():
         assert res == "google/gemini-2.0-flash-exp:free"
 
 
-def test_popular_models_sort():
-    from renai.processors.setup_steps import _get_popular_rank
+def test_provider_and_model_sort_without_popular_separation():
+    from renai.processors.setup_steps import _build_provider_options
 
     catalog = {
         "some-vendor/obscure-model": {},
         "openai/gpt-4o": {},
         "meta/llama-3.3-70b-instruct": {},
     }
-    popular_models = ["meta/llama-3.3-70b-instruct", "openai/gpt-4o"]
+    all_devs = ["openai", "some-vendor", "meta"]
 
-    models = list(catalog.keys())
-    models.sort(key=lambda m: _get_popular_rank(m, catalog, "openrouter", popular_models))
-
-    # Expect popular models at top
-    assert models[0] == "meta/llama-3.3-70b-instruct"
-    assert models[1] == "openai/gpt-4o"
-    assert models[2] == "some-vendor/obscure-model"
+    provider_options = _build_provider_options(catalog, all_devs)
+    names = [opt["name"] for opt in provider_options]
+    # Providers sorted alphabetically
+    assert names == ["meta", "openai", "some-vendor", "custom"]
 
 
 def test_run_init_wizard_separate_vision_provider_and_model(tmp_path):
@@ -319,28 +316,28 @@ def test_run_init_wizard_separate_vision_provider_and_model(tmp_path):
     mock_confirm = MagicMock()
     mock_confirm.ask.side_effect = [
         False,  # Add another model confirm
-        True,   # Add another provider confirm
+        True,  # Add another provider confirm
         False,  # Add another model confirm for second provider
         False,  # Add another provider confirm
         False,  # Use text model for vision confirm
-        True,   # Configure vision confirm
+        True,  # Configure vision confirm
         False,  # Configure advanced settings confirm
     ]
 
     mock_select = MagicMock()
     mock_select.ask.side_effect = [
-        "deepinfra",    # Select first LLM provider
-        "openrouter",   # Select second LLM provider
-        "deepinfra",    # Select default LLM provider
-        "llama3",       # Select default text model
-        "openrouter",   # Select vision provider
+        "deepinfra",  # Select first LLM provider
+        "openrouter",  # Select second LLM provider
+        "deepinfra",  # Select default LLM provider
+        "llama3",  # Select default text model
+        "openrouter",  # Select vision provider
     ]
 
     mock_autocomplete = MagicMock()
     mock_autocomplete.ask.side_effect = [
-        "llama3",                           # Text model
-        "google/gemini-2.0-flash-exp:free", # Text model for openrouter
-        "google/gemini-2.0-flash-exp:free", # Vision model for openrouter
+        "llama3",  # Text model
+        "google/gemini-2.0-flash-exp:free",  # Text model for openrouter
+        "google/gemini-2.0-flash-exp:free",  # Vision model for openrouter
     ]
 
     mock_password = MagicMock()
@@ -367,5 +364,3 @@ def test_run_init_wizard_separate_vision_provider_and_model(tmp_path):
         assert data["provider"] == "deepinfra"
         assert data["vision_provider"] == "openrouter"
         assert data["vision_model"] == "google/gemini-2.0-flash-exp:free"
-
-

@@ -47,16 +47,16 @@ def record_undo_entry(
         except Exception:
             history = []
 
-    history.append({
-        "old_path": str(old_path.resolve()),
-        "new_path": str(new_path.resolve()),
-        "operation_type": operation_type,
-    })
+    history.append(
+        {
+            "old_path": str(old_path.resolve()),
+            "new_path": str(new_path.resolve()),
+            "operation_type": operation_type,
+        }
+    )
     try:
         history_file.parent.mkdir(parents=True, exist_ok=True)
-        history_file.write_text(
-            json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        history_file.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
     except Exception as e:
         logging.warning(f"Failed to record undo entry: {e}")
 
