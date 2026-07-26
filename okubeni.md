@@ -78,6 +78,8 @@ _Örnek: `Sunset -- [2024-07-15] -- (en).jpg`_
 - **`--fallback-mode vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Önce metin çıkarmayı dener (OCR kullanmaz). Başarısız olursa, vision modele fallback yapar.
 - **`--fallback-mode move`**: Metin çıkarma başarısız olan dosyaları `Needs_Scan/` klasörüne taşır.
 - **`--rename-images`**: Görüntü dosyalarını yeniden adlandırır. Ayrıca görüntü olmayan dosyaları metin çıkarma + fallback ile işler.
+- **`--dry-run`**: Dosyaları yeniden adlandırmadan veya taşımadan işlemi simüle eder.
+- **`undo` / `undo-last`**: En son yeniden adlandırma veya düzenleme işlemlerini geri alır.
 
 ---
 
@@ -500,7 +502,7 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 
 ### Önbellek Stratejisi
 
-renAI, sağlayıcı-model farkındalığına sahip akıllı bir önbellek sistemi kullanır:
+renAI, performansı ve güvenilirliği artırmak için SQLite WAL (Write-Ahead Logging) modu ile desteklenen akıllı bir önbellek sistemi kullanır. Meta veri önbellek girdileri sağlayıcı-model çiftlerine göre kapsamlıdır, bu nedenle sağlayıcı veya model değiştirmek otomatik olarak farklı bir önbellek girişi kullanır.
 
 | Önbellek Türü           | Anahtar Bileşenleri                               | Geçersiz Kılma                                                                     |
 | :---------------------- | :------------------------------------------------ | :--------------------------------------------------------------------------------- |
@@ -513,6 +515,7 @@ renAI, sağlayıcı-model farkındalığına sahip akıllı bir önbellek sistem
 - Meta veri önbellek anahtarları sağlayıcı-model çiftinin hash'ini içerir
 - Sağlayıcı veya model değiştirmek eski önbelleği otomatik olarak geçersiz kılar
 - `--update-metadata` gerektiğinde taze çıkarma zorlar
+- SQLite WAL modu, eşzamanlı okuma/yazma işlemlerini güvenli ve performanslı hale getirir
 
 **Örnek:**
 
@@ -530,7 +533,7 @@ uv run renai process "C:/Kitaplar" --provider deepinfra
 uv run renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 ```
 
-**Önbellek Konumu:** `platformdirs` kullanılarak işletim sistemi tarafından otomatik yönetilir (ör. Linux'ta `~/.cache/renAI`, macOS'te `~/Library/Caches/renAI`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`).
+**Önbellek Konumu:** `platformdirs` kullanılarak işletim sistemi tarafından otomatik yönetilir (ör. Linux'ta `~/.cache/renAI`, macOS'te `~/Library/Caches/renAI`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`). İçerde SQLite WAL modu ile eşzamanlı güvenli, yüksek performanslı önbellekleme kullanılır.
 
 ---
 
@@ -604,9 +607,13 @@ categories = [
 | `--update-metadata`    | Önbelleği zorla yenile                                                   |
 | `--fallback-mode`      | Çıkarma başarısız olduğundaki strateji (`none`, `ocr`, `vision`, `move`) |
 | `--move-scan-failures` | Başarısız dosyaları `Scan_Failures` klasörüne taşı                       |
+| `--benchmark`          | İlk 3 dosyada PDF çıkarıcılarını karşılaştır                             |
+| `--vision-max-pages`   | Vision PDF çıkarma için örneklenecek maksimum sayfa (varsayılan: 3)       |
+| `--dry-run`            | Dosyaları yeniden adlandırmadan veya taşımadan işlemi simüle eder         |
+| `undo` / `undo-last`   | En son yeniden adlandırma veya düzenleme işlemlerini geri alır            |
 | `cache`                | Önbelleği temizleme komutu                                               |
-| `init`                 | İnteraktif kurulum sihirbazını başlatma komutu                           |
-| `providers`            | Yapılandırılmış sağlayıcıları listeleme komutu                           |
+| `init`                 | İnteraktif kurulum sihirbazını başlatma komutu                            |
+| `providers`            | Yapılandırılmış sağlayıcıları listeleme komutu                            |
 | `--version`            | renAI versiyonunu göster                                                 |
 
 ---
