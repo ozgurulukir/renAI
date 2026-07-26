@@ -530,6 +530,8 @@ def init_cmd() -> None:
     run_init_wizard()
 
 
+# Preserve 'undo' as a convenient short alias alongside 'undo-last' for
+# user convenience and backward compatibility
 @app.command("undo")
 @app.command("undo-last")
 def undo_cmd() -> None:

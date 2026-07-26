@@ -1,3 +1,11 @@
+"""OCR Engine for document text extraction using Tesseract, MuPDF, and OpenCV.
+
+Note:
+    atexit registration (atexit.register(OCREngine.shutdown_process_pool, wait=False))
+    handles normal interpreter exit. Abrupt process termination (e.g., os._exit() or SIGKILL)
+    will not trigger atexit cleanup hooks.
+"""
+
 import asyncio
 import atexit
 import contextlib
@@ -44,7 +52,14 @@ if TESSERACT_PATH.exists():
 
 
 class OCREngine:
+    """OCR Engine managing image preprocessing and Tesseract OCR execution.
+
+    The shared ProcessPoolExecutor handles CPU-heavy image operations and is registered for
+    clean shutdown via atexit on normal interpreter exit.
+    """
+
     _process_pool: ProcessPoolExecutor | None = None
+    _max_workers: int = 4
 
     def __init__(
         self,
@@ -53,12 +68,15 @@ class OCREngine:
         use_mutool: bool = False,
         mutool_path: str = "mutool",
         silent: bool = False,
+        max_workers: int = 4,
     ):
         self.enhanced = enhanced
         self.debug = debug
         self.use_mutool = use_mutool
         self.mutool_path = mutool_path
         self.silent = silent
+        self.max_workers = max_workers
+        OCREngine._max_workers = max_workers
 
         # Validate mutool if requested
         if self.use_mutool:
@@ -424,7 +442,9 @@ class OCREngine:
         try:
             loop = asyncio.get_running_loop()
             if OCREngine._process_pool is None:
-                OCREngine._process_pool = ProcessPoolExecutor(max_workers=4)
+                OCREngine._process_pool = ProcessPoolExecutor(
+                    max_workers=getattr(self, "max_workers", OCREngine._max_workers)
+                )
             return await loop.run_in_executor(
                 OCREngine._process_pool, self._sync_preprocess_image, image
             )
