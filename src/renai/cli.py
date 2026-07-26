@@ -186,6 +186,59 @@ def _print_process_header(root_dir: Path, mode: str, provider: str, model: str |
     )
 
 
+def _validate_cli_flags(root_dir: Path) -> None:
+    """Validate directory existence and CLI inputs."""
+    if not root_dir.is_dir():
+        console.print(msg.Info.DIR_NOT_FOUND.format(root_dir))
+        raise typer.Exit(code=1)
+
+
+def _build_processing_config(
+    mode: Literal["rename", "organize", "evaluate"],
+    workers: int,
+    recursive: bool,
+    ocr_enhanced: bool,
+    debug_ocr: bool,
+    use_mutool: bool,
+    mutool_path: str,
+    extractor: str,
+    text_length: int,
+    text_extraction: str,
+    extraction_pages: int,
+    fallback_mode: FallbackMode,
+    move_scan_failures: bool,
+    rename_images: bool,
+    exif: bool,
+    update_metadata: bool,
+    benchmark: bool,
+    vision_max_pages: int,
+    dry_run: bool,
+) -> ProcessingConfig:
+    """Build ProcessingConfig instance from CLI parameters."""
+    return ProcessingConfig(
+        mode=mode,
+        workers=workers,
+        recursive=recursive,
+        ocr_enhanced=ocr_enhanced,
+        debug_ocr=debug_ocr,
+        use_mutool=use_mutool,
+        mutool_path=mutool_path,
+        extractor=extractor,
+        text_length=text_length,
+        text_extraction=text_extraction,
+        extraction_pages=extraction_pages,
+        skip_ocr_checks=False,
+        move_scan_failures=move_scan_failures,
+        fallback_mode=fallback_mode,
+        rename_images=rename_images,
+        add_exif_date=exif,
+        update_metadata=update_metadata,
+        benchmark=benchmark,
+        vision_max_pages=vision_max_pages,
+        dry_run=dry_run,
+    )
+
+
 def handle_process_command(
     directory: str,
     mode: Literal["rename", "organize", "evaluate"],
@@ -208,17 +261,37 @@ def handle_process_command(
     exif: bool,
     benchmark: bool,
     vision_max_pages: int,
+    dry_run: bool = False,
 ) -> None:
     """Orchestrate and execute the file processing pipeline."""
     final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
     root_dir = Path(directory).resolve()
-
-    if not root_dir.is_dir():
-        console.print(msg.Info.DIR_NOT_FOUND.format(root_dir))
-        raise typer.Exit(code=1)
+    _validate_cli_flags(root_dir)
 
     _print_process_header(root_dir, mode, provider, model)
     display_warnings(mode, recursive, provider, model, final_fallback, rename_images)
+
+    config = _build_processing_config(
+        mode=mode,
+        workers=workers,
+        recursive=recursive,
+        ocr_enhanced=ocr_enhanced,
+        debug_ocr=debug_ocr,
+        use_mutool=use_mutool,
+        mutool_path=mutool_path,
+        extractor=extractor,
+        text_length=text_length,
+        text_extraction=text_extraction,
+        extraction_pages=extraction_pages,
+        fallback_mode=final_fallback,
+        move_scan_failures=move_scan_failures,
+        rename_images=rename_images,
+        exif=exif,
+        update_metadata=update_metadata,
+        benchmark=benchmark,
+        vision_max_pages=vision_max_pages,
+        dry_run=dry_run,
+    )
 
     try:
         asyncio.run(
@@ -226,27 +299,7 @@ def handle_process_command(
                 root_dir=root_dir,
                 provider=provider,
                 model=model,
-                config=ProcessingConfig(
-                    mode=mode,
-                    workers=workers,
-                    recursive=recursive,
-                    ocr_enhanced=ocr_enhanced,
-                    debug_ocr=debug_ocr,
-                    use_mutool=use_mutool,
-                    mutool_path=mutool_path,
-                    extractor=extractor,
-                    text_length=text_length,
-                    text_extraction=text_extraction,
-                    extraction_pages=extraction_pages,
-                    skip_ocr_checks=False,  # default for process cmd
-                    move_scan_failures=move_scan_failures,
-                    fallback_mode=final_fallback,
-                    rename_images=rename_images,
-                    add_exif_date=exif,
-                    update_metadata=update_metadata,
-                    benchmark=benchmark,
-                    vision_max_pages=vision_max_pages,
-                ),
+                config=config,
             )
         )
     except KeyboardInterrupt:
@@ -405,6 +458,13 @@ def process_cmd(
             help=msg.Help.VISION_MAX_PAGES,
         ),
     ] = app_settings.vision_max_pages,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Simulate processing without renaming or moving files.",
+        ),
+    ] = False,
 ) -> None:
     """Process files in a directory."""
     handle_process_command(
@@ -429,6 +489,7 @@ def process_cmd(
         exif=exif,
         benchmark=benchmark,
         vision_max_pages=vision_max_pages,
+        dry_run=dry_run,
     )
 
 
@@ -505,6 +566,18 @@ def clear_cache_cmd(
 def init_cmd() -> None:
     """Initialize renAI setup wizard."""
     run_init_wizard()
+
+
+@app.command("undo")
+def undo_cmd() -> None:
+    """Undo the last file renaming or organizing operation."""
+    from renai.file_ops.operations import undo_last_operation
+
+    reverted = undo_last_operation()
+    if reverted > 0:
+        console.print(f"[green]Successfully reverted {reverted} file operations.[/green]")
+    else:
+        console.print("[yellow]No recent operations to undo.[/yellow]")
 
 
 def main() -> None:

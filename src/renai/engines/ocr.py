@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +43,8 @@ if TESSERACT_PATH.exists():
 
 
 class OCREngine:
+    _process_pool: ProcessPoolExecutor | None = None
+
     def __init__(
         self,
         enhanced: bool = False,
@@ -173,100 +176,83 @@ class OCREngine:
             logging.debug(f"Failed to calculate source DPI: {e}")
             return 72
 
+    def _calculate_skew_angle(self, image_array: np.ndarray) -> float | None:
+        """Calculate skew angle using OpenCV contours and Otsu thresholding."""
+        if cv2 is None:
+            return None
+        THREE_CHANNELS = 3
+        FOUR_CHANNELS = 4
+        if len(image_array.shape) == THREE_CHANNELS:
+            if image_array.shape[2] == FOUR_CHANNELS:
+                gray = cv2.cvtColor(image_array, cv2.COLOR_RGBA2GRAY)
+            else:
+                gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image_array
+
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 5))
+        dilated = cv2.dilate(binary, kernel, iterations=1)
+        contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None
+
+        angles = []
+        for contour in contours:
+            MIN_CONTOUR_AREA = 100
+            if cv2.contourArea(contour) < MIN_CONTOUR_AREA:
+                continue
+            rect = cv2.minAreaRect(contour)
+            (w, h) = rect[1]
+            angle = rect[2]
+            if w < h:
+                angle += 90
+            angles.append(angle)
+
+        if not angles:
+            return None
+
+        median_angle = float(np.median(angles))
+        MIN_ROTATION_ANGLE = 0.1
+        if abs(median_angle) < MIN_ROTATION_ANGLE:
+            return None
+        return median_angle
+
+    def _rotate_image(self, image_array: np.ndarray, angle: float) -> Image.Image:
+        """Rotate image by specified angle to correct skew."""
+        assert cv2 is not None
+        height, width = image_array.shape[:2]
+        center = (width // 2, height // 2)
+        rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+        cos = np.abs(rotation_matrix[0, 0])
+        sin = np.abs(rotation_matrix[0, 1])
+        new_width = int((height * sin) + (width * cos))
+        new_height = int((height * cos) + (width * sin))
+        rotation_matrix[0, 2] += (new_width / 2) - center[0]
+        rotation_matrix[1, 2] += (new_height / 2) - center[1]
+
+        IS_GRAYSCALE = 2
+        rotated_array = cv2.warpAffine(
+            image_array,
+            rotation_matrix,
+            (new_width, new_height),
+            flags=cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=255 if len(image_array.shape) == IS_GRAYSCALE else (255, 255, 255),
+        )
+        return Image.fromarray(rotated_array)
+
     def _deskew(self, image: Image.Image) -> Image.Image:
         """Estimate skew angle and rotate image to straighten it."""
         if not OPENCV_AVAILABLE:
             return image
-        assert cv2 is not None  # narrow after OPENCV_AVAILABLE guard
 
         try:
-            # Convert PIL image to numpy array
             image_array = np.asarray(image)
-
-            # Handle grayscale vs color (ensure we have a 1-channel image for thresholding)
-            THREE_CHANNELS = 3
-            FOUR_CHANNELS = 4
-            if len(image_array.shape) == THREE_CHANNELS:
-                if image_array.shape[2] == FOUR_CHANNELS:
-                    gray = cv2.cvtColor(image_array, cv2.COLOR_RGBA2GRAY)
-                else:
-                    gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
-            else:
-                gray = image_array
-
-            # Threshold to get binary image (text white, background black)
-            # Use Otsu's thresholding for better results on varying contrast
-            _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-            # Morphological operations to join text into lines/blocks
-            # This helps in detecting the overall skew of text lines rather than individual chars
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 5))
-            dilated = cv2.dilate(binary, kernel, iterations=1)
-
-            # Find contours of the dilated blocks
-            contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            if not contours:
+            skew_angle = self._calculate_skew_angle(image_array)
+            if skew_angle is None:
                 return image
-
-            angles = []
-            for contour in contours:
-                # Filter small contours that might be noise
-                MIN_CONTOUR_AREA = 100
-                if cv2.contourArea(contour) < MIN_CONTOUR_AREA:
-                    continue
-
-                rect = cv2.minAreaRect(contour)
-                (w, h) = rect[1]
-                angle = rect[2]
-
-                # Adjust angle to be relative to the horizontal axis
-                # In OpenCV 4.x, minAreaRect angle is usually in [-90, 0)
-                if w < h:
-                    angle += 90
-
-                # After adjustment, angle is in [-45, 45] for horizontal-ish boxes.
-                angles.append(angle)
-
-            if not angles:
-                return image
-
-            # Calculate median angle to avoid outliers
-            median_angle = np.median(angles)
-
-            # If the angle is very small, don't bother rotating
-            MIN_ROTATION_ANGLE = 0.1
-            if abs(median_angle) < MIN_ROTATION_ANGLE:
-                return image
-
-            # Rotate image to correct skew
-            height, width = image_array.shape[:2]
-            center = (width // 2, height // 2)
-
-            # Get rotation matrix (positive values mean counter-clockwise rotation)
-            rotation_matrix = cv2.getRotationMatrix2D(center, median_angle, 1.0)
-
-            # Calculate new bounding dimensions
-            cos = np.abs(rotation_matrix[0, 0])
-            sin = np.abs(rotation_matrix[0, 1])
-            new_width = int((height * sin) + (width * cos))
-            new_height = int((height * cos) + (width * sin))
-
-            # Adjust rotation matrix to account for translation
-            rotation_matrix[0, 2] += (new_width / 2) - center[0]
-            rotation_matrix[1, 2] += (new_height / 2) - center[1]
-
-            # Perform rotation - Use white background for documents
-            IS_GRAYSCALE = 2
-            rotated_array = cv2.warpAffine(
-                image_array,
-                rotation_matrix,
-                (new_width, new_height),
-                flags=cv2.INTER_CUBIC,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=255 if len(image_array.shape) == IS_GRAYSCALE else (255, 255, 255),
-            )
-            return Image.fromarray(rotated_array)
+            return self._rotate_image(image_array, skew_angle)
         except Exception as e:
             logging.debug(f"Skew correction failed: {e}")
             return image
@@ -417,8 +403,17 @@ class OCREngine:
         return image, temp_img
 
     async def _preprocess_image(self, image: Image.Image) -> Image.Image:
-        """Handles resizing and enhancements in a thread."""
-        return await asyncio.to_thread(self._sync_preprocess_image, image)
+        """Handles resizing and enhancements in a ProcessPoolExecutor to bypass GIL."""
+        try:
+            loop = asyncio.get_running_loop()
+            if OCREngine._process_pool is None:
+                OCREngine._process_pool = ProcessPoolExecutor(max_workers=4)
+            return await loop.run_in_executor(
+                OCREngine._process_pool, self._sync_preprocess_image, image
+            )
+        except Exception as e:
+            logging.debug(f"ProcessPool execution fallback to thread: {e}")
+            return await asyncio.to_thread(self._sync_preprocess_image, image)
 
     def _sync_preprocess_image(self, image: Image.Image) -> Image.Image:
         """Sync version of preprocessing for thread execution."""
@@ -445,8 +440,12 @@ class OCREngine:
                 image = image.point(lambda x: 0 if x < CONTRAST_THRESHOLD else 255)  # type: ignore[operator]
         return image
 
+    async def _run_tesseract(self, image: Image.Image, pno: int) -> str:
+        """Execute Tesseract OCR and clean up extracted text."""
+        return await self._perform_ocr(image, pno)
+
     async def _perform_ocr(self, image: Image.Image, pno: int) -> str:
-        """Calls Tesseract in a thread."""
+        """Calls Tesseract in a thread with configured timeout."""
         try:
 
             def _tesseract_thread():
@@ -512,7 +511,7 @@ class OCREngine:
 
                         await asyncio.to_thread(_save_debug, image, pno)
 
-                    page_text = await self._perform_ocr(image, pno)
+                    page_text = await self._run_tesseract(image, pno)
                     extracted_text.append(page_text)
                     total_chars += len(page_text)
 

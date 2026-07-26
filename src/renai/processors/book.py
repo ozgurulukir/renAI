@@ -15,7 +15,7 @@ from ..cache.manager import (
 )
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
-from ..file_ops.operations import safe_move_file
+from ..file_ops.operations import resolve_target_destination, safe_move_file
 from ..filename.builder import (
     build_book_filename,
     build_image_filename,
@@ -174,6 +174,7 @@ class BookProcessor:
         rename_images: bool = False,
         update_metadata: bool = False,
         add_exif_date: bool = False,
+        dry_run: bool = False,
     ) -> ProcessingResult:
         """Unified processing entry point for documents and images asynchronously."""
         try:
@@ -224,6 +225,7 @@ class BookProcessor:
                         add_exif_date=add_exif_date,
                         file_hash=file_hash,
                         is_vision_doc=is_vision_doc,
+                        dry_run=dry_run,
                     )
             else:
                 # evaluate mode
@@ -268,6 +270,7 @@ class BookProcessor:
         add_exif_date: bool = False,
         file_hash: str | None = None,
         is_vision_doc: bool = False,
+        dry_run: bool = False,
     ) -> ProcessingResult:
         """Build filename and move file securely asynchronously."""
         try:
@@ -286,14 +289,10 @@ class BookProcessor:
             else:
                 new_name = build_book_filename(cast("BookMetadata", metadata), file_path.suffix)
 
-            # 2. Determine target destination based on mode
-            if mode == "organize" and category:
-                # Use root_dir if available to organize everything at the top level
-                # as described in README.md. Fall back to parent if root_dir is unknown.
-                dest_root = self.root_dir or file_path.parent
-                target_dest = dest_root / category / new_name
-            else:
-                target_dest = file_path.parent / new_name
+            # 2. Determine target destination based on mode via file_ops helper
+            target_dest = resolve_target_destination(
+                file_path, new_name, category=category, mode=mode, root_dir=self.root_dir
+            )
 
             # 3. Security: Ensure target_dest is contained within the root_dir (Defense in Depth)
             if self.root_dir:
@@ -324,7 +323,11 @@ class BookProcessor:
             # 5. Perform the move securely
             def _do_move():
                 return safe_move_file(
-                    file_path, target_dest, operation_type=mode, source_hash=file_hash
+                    file_path,
+                    target_dest,
+                    operation_type=mode,
+                    source_hash=file_hash,
+                    dry_run=dry_run,
                 )
 
             final_path = await asyncio.to_thread(_do_move)

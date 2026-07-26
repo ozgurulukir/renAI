@@ -229,3 +229,33 @@ class TestSafeMoveFile:
         with patch("shutil.move", side_effect=PermissionError("Permission denied")):
             with pytest.raises(PermissionError, match="Permission denied"):
                 safe_move_file(source, dest)
+
+    def test_safe_move_file_dry_run(self, tmp_path):
+        """Test that dry_run simulates move without altering files."""
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("content")
+
+        result = safe_move_file(source, dest, dry_run=True)
+
+        assert result == dest
+        assert source.exists()
+        assert not dest.exists()
+
+    def test_undo_last_operation(self, tmp_path):
+        """Test undo_last_operation reverts moved file."""
+        from renai.file_ops.operations import undo_last_operation
+
+        source = tmp_path / "original.txt"
+        dest = tmp_path / "renamed.txt"
+        source.write_text("sample data")
+
+        moved_dest = safe_move_file(source, dest)
+        assert not source.exists()
+        assert moved_dest.exists()
+
+        reverted = undo_last_operation()
+        assert reverted >= 1
+        assert source.exists()
+        assert not dest.exists()
+
