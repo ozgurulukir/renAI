@@ -16,51 +16,85 @@ CACHE_EXPIRY = 86400  # 24 hours in seconds
 HTTP_STATUS_OK = 200
 
 
-def get_models_catalog(force_refresh: bool = False) -> dict:
-    """Fetch and return the models.dev catalog, caching it locally."""
-    # Ensure cache directory exists
-    with contextlib.suppress(Exception):
-        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-    # Try loading from cache if it exists, is fresh, and force_refresh is False
-    if not force_refresh and CACHE_FILE.exists():
-        try:
-            mtime = CACHE_FILE.stat().st_mtime
-            if time.time() - mtime < CACHE_EXPIRY:
-                with CACHE_FILE.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict) and data:
-                        return data
-        except Exception as e:
-            logging.debug(f"Failed to read models.dev cache: {e}")
-
-    # Fetch fresh data from models.dev
+def _load_cached_catalog(force_refresh: bool) -> dict | None:
+    """Try loading catalog data from local cache file."""
+    if force_refresh or not CACHE_FILE.exists():
+        return None
     try:
-        headers = {
-            "User-Agent": "renAI/2.2.0 (https://github.com/ozgurulukir/renAI)",
-            "Accept": "application/json",
-        }
-        response = requests.get("https://models.dev/models.json", headers=headers, timeout=6.0)
+        mtime = CACHE_FILE.stat().st_mtime
+        if time.time() - mtime < CACHE_EXPIRY:
+            with CACHE_FILE.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and (data.get("models") or data.get("providers")):
+                    return data
+    except Exception as e:
+        logging.debug(f"Failed to read models.dev cache: {e}")
+    return None
+
+
+def _fetch_remote_json(endpoint: str) -> dict | None:
+    """Fetch remote JSON from models.dev endpoint."""
+    headers = {
+        "User-Agent": "renAI/2.2.0 (https://github.com/ozgurulukir/renAI)",
+        "Accept": "application/json",
+    }
+    url = f"https://models.dev/{endpoint}"
+    try:
+        response = requests.get(url, headers=headers, timeout=6.0)
         if response.status_code == HTTP_STATUS_OK:
             data = response.json()
             if isinstance(data, dict) and data:
-                try:
-                    with CACHE_FILE.open("w", encoding="utf-8") as f:
-                        json.dump(data, f, ensure_ascii=False)
-                except Exception as e:
-                    logging.debug(f"Failed to write models.dev cache: {e}")
                 return data
     except Exception as e:
-        logging.debug(f"Failed to fetch models.dev catalog: {e}")
+        logging.debug(f"Failed to fetch {url}: {e}")
+    return None
+
+
+def get_full_catalog(force_refresh: bool = False) -> dict:
+    """Fetch and return the complete models.dev catalog (models + providers)."""
+    with contextlib.suppress(Exception):
+        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    cached = _load_cached_catalog(force_refresh)
+    if cached:
+        return cached
+
+    # Try fetching catalog.json first
+    data = _fetch_remote_json("catalog.json")
+    if data and (data.get("models") or data.get("providers")):
+        with contextlib.suppress(Exception), CACHE_FILE.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        return data
+
+    # Fallback: try fetching models.json
+    models_data = _fetch_remote_json("models.json")
+    if models_data:
+        data = {"models": models_data, "providers": {}}
+        with contextlib.suppress(Exception), CACHE_FILE.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        return data
 
     # Fallback to expired cache if fetch failed
     if CACHE_FILE.exists():
         with contextlib.suppress(Exception), CACHE_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
-            if isinstance(data, dict) and data:
+            if isinstance(data, dict) and (data.get("models") or data.get("providers")):
                 return data
 
-    return {}
+    return {"models": {}, "providers": {}}
+
+
+
+def get_models_catalog(force_refresh: bool = False) -> dict:
+    """Fetch and return canonical models catalog dictionary."""
+    full = get_full_catalog(force_refresh=force_refresh)
+    return full.get("models", {})
+
+
+def get_providers_catalog(force_refresh: bool = False) -> dict:
+    """Fetch and return providers catalog dictionary."""
+    full = get_full_catalog(force_refresh=force_refresh)
+    return full.get("providers", {})
 
 
 def is_vision_supported(model_name: str) -> bool | None:
@@ -114,4 +148,5 @@ def _check_vision_modalities(model_info: dict) -> bool:
     modalities = model_info.get("modalities", {})
     inputs = modalities.get("input", [])
     return "image" in inputs
+
 

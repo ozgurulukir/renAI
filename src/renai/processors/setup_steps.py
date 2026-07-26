@@ -148,8 +148,15 @@ def _build_provider_options(catalog: dict, all_devs: list[str]) -> list[dict]:
     return provider_options
 
 
-def _filter_catalog_models(selected_provider: str, catalog: dict) -> list[str]:
+def _filter_catalog_models(
+    selected_provider: str, catalog: dict, providers_catalog: dict | None = None
+) -> list[str]:
     """Filter models from catalog based on provider."""
+    if providers_catalog and selected_provider in providers_catalog:
+        p_models = providers_catalog[selected_provider].get("models")
+        if p_models and isinstance(p_models, dict) and p_models:
+            return list(p_models.keys())
+
     if not catalog:
         return []
     if selected_provider in ["deepinfra", "openrouter"]:
@@ -173,9 +180,14 @@ def _get_display_choices(selected_provider: str, model_names: list[str]) -> list
     return display_choices
 
 
-def _prompt_model_selection(selected_provider: str, catalog: dict, provider_options: list) -> str:
+def _prompt_model_selection(
+    selected_provider: str,
+    catalog: dict,
+    provider_options: list,
+    providers_catalog: dict | None = None,
+) -> str:
     """Prompt the user to select a model for the given provider."""
-    model_names = _filter_catalog_models(selected_provider, catalog)
+    model_names = _filter_catalog_models(selected_provider, catalog, providers_catalog)
 
     popular_models = [
         "meta/llama-3.3-70b-instruct",
@@ -186,6 +198,11 @@ def _prompt_model_selection(selected_provider: str, catalog: dict, provider_opti
         "anthropic/claude-3-7-sonnet-20250219",
         "openai/gpt-4o",
         "openai/gpt-4o-mini",
+        "llama-3.3-70b-instruct",
+        "gemini-2.0-flash",
+        "claude-3-7-sonnet-20250219",
+        "gpt-4o",
+        "gpt-4o-mini",
     ]
     model_names.sort(
         key=lambda m: (
@@ -221,7 +238,6 @@ def _prompt_model_selection(selected_provider: str, catalog: dict, provider_opti
             catalog_id = m
             break
 
-
     if catalog_id:
         info = catalog.get(catalog_id, {})
         actual_model = get_provider_model_name(catalog_id, info, selected_provider)
@@ -229,6 +245,7 @@ def _prompt_model_selection(selected_provider: str, catalog: dict, provider_opti
         actual_model = selected_model
 
     return actual_model
+
 
 
 def _prompt_base_url(selected_provider: str) -> str:
@@ -326,12 +343,21 @@ def _prompt_and_validate_api_key(
 
 
 def _configure_standard_provider(
-    selected_provider: str, configured: dict, provider_options: list, catalog: dict
+    selected_provider: str,
+    configured: dict,
+    provider_options: list,
+    catalog: dict,
+    providers_catalog: dict | None = None,
 ) -> None:
     """Configure credentials and models for a standard provider."""
     base_url = ""
     if selected_provider not in ["deepinfra", "openrouter", "openai"]:
-        base_url = _prompt_base_url(selected_provider)
+        # If models.dev provider catalog has base URL, pass it as default suggestion
+        if providers_catalog and selected_provider in providers_catalog:
+            p_api = providers_catalog[selected_provider].get("api")
+            base_url = p_api if p_api else _prompt_base_url(selected_provider)
+        else:
+            base_url = _prompt_base_url(selected_provider)
     elif selected_provider == "openai":
         base_url = "https://api.openai.com/v1"
     elif selected_provider == "deepinfra":
@@ -345,7 +371,9 @@ def _configure_standard_provider(
     configured[selected_provider]["api_key"] = api_key
 
     while True:
-        actual_model = _prompt_model_selection(selected_provider, catalog, provider_options)
+        actual_model = _prompt_model_selection(
+            selected_provider, catalog, provider_options, providers_catalog
+        )
         if actual_model not in configured[selected_provider]["models"]:
             configured[selected_provider]["models"].append(actual_model)
 
@@ -362,7 +390,11 @@ def _configure_standard_provider(
 
 
 def _configure_single_provider(
-    selected_provider: str, configured: dict, provider_options: list, catalog: dict
+    selected_provider: str,
+    configured: dict,
+    provider_options: list,
+    catalog: dict,
+    providers_catalog: dict | None = None,
 ) -> None:
     """Configure credentials and models for a single provider."""
     if selected_provider not in configured:
@@ -385,7 +417,9 @@ def _configure_single_provider(
 
         configured["custom"] = {"base_url": base_url, "models": [custom_model], "api_key": api_key}
     else:
-        _configure_standard_provider(selected_provider, configured, provider_options, catalog)
+        _configure_standard_provider(
+            selected_provider, configured, provider_options, catalog, providers_catalog
+        )
 
 
 def _build_final_config_and_secrets(
@@ -418,11 +452,14 @@ def _build_final_config_and_secrets(
 def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     """Prompt the user for provider selection and credentials."""
     try:
-        from renai.utils.models_dev import get_models_catalog
+        from renai.utils.models_dev import get_full_catalog
 
-        catalog = get_models_catalog()
+        full_cat = get_full_catalog()
+        catalog = full_cat.get("models", {})
+        providers_catalog = full_cat.get("providers", {})
     except Exception:
         catalog = {}
+        providers_catalog = {}
 
     if catalog:
         all_devs = sorted({k.split("/")[0] for k in catalog if "/" in k})
@@ -453,7 +490,10 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
         if selected_provider is None:
             raise KeyboardInterrupt
 
-        _configure_single_provider(selected_provider, configured, provider_options, catalog)
+        _configure_single_provider(
+            selected_provider, configured, provider_options, catalog, providers_catalog
+        )
+
 
         add_another_provider = questionary.confirm(
             msg.Provider.ANOTHER, default=False, style=custom_style
