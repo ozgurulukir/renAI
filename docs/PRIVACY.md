@@ -104,9 +104,12 @@ The directory structure is organized as follows:
 
 ```text
 Cache/
-├── text/        # Extracted text files
-└── metadata/    # metadata files
+├── cache.db          # SQLite WAL-mode database (primary cache store)
+├── text/             # Legacy text cache files (*.txt) - fallback only
+└── metadata/         # Legacy metadata cache files (*.json) - fallback only
 ```
+
+renAI writes to SQLite first and falls back to legacy files only when SQLite is unavailable. Legacy files remain for backward compatibility during migration.
 
 ### Cache Management
 
@@ -121,6 +124,7 @@ renai cache
 2. **Exclude from backups**: Consider excluding the OS-specific cache directory from automated backups.
 3. **Regular cleanup**: Clear cache periodically, especially after processing sensitive documents.
 4. **Encrypted storage**: Store cache on encrypted drives if possible.
+5. **Undo history**: `undo`/`undo-last` operations are recorded in `undo_history.json` in the cache directory. Clear cache if you want to remove this history.
 
 ---
 
@@ -331,7 +335,7 @@ After processing sensitive documents:
 
 ### Q: Is the cache encrypted?
 
-**A**: No, the cache is stored as plain text files. Use `renai cache` to manage your data or store the OS-specific cache directory on encrypted storage if processing sensitive documents.
+**A**: The cache is stored in a local SQLite database with WAL mode enabled. The database file is not encrypted by default. Use `renai cache` to manage your data or store the OS-specific cache directory on encrypted storage if processing sensitive documents. Legacy file-based cache entries may still exist as fallback during migration.
 
 ### Q: What happens to data during retries?
 
@@ -353,8 +357,6 @@ After processing sensitive documents:
 | Date | Change |
 | :--------- | :----- |
 | 2025-01-26 | Initial privacy guide |
-
----
-
 | 2026-03-14 | Updated to include platformdirs and new CLI commands |
 | 2026-04-09 | Updated for Vision Mode data sharing transparency, uv integration, and .env security |
+| 2026-07-26 | Updated cache storage description for SQLite WAL mode migration |
