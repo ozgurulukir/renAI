@@ -131,6 +131,7 @@ def test_run_init_wizard_empty_api_key_warning(tmp_path):
         patch("renai.processors.setup.SECRETS_FILE", secrets_file),
         patch("renai.processors.setup.CONFIG_DIR", tmp_path),
         patch("renai.processors.setup.PACKAGE_CONFIG_DIR", package_config),
+        patch("renai.utils.models_dev.is_vision_supported", return_value=True),
         patch("questionary.confirm", return_value=mock_confirm),
         patch("questionary.select", return_value=mock_select),
         patch("questionary.autocomplete", return_value=mock_autocomplete),
