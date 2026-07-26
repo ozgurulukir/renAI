@@ -135,7 +135,9 @@ class TestJSONRepair:
 
     def test_try_repair_json_surrounding_text(self):
         """Test extracting JSON from text wrapper."""
-        raw_llm_response = 'Here is your metadata: {"title": "Refactoring", "category": "Software"} Hope it helps!'
+        raw_llm_response = (
+            'Here is your metadata: {"title": "Refactoring", "category": "Software"} Hope it helps!'
+        )
         repaired = LLMEngine._try_repair_json(raw_llm_response)
         assert repaired is not None
         assert '"title": "Refactoring"' in repaired
@@ -156,7 +158,9 @@ class TestOCREngineRefactoring:
         engine = OCREngine(silent=True)
         img = Image.new("RGB", (100, 100), color="white")
 
-        with patch.object(engine, "_perform_ocr", new=AsyncMock(return_value="Extracted Text")) as mock_ocr:
+        with patch.object(
+            engine, "_perform_ocr", new=AsyncMock(return_value="Extracted Text")
+        ) as mock_ocr:
             text = await engine._run_tesseract(img, 0)
             assert text == "Extracted Text"
             mock_ocr.assert_called_once_with(img, 0)

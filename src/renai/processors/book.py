@@ -383,9 +383,7 @@ class BookProcessor:
 
             logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
             m_data = (
-                metadata.model_dump()
-                if hasattr(metadata, "model_dump")
-                else cast("dict", metadata)
+                metadata.model_dump() if hasattr(metadata, "model_dump") else cast("dict", metadata)
             )
             return ProcessingResult(
                 success=True,

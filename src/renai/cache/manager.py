@@ -116,9 +116,7 @@ def read_text_cache(file_path: Path) -> str | None:
         try:
             with _get_db_connection(db_dir) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT content FROM text_cache WHERE cache_key = ?", (cache_key,)
-                )
+                cursor.execute("SELECT content FROM text_cache WHERE cache_key = ?", (cache_key,))
                 row = cursor.fetchone()
                 if row:
                     return row[0]
@@ -211,8 +209,7 @@ def read_metadata_cache(
             with _get_db_connection(db_dir) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT provider, model, metadata_json "
-                    "FROM metadata_cache WHERE cache_key = ?",
+                    "SELECT provider, model, metadata_json FROM metadata_cache WHERE cache_key = ?",
                     (cache_key,),
                 )
                 row = cursor.fetchone()
@@ -393,5 +390,3 @@ def _clear_models_dev_cache() -> int:
         except Exception as e:
             logging.warning(f"Failed to clear models.dev cache at {models_dev_file}: {e}")
     return 0
-
-

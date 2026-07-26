@@ -162,4 +162,3 @@ def test_check_vision_model_guard_non_vision_model_aborts():
             )
         assert exc_info.value.exit_code == 1
         mock_print.assert_called_once()
-

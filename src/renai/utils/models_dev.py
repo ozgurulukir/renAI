@@ -53,8 +53,50 @@ def _fetch_remote_json(endpoint: str) -> dict | None:
     return None
 
 
-def get_full_catalog(force_refresh: bool = False) -> dict:
-    """Fetch and return the complete models.dev catalog (models + providers)."""
+KNOWN_OPENAI_PROVIDERS = {
+    "openai",
+    "openrouter",
+    "deepinfra",
+    "groq",
+    "cerebras",
+    "togetherai",
+    "together",
+    "mistral",
+    "xai",
+    "deepseek",
+    "google",
+    "perplexity",
+    "perplexity-agent",
+}
+
+
+def is_openai_supported_provider(provider_id: str, provider_info: dict) -> bool:
+    """Check whether a provider supports an OpenAI-compatible endpoint.
+
+    Returns True if:
+      - Provider ID is in known OpenAI-compatible providers
+      - npm package indicates OpenAI compatibility (@ai-sdk/openai-compatible, @ai-sdk/openai)
+      - api endpoint is provided and is an OpenAI-compatible path (not /anthropic/)
+      - Neither npm nor api is set (minimal test mock data fallback)
+    """
+    p_id = provider_id.lower()
+    if p_id in KNOWN_OPENAI_PROVIDERS:
+        return True
+    npm = provider_info.get("npm")
+    api = provider_info.get("api")
+    if not npm and not api:
+        return True
+    if npm in ("@ai-sdk/openai-compatible", "@ai-sdk/openai"):
+        return True
+    api_str = api or ""
+    has_openai_path = (
+        "/v1" in api_str or "/openai" in api_str or "/compatible" in api_str or "/paas/" in api_str
+    )
+    return bool(api_str and "/anthropic/" not in api_str and has_openai_path)
+
+
+def _get_raw_catalog(force_refresh: bool = False) -> dict:
+    """Fetch raw catalog from cache or remote endpoint."""
     with contextlib.suppress(Exception):
         CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -87,16 +129,43 @@ def get_full_catalog(force_refresh: bool = False) -> dict:
     return {"models": {}, "providers": {}}
 
 
+def get_full_catalog(force_refresh: bool = False, openai_only: bool = True) -> dict:
+    """Fetch and return the complete models.dev catalog (models + providers).
 
-def get_models_catalog(force_refresh: bool = False) -> dict:
+    When openai_only is True (default), only providers that offer OpenAI-compatible endpoints
+    and their associated models are returned.
+    """
+    raw = _get_raw_catalog(force_refresh=force_refresh)
+    if not openai_only:
+        return raw
+
+    providers = raw.get("providers", {})
+    models = raw.get("models", {})
+
+    if providers:
+        filtered_providers = {
+            k: v for k, v in providers.items() if is_openai_supported_provider(k, v)
+        }
+    else:
+        filtered_providers = providers
+
+    if models and filtered_providers:
+        filtered_models = {k: v for k, v in models.items() if k.split("/")[0] in filtered_providers}
+    else:
+        filtered_models = models
+
+    return {"models": filtered_models, "providers": filtered_providers}
+
+
+def get_models_catalog(force_refresh: bool = False, openai_only: bool = True) -> dict:
     """Fetch and return canonical models catalog dictionary."""
-    full = get_full_catalog(force_refresh=force_refresh)
+    full = get_full_catalog(force_refresh=force_refresh, openai_only=openai_only)
     return full.get("models", {})
 
 
-def get_providers_catalog(force_refresh: bool = False) -> dict:
+def get_providers_catalog(force_refresh: bool = False, openai_only: bool = True) -> dict:
     """Fetch and return providers catalog dictionary."""
-    full = get_full_catalog(force_refresh=force_refresh)
+    full = get_full_catalog(force_refresh=force_refresh, openai_only=openai_only)
     return full.get("providers", {})
 
 
@@ -153,9 +222,7 @@ def _check_vision_modalities(model_info: dict) -> bool:
     return "image" in inputs
 
 
-def filter_vision_models(
-    model_names: list[str], catalog: dict | None = None
-) -> list[str]:
+def filter_vision_models(model_names: list[str], catalog: dict | None = None) -> list[str]:
     """Filter a list of catalog model IDs to only those supporting vision/image input.
 
     Models that are explicitly known NOT to support vision (is_vision_supported is False)
@@ -167,6 +234,3 @@ def filter_vision_models(
 
     filtered = [m for m in model_names if is_vision_supported(m) is not False]
     return filtered or model_names
-
-
-

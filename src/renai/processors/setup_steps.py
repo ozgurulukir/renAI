@@ -103,55 +103,61 @@ def get_provider_model_name(catalog_id: str, catalog_info: dict, provider: str) 
     return catalog_id
 
 
-def _build_provider_options(catalog: dict, all_devs: list[str]) -> list[dict]:
-    """Build list of provider option dicts."""
-    provider_options = [
-        {
-            "name": "deepinfra",
-            "desc": msg.Provider.DEEPINFRA_DESC,
-            "extra": "meta-llama/Llama-3.3-70B-Instruct",
-        },
-        {
-            "name": "openrouter",
-            "desc": msg.Provider.OPENROUTER_DESC,
-            "extra": "google/gemini-2.0-flash-exp:free",
-        },
-    ]
+def _build_provider_options(
+    catalog: dict, all_devs: list[str], providers_catalog: dict | None = None
+) -> list[dict]:
+    """Build list of provider option dicts without popular/non-popular priority separation."""
+    providers_catalog = providers_catalog or {}
+    combined_devs = set(all_devs)
+    if providers_catalog:
+        combined_devs.update(providers_catalog.keys())
 
-    popular_devs = ["openai", "deepseek", "google", "anthropic", "mistral"]
-    sorted_devs = sorted(
-        all_devs,
-        key=lambda d: (
-            d not in popular_devs,
-            popular_devs.index(d) if d in popular_devs else d,
-        ),
-    )
+    sorted_devs = sorted(combined_devs)
+
+    provider_options = []
+    desc_map = {
+        "openai": "Official OpenAI models (GPT-4o, GPT-4o-mini)",
+        "deepseek": "DeepSeek API endpoints (R1, Chat)",
+        "google": "Google Gemini API via OpenAI compatibility",
+        "anthropic": "Anthropic Claude API endpoints",
+        "mistral": "Mistral AI API endpoints",
+        "deepinfra": msg.Provider.DEEPINFRA_DESC,
+        "openrouter": msg.Provider.OPENROUTER_DESC,
+    }
 
     for dev in sorted_devs:
-        desc_map = {
-            "openai": "Official OpenAI models (GPT-4o, GPT-4o-mini)",
-            "deepseek": "DeepSeek API endpoints (R1, Chat)",
-            "google": "Google Gemini API via OpenAI compatibility",
-            "anthropic": "Anthropic Claude API endpoints",
-            "mistral": "Mistral AI API endpoints",
-        }
-        desc = desc_map.get(dev, f"Models by {dev.capitalize()} from models.dev")
-        dev_models = [k for k in catalog if k.startswith(f"{dev}/")] if catalog else []
-        default_model = (
-            get_provider_model_name(dev_models[0], catalog.get(dev_models[0], {}), dev)
-            if dev_models
-            else f"{dev}-model"
-        )
+        p_info = providers_catalog.get(dev, {})
+        p_name = p_info.get("name", dev.capitalize())
+        desc = desc_map.get(dev, f"Models by {p_name} from models.dev")
+        dev_models = []
+        if dev in providers_catalog:
+            p_models = providers_catalog[dev].get("models")
+            if isinstance(p_models, dict):
+                dev_models = list(p_models.keys())
+        if not dev_models and catalog:
+            dev_models = [k for k in catalog if k.startswith(f"{dev}/")]
+
+        if dev == "deepinfra":
+            default_model = "meta-llama/Llama-3.3-70B-Instruct"
+        elif dev == "openrouter":
+            default_model = "google/gemini-2.0-flash-exp:free"
+        elif dev_models:
+            default_model = get_provider_model_name(
+                dev_models[0], catalog.get(dev_models[0], {}), dev
+            )
+        else:
+            default_model = f"{dev}-model"
 
         provider_options.append({"name": dev, "desc": desc, "extra": default_model})
 
-    provider_options.append(
-        {
-            "name": "custom",
-            "desc": msg.Provider.CUSTOM_DESC,
-            "extra": "llama3",
-        }
-    )
+    if not any(opt["name"] == "custom" for opt in provider_options):
+        provider_options.append(
+            {
+                "name": "custom",
+                "desc": msg.Provider.CUSTOM_DESC,
+                "extra": "llama3",
+            }
+        )
     return provider_options
 
 
@@ -198,9 +204,10 @@ def _get_display_choices(
 
 
 def _get_popular_rank(
-    m: str, catalog: dict, provider: str, popular_models: list[str]
+    m: str, catalog: dict, provider: str, popular_models: list[str] | None = None
 ) -> tuple[bool, int, str]:
-    """Determine sort priority rank for a model based on popular_models list."""
+    """Determine sort priority rank for a model based on popular_models list (legacy fallback)."""
+    popular_models = popular_models or []
     info = catalog.get(m, {})
     actual = get_provider_model_name(m, info, provider)
     m_no_tag = m.split(":", maxsplit=1)[0]
@@ -228,19 +235,7 @@ def _prompt_model_selection(
         selected_provider, catalog, providers_catalog, vision_only=vision_only
     )
 
-    popular_models = [
-        "meta/llama-3.3-70b-instruct",
-        "google/gemini-2.0-flash",
-        "google/gemini-2.5-flash",
-        "deepseek/deepseek-r1",
-        "deepseek/deepseek-chat",
-        "anthropic/claude-3-7-sonnet-20250219",
-        "openai/gpt-4o",
-        "openai/gpt-4o-mini",
-    ]
-    model_names.sort(
-        key=lambda m: _get_popular_rank(m, catalog, selected_provider, popular_models)
-    )
+    model_names.sort(key=lambda m: (catalog.get(m, {}).get("name", m).lower(), m.lower()))
 
     display_choices = _get_display_choices(selected_provider, model_names, catalog)
 
@@ -250,11 +245,7 @@ def _prompt_model_selection(
             default_model = opt["extra"]
             break
 
-    prompt_template = (
-        msg.Provider.VISION_MODEL_PROMPT
-        if vision_only
-        else msg.Provider.MODEL_PROMPT
-    )
+    prompt_template = msg.Provider.VISION_MODEL_PROMPT if vision_only else msg.Provider.MODEL_PROMPT
     prompt_msg = prompt_template.format(selected_provider.capitalize())
     selected_model = questionary.autocomplete(
         prompt_msg,
@@ -302,7 +293,6 @@ def _prompt_model_selection(
     return actual_model
 
 
-
 def _prompt_base_url(selected_provider: str, default_url: str | None = None) -> str:
     """Prompt user for dynamic provider base URL."""
     known_base_urls = {
@@ -313,9 +303,7 @@ def _prompt_base_url(selected_provider: str, default_url: str | None = None) -> 
         "together": "https://api.together.xyz/v1",
         "perplexity": "https://api.perplexity.ai",
     }
-    default_base = default_url or known_base_urls.get(
-        selected_provider, "http://localhost:8000/v1"
-    )
+    default_base = default_url or known_base_urls.get(selected_provider, "http://localhost:8000/v1")
     base_url = questionary.text(
         msg.Provider.BASE_URL_PROMPT.format(selected_provider.capitalize()),
         default=default_base,
@@ -588,7 +576,9 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     else:
         all_devs = ["openai", "deepseek", "google", "anthropic", "mistral"]
 
-    provider_options = _build_provider_options(catalog, all_devs)
+    provider_options = _build_provider_options(
+        catalog, all_devs, providers_catalog=providers_catalog
+    )
     configured = {}
 
     while True:

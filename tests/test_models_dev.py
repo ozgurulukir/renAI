@@ -140,4 +140,60 @@ def test_filter_vision_models():
         assert "meta/llama-3.3-70b-instruct" not in filtered
 
 
+def test_is_openai_supported_provider():
+    from renai.utils.models_dev import is_openai_supported_provider
 
+    # Known providers
+    assert is_openai_supported_provider("openai", {}) is True
+    assert is_openai_supported_provider("deepinfra", {}) is True
+    assert is_openai_supported_provider("openrouter", {}) is True
+    assert is_openai_supported_provider("groq", {}) is True
+
+    # npm package matching
+    assert is_openai_supported_provider("custom1", {"npm": "@ai-sdk/openai-compatible"}) is True
+    assert is_openai_supported_provider("custom2", {"npm": "@ai-sdk/openai"}) is True
+
+    # API path matching
+    assert (
+        is_openai_supported_provider(
+            "custom3", {"npm": "other", "api": "https://api.example.com/v1"}
+        )
+        is True
+    )
+
+    # Excluded native non-openai providers
+    assert is_openai_supported_provider("anthropic", {"npm": "@ai-sdk/anthropic"}) is False
+    assert (
+        is_openai_supported_provider("amazon-bedrock", {"npm": "@ai-sdk/amazon-bedrock"}) is False
+    )
+    assert is_openai_supported_provider("google-vertex", {"npm": "@ai-sdk/google-vertex"}) is False
+
+
+def test_get_full_catalog_openai_only_filtering(tmp_path):
+    cache_file = tmp_path / "models_dev_cache.json"
+    mock_data = {
+        "models": {
+            "openai/gpt-4o": {"id": "openai/gpt-4o"},
+            "anthropic/claude-3": {"id": "anthropic/claude-3"},
+        },
+        "providers": {
+            "openai": {"id": "openai", "npm": "@ai-sdk/openai"},
+            "anthropic": {"id": "anthropic", "npm": "@ai-sdk/anthropic"},
+        },
+    }
+
+    with cache_file.open("w", encoding="utf-8") as f:
+        json.dump(mock_data, f)
+
+    with patch("renai.utils.models_dev.CACHE_FILE", cache_file):
+        # Default openai_only=True should filter out anthropic
+        filtered = get_full_catalog(openai_only=True)
+        assert "openai" in filtered["providers"]
+        assert "anthropic" not in filtered["providers"]
+        assert "openai/gpt-4o" in filtered["models"]
+        assert "anthropic/claude-3" not in filtered["models"]
+
+        # openai_only=False should return all
+        raw = get_full_catalog(openai_only=False)
+        assert "anthropic" in raw["providers"]
+        assert "anthropic/claude-3" in raw["models"]
