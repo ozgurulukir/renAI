@@ -354,20 +354,44 @@ def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
                 except Exception as e:
                     logging.warning(f"Failed to clear cache directory at {target_path}: {e}")
 
-        ocr_count = 0
-        if DEBUG_DIR.exists():
-            try:
-                if DEBUG_DIR.is_dir():
-                    ocr_count = len(list(DEBUG_DIR.glob("*")))
-                    shutil.rmtree(DEBUG_DIR)
-                else:
-                    ocr_count = 1
-                    DEBUG_DIR.unlink()
-            except Exception as e:
-                logging.warning(f"Failed to clear ocr_debug cache at {DEBUG_DIR}: {e}")
+        ocr_count = _clear_debug_cache()
+        models_dev_count = _clear_models_dev_cache()
 
         return {
             "text": len(text_keys),
             "metadata": len(metadata_keys),
             "ocr_debug": ocr_count,
+            "models_dev": models_dev_count,
         }
+
+
+def _clear_debug_cache() -> int:
+    """Clear OCR debug directory."""
+    if not DEBUG_DIR.exists():
+        return 0
+    try:
+        if DEBUG_DIR.is_dir():
+            count = len(list(DEBUG_DIR.glob("*")))
+            shutil.rmtree(DEBUG_DIR)
+            return count
+        DEBUG_DIR.unlink()
+        return 1
+    except Exception as e:
+        logging.warning(f"Failed to clear ocr_debug cache at {DEBUG_DIR}: {e}")
+        return 0
+
+
+def _clear_models_dev_cache() -> int:
+    """Clear models.dev cache file."""
+    from renai.config.constants import APP_DATA_DIR
+
+    models_dev_file = APP_DATA_DIR / "models_dev_cache.json"
+    if models_dev_file.exists():
+        try:
+            models_dev_file.unlink()
+            return 1
+        except Exception as e:
+            logging.warning(f"Failed to clear models.dev cache at {models_dev_file}: {e}")
+    return 0
+
+

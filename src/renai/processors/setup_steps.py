@@ -44,34 +44,56 @@ custom_style = Style(
 )
 
 
+DIRECT_DEV_PROVIDERS = {
+    "openai",
+    "google",
+    "anthropic",
+    "deepseek",
+    "mistral",
+    "cohere",
+    "xai",
+    "alibaba",
+}
+
+
+def _map_openrouter_model(catalog_id: str) -> str:
+    if catalog_id.startswith("meta/"):
+        return "meta-llama/" + catalog_id[len("meta/") :]
+    if catalog_id.startswith("mistral/"):
+        return "mistralai/" + catalog_id[len("mistral/") :]
+    return catalog_id
+
+
+def _map_deepinfra_model(catalog_id: str, catalog_info: dict) -> str:
+    for w in catalog_info.get("weights", []):
+        if w.get("label") == "Hugging Face" and "huggingface.co/" in w.get("url", ""):
+            parts = w["url"].split("huggingface.co/")
+            if len(parts) > 1:
+                return parts[1].strip("/")
+    if catalog_id.startswith("meta/"):
+        return "meta-llama/" + catalog_id[len("meta/") :]
+    if catalog_id.startswith("mistral/"):
+        return "mistralai/" + catalog_id[len("mistral/") :]
+    return catalog_id
+
+
 def get_provider_model_name(catalog_id: str, catalog_info: dict, provider: str) -> str:
     """Map the models.dev catalog ID to the actual model name expected by the provider."""
-    res = catalog_id
-    if provider == "openai":
-        if catalog_id.startswith("openai/"):
-            res = catalog_id[len("openai/") :]
+    if provider == "openrouter":
+        return _map_openrouter_model(catalog_id)
+    if provider == "deepinfra":
+        return _map_deepinfra_model(catalog_id, catalog_info)
 
-    elif provider == "openrouter":
-        if catalog_id.startswith("meta/"):
-            res = "meta-llama/" + catalog_id[len("meta/") :]
-        elif catalog_id.startswith("mistral/"):
-            res = "mistralai/" + catalog_id[len("mistral/") :]
+    if catalog_id.startswith(f"{provider}/"):
+        return catalog_id[len(f"{provider}/") :]
 
-    elif provider == "deepinfra":
-        hf_path = None
-        for w in catalog_info.get("weights", []):
-            if w.get("label") == "Hugging Face" and "huggingface.co/" in w.get("url", ""):
-                url = w["url"]
-                parts = url.split("huggingface.co/")
-                if len(parts) > 1:
-                    hf_path = parts[1].strip("/")
-                    break
-        if hf_path:
-            res = hf_path
-        elif catalog_id.startswith("meta/"):
-            res = "meta-llama/" + catalog_id[len("meta/") :]
+    if "/" in catalog_id:
+        dev, name = catalog_id.split("/", 1)
+        if dev in DIRECT_DEV_PROVIDERS:
+            return name
 
-    return res
+    return catalog_id
+
 
 
 def _build_provider_options(catalog: dict, all_devs: list[str]) -> list[dict]:
@@ -108,7 +130,11 @@ def _build_provider_options(catalog: dict, all_devs: list[str]) -> list[dict]:
         }
         desc = desc_map.get(dev, f"Models by {dev.capitalize()} from models.dev")
         dev_models = [k for k in catalog if k.startswith(f"{dev}/")] if catalog else []
-        default_model = dev_models[0] if dev_models else f"{dev}-model"
+        default_model = (
+            get_provider_model_name(dev_models[0], catalog.get(dev_models[0], {}), dev)
+            if dev_models
+            else f"{dev}-model"
+        )
 
         provider_options.append({"name": dev, "desc": desc, "extra": default_model})
 
@@ -126,8 +152,6 @@ def _filter_catalog_models(selected_provider: str, catalog: dict) -> list[str]:
     """Filter models from catalog based on provider."""
     if not catalog:
         return []
-    if selected_provider == "openai":
-        return [k for k in catalog if k.startswith("openai/")]
     if selected_provider in ["deepinfra", "openrouter"]:
         return list(catalog.keys())
     return [k for k in catalog if k.startswith(f"{selected_provider}/")]
@@ -136,10 +160,15 @@ def _filter_catalog_models(selected_provider: str, catalog: dict) -> list[str]:
 def _get_display_choices(selected_provider: str, model_names: list[str]) -> list[str]:
     """Map full catalog model IDs to display choices."""
     display_choices = []
+    prefix = f"{selected_provider}/"
     for m in model_names:
         display_name = m
-        if selected_provider == "openai" and m.startswith("openai/"):
-            display_name = m[len("openai/") :]
+        if m.startswith(prefix):
+            display_name = m[len(prefix) :]
+        elif "/" in m:
+            dev = m.split("/")[0]
+            if dev in DIRECT_DEV_PROVIDERS:
+                display_name = m[len(dev) + 1 :]
         display_choices.append(display_name)
     return display_choices
 
@@ -185,12 +214,13 @@ def _prompt_model_selection(selected_provider: str, catalog: dict, provider_opti
         raise KeyboardInterrupt
 
     catalog_id = None
+    prefix = f"{selected_provider}/"
     for m in model_names:
-        is_openai = selected_provider == "openai" and m.startswith("openai/")
-        d_name = m[len("openai/") :] if is_openai else m
-        if d_name == selected_model:
+        d_name = m[len(prefix) :] if m.startswith(prefix) else m
+        if selected_model in (d_name, m):
             catalog_id = m
             break
+
 
     if catalog_id:
         info = catalog.get(catalog_id, {})
