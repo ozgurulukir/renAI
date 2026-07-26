@@ -201,6 +201,61 @@ def _build_processing_config(**kwargs: Any) -> ProcessingConfig:
     return ProcessingConfig(**kwargs)
 
 
+def check_vision_model_guard(
+    fallback_mode: FallbackMode,
+    rename_images: bool,
+    vision_provider: str | None = None,
+    vision_model: str | None = None,
+) -> None:
+    """Validate vision model configuration before processing starts.
+
+    If vision operations are requested, display a clear warning/info panel
+    and abort execution if a valid vision model is not configured.
+    """
+    is_vision_needed = fallback_mode == FallbackMode.VISION or rename_images
+    if not is_vision_needed:
+        return
+
+    from renai.config import get_effective_vision_model, get_effective_vision_provider
+    from renai.utils.models_dev import is_vision_supported
+
+    eff_v_provider = vision_provider or get_effective_vision_provider()
+    eff_v_model = vision_model or get_effective_vision_model(eff_v_provider)
+
+    if not eff_v_model:
+        _display_vision_missing_error(
+            "Vision model is not configured. Image processing or vision fallback\n"
+            "requires a vision model."
+        )
+        raise typer.Exit(code=1)
+
+    vis_ok = is_vision_supported(eff_v_model)
+    if vis_ok is False:
+        _display_vision_missing_error(
+            f"Selected vision model '{eff_v_model}' does not support vision modalities."
+        )
+        raise typer.Exit(code=1)
+
+
+def _display_vision_missing_error(reason: str) -> None:
+    from rich.panel import Panel
+
+    message = (
+        f"[bold red]⚠️ VISION MODEL CONFIGURATION REQUIRED[/bold red]\n\n"
+        f"[yellow]{reason}[/yellow]\n\n"
+        f"[cyan]Please run 'renai init' to configure a Vision Provider & Model,\n"
+        f"or specify '--vision-model <model_name>' when running process.[/cyan]"
+    )
+    console.print(
+        Panel(
+            message,
+            title="[bold yellow]Vision Configuration Guard[/bold yellow]",
+            border_style="red",
+            padding=(1, 2),
+        )
+    )
+
+
 def handle_process_command(
     directory: str,
     mode: Literal["rename", "organize", "evaluate"],
@@ -223,12 +278,17 @@ def handle_process_command(
     exif: bool,
     benchmark: bool,
     vision_max_pages: int,
+    vision_provider: str | None = None,
+    vision_model: str | None = None,
     dry_run: bool = False,
 ) -> None:
     """Orchestrate and execute the file processing pipeline."""
     final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
     root_dir = Path(directory).resolve()
     _validate_cli_flags(root_dir)
+
+    # Check Vision Model Guard before running pipeline
+    check_vision_model_guard(final_fallback, rename_images, vision_provider, vision_model)
 
     _print_process_header(root_dir, mode, provider, model)
     display_warnings(mode, recursive, provider, model, final_fallback, rename_images)
@@ -252,6 +312,8 @@ def handle_process_command(
         update_metadata=update_metadata,
         benchmark=benchmark,
         vision_max_pages=vision_max_pages,
+        vision_provider=vision_provider,
+        vision_model=vision_model,
         dry_run=dry_run,
     )
 
@@ -420,6 +482,20 @@ def process_cmd(
             help=msg.Help.VISION_MAX_PAGES,
         ),
     ] = app_settings.vision_max_pages,
+    vision_provider: Annotated[
+        str | None,
+        typer.Option(
+            "--vision-provider",
+            help=msg.Help.VISION_PROVIDER,
+        ),
+    ] = app_settings.vision_provider,
+    vision_model: Annotated[
+        str | None,
+        typer.Option(
+            "--vision-model",
+            help=msg.Help.VISION_MODEL,
+        ),
+    ] = app_settings.vision_model,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -451,6 +527,8 @@ def process_cmd(
         exif=exif,
         benchmark=benchmark,
         vision_max_pages=vision_max_pages,
+        vision_provider=vision_provider,
+        vision_model=vision_model,
         dry_run=dry_run,
     )
 

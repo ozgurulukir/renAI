@@ -114,3 +114,30 @@ def test_is_vision_supported():
         assert is_vision_supported("unknown/model") is None
 
 
+def test_filter_vision_models():
+    from renai.utils.models_dev import filter_vision_models
+
+    mock_catalog = {
+        "openai/gpt-4o": {"modalities": {"input": ["text", "image"]}},
+        "openai/gpt-3.5-turbo": {"modalities": {"input": ["text"]}},
+        "google/gemini-2.0-flash": {"modalities": {"input": ["text", "image"]}},
+        "meta/llama-3.3-70b-instruct": {"modalities": {"input": ["text"]}},
+    }
+
+    with patch("renai.utils.models_dev.get_models_catalog", return_value=mock_catalog):
+        models = [
+            "openai/gpt-4o",
+            "openai/gpt-3.5-turbo",
+            "google/gemini-2.0-flash",
+            "meta/llama-3.3-70b-instruct",
+            "custom-local-model",
+        ]
+        filtered = filter_vision_models(models)
+        assert "openai/gpt-4o" in filtered
+        assert "google/gemini-2.0-flash" in filtered
+        assert "custom-local-model" in filtered  # Unknown retained
+        assert "openai/gpt-3.5-turbo" not in filtered
+        assert "meta/llama-3.3-70b-instruct" not in filtered
+
+
+

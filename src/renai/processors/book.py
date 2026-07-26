@@ -48,11 +48,25 @@ class BookProcessor:
         extraction_pages: int = 10,
         move_scan_failures: bool = False,
         vision_max_pages: int | None = None,
+        vision_llm_engine: LLMEngine | None = None,
+        vision_provider: str | None = None,
+        vision_model: str | None = None,
     ):
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
+        self.vision_llm_engine = vision_llm_engine or llm_engine
         self.provider = provider
-        self.model = model or getattr(llm_engine, "model_name", "") if llm_engine else ""
+        self.model = model or (getattr(llm_engine, "model_name", "") if llm_engine else "")
+        self.vision_provider = vision_provider or (
+            getattr(self.vision_llm_engine, "provider", provider)
+            if self.vision_llm_engine
+            else provider
+        )
+        self.vision_model = vision_model or (
+            getattr(self.vision_llm_engine, "model_name", self.model)
+            if self.vision_llm_engine
+            else self.model
+        )
         self.target_length = target_length
         self.extractor_name = extractor_name
         self.move_scan_failures = move_scan_failures
@@ -65,9 +79,9 @@ class BookProcessor:
             extraction_pages=extraction_pages,
         )
         self.visual_processor = VisualProcessor(
-            llm_engine=llm_engine,
-            provider=provider,
-            model=self.model,
+            llm_engine=self.vision_llm_engine,
+            provider=self.vision_provider,
+            model=self.vision_model,
             vision_max_pages=vision_max_pages,
         )
         self.file_operation_lock = asyncio.Lock()
@@ -108,10 +122,13 @@ class BookProcessor:
         use_vision_cache = (is_image and rename_images) or (
             fallback_mode == FallbackMode.VISION and file_path.suffix.lower() == ".pdf"
         )
+        cache_provider = self.vision_provider if use_vision_cache else self.provider
+        cache_model = self.vision_model if use_vision_cache else self.model
+
         cache_path = get_metadata_cache_path(
             file_hash,
-            self.provider,
-            self.model,
+            cache_provider,
+            cache_model,
             mode=cache_mode,
             cache_dir=CACHE_DIR,
             use_vision=use_vision_cache,
@@ -134,13 +151,15 @@ class BookProcessor:
         """Resolve metadata by reading from cache or executing extraction engines."""
         metadata = None
         is_image = file_path.suffix.lower() in get_image_extensions()
+        cache_provider = self.vision_provider if use_vision_cache else self.provider
+        cache_model = self.vision_model if use_vision_cache else self.model
 
         if not update_metadata:
             metadata = await asyncio.to_thread(
                 read_metadata_cache,
                 cache_path,
-                self.provider,
-                self.model,
+                cache_provider,
+                cache_model,
                 model_class=model_class,
             )
 
@@ -161,7 +180,7 @@ class BookProcessor:
 
             if metadata:
                 await asyncio.to_thread(
-                    write_metadata_cache, cache_path, metadata, self.provider, self.model
+                    write_metadata_cache, cache_path, metadata, cache_provider, cache_model
                 )
 
         return metadata, is_vision_doc

@@ -43,6 +43,8 @@ class AppSettings(BaseSettings):
     # Provider settings
     provider: str = Field(default="deepinfra", description="LLM provider")
     model: str | None = Field(default=None, description="Default model name override")
+    vision_provider: str | None = Field(default=None, description="LLM provider for vision tasks")
+    vision_model: str | None = Field(default=None, description="Model name for vision tasks")
 
     # Processing settings
     workers: int = Field(default=4, ge=1, le=32, description="Number of concurrent workers")

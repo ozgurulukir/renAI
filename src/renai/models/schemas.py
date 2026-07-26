@@ -36,6 +36,8 @@ class ProcessingConfig(BaseModel):
     add_exif_date: bool = False
     benchmark: bool = False
     vision_max_pages: int = 3
+    vision_provider: str | None = None
+    vision_model: str | None = None
     dry_run: bool = False
 
 
