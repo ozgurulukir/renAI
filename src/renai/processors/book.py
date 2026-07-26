@@ -362,26 +362,19 @@ class BookProcessor:
 
             final_path = await asyncio.to_thread(_do_move)
 
-            if final_path:
-                logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
-                m_data = (
-                    metadata.model_dump()
-                    if hasattr(metadata, "model_dump")
-                    else cast("dict", metadata)
-                )
-                return ProcessingResult(
-                    success=True,
-                    metadata=m_data,
-                    file_path=final_path,
-                    name=final_path.name,
-                    original_name=file_path.name,
-                    category=category,
-                )
+            logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
+            m_data = (
+                metadata.model_dump()
+                if hasattr(metadata, "model_dump")
+                else cast("dict", metadata)
+            )
             return ProcessingResult(
-                success=False,
-                name=file_path.name,
+                success=True,
+                metadata=m_data,
+                file_path=final_path,
+                name=final_path.name,
                 original_name=file_path.name,
-                error="Safe move failed",
+                category=category,
             )
 
         except Exception as e:

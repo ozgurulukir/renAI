@@ -531,8 +531,9 @@ def init_cmd() -> None:
 
 
 @app.command("undo")
+@app.command("undo-last")
 def undo_cmd() -> None:
-    """Undo the last file renaming or organizing operation."""
+    """Undo operations from the most recent renaming or organizing run."""
     from renai.file_ops.operations import undo_last_operation
 
     reverted = undo_last_operation()

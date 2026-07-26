@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import contextlib
 import logging
 import re
@@ -409,6 +410,10 @@ class OCREngine:
             cls._process_pool.shutdown(wait=wait)
             cls._process_pool = None
 
+    def close(self, wait: bool = False) -> None:
+        """Shutdown the shared ProcessPoolExecutor."""
+        self.shutdown_process_pool(wait=wait)
+
     async def _preprocess_image(self, image: Image.Image) -> Image.Image:
         """Handles resizing and enhancements in a ProcessPoolExecutor to bypass GIL.
 
@@ -553,3 +558,6 @@ class OCREngine:
                 if img_path.exists():
                     with contextlib.suppress(Exception):
                         await asyncio.to_thread(img_path.unlink)
+
+
+atexit.register(OCREngine.shutdown_process_pool, wait=False)

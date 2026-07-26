@@ -82,6 +82,22 @@ class TestCliHelpers:
             assert "reverted" in result.output.lower()
             assert source.exists()
 
+    def test_cli_undo_last_command(self, tmp_path):
+        """Test 'renai undo-last' CLI command execution."""
+        source = tmp_path / "book.pdf"
+        dest = tmp_path / "renamed_book.pdf"
+        source.write_text("dummy PDF content")
+
+        with patch("renai.config.CACHE_DIR", tmp_path):
+            safe_move_file(source, dest, cache_dir=tmp_path)
+            assert not source.exists()
+            assert dest.exists()
+
+            result = runner.invoke(app, ["undo-last"])
+            assert result.exit_code == 0
+            assert "reverted" in result.output.lower()
+            assert source.exists()
+
 
 class TestFileOperationsHelpers:
     """Test resolve_target_destination in file_ops/operations.py."""
