@@ -1319,6 +1319,16 @@ dev = [
     { name = "ruff" },
     { name = "tomli" },
 ]
+lint = [
+    { name = "mypy" },
+    { name = "pyright" },
+    { name = "ruff" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1358,6 +1368,16 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "tomli" },
+]
+lint = [
+    { name = "mypy" },
+    { name = "pyright", specifier = ">=1.1.409" },
+    { name = "ruff" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
 ]
 
 [[package]]

@@ -114,6 +114,12 @@ docs/                       # Supplementary documentation
 # Install (using uv, the project's package manager)
 uv sync --all-extras
 
+# Install test dependencies
+uv sync --group test
+
+# Install lint dependencies
+uv sync --group lint
+
 # Install dev dependencies
 uv sync --group dev
 

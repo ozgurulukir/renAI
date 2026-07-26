@@ -55,6 +55,18 @@ pdf-extra = [
 ]
 
 [dependency-groups]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+]
+
+lint = [
+    "ruff",
+    "mypy",
+    "pyright>=1.1.409",
+]
+
 dev = [
     "pytest",
     "pytest-asyncio",
