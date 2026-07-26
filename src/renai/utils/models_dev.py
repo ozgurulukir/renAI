@@ -45,6 +45,9 @@ def _fetch_remote_json(endpoint: str) -> dict | None:
             data = response.json()
             if isinstance(data, dict) and data:
                 return data
+            logging.debug(f"Endpoint {url} returned empty or non-dict response: {data}")
+        else:
+            logging.debug(f"Endpoint {url} returned HTTP status {response.status_code}")
     except Exception as e:
         logging.debug(f"Failed to fetch {url}: {e}")
     return None

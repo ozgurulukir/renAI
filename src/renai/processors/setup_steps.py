@@ -57,11 +57,14 @@ DIRECT_DEV_PROVIDERS = {
 
 
 def _map_openrouter_model(catalog_id: str) -> str:
-    if catalog_id.startswith("meta/"):
-        return "meta-llama/" + catalog_id[len("meta/") :]
-    if catalog_id.startswith("mistral/"):
-        return "mistralai/" + catalog_id[len("mistral/") :]
-    return catalog_id
+    model = catalog_id
+    if model.startswith("openrouter/"):
+        model = model[len("openrouter/") :]
+    if model.startswith("meta/"):
+        return "meta-llama/" + model[len("meta/") :]
+    if model.startswith("mistral/"):
+        return "mistralai/" + model[len("mistral/") :]
+    return model
 
 
 def _map_deepinfra_model(catalog_id: str, catalog_info: dict) -> str:
@@ -70,11 +73,14 @@ def _map_deepinfra_model(catalog_id: str, catalog_info: dict) -> str:
             parts = w["url"].split("huggingface.co/")
             if len(parts) > 1:
                 return parts[1].strip("/")
-    if catalog_id.startswith("meta/"):
-        return "meta-llama/" + catalog_id[len("meta/") :]
-    if catalog_id.startswith("mistral/"):
-        return "mistralai/" + catalog_id[len("mistral/") :]
-    return catalog_id
+    model = catalog_id
+    if model.startswith("deepinfra/"):
+        model = model[len("deepinfra/") :]
+    if model.startswith("meta/"):
+        return "meta-llama/" + model[len("meta/") :]
+    if model.startswith("mistral/"):
+        return "mistralai/" + model[len("mistral/") :]
+    return model
 
 
 def get_provider_model_name(catalog_id: str, catalog_info: dict, provider: str) -> str:
@@ -93,7 +99,6 @@ def get_provider_model_name(catalog_id: str, catalog_info: dict, provider: str) 
             return name
 
     return catalog_id
-
 
 
 def _build_provider_options(catalog: dict, all_devs: list[str]) -> list[dict]:
@@ -164,20 +169,36 @@ def _filter_catalog_models(
     return [k for k in catalog if k.startswith(f"{selected_provider}/")]
 
 
-def _get_display_choices(selected_provider: str, model_names: list[str]) -> list[str]:
+def _get_display_choices(
+    selected_provider: str, model_names: list[str], catalog: dict | None = None
+) -> list[str]:
     """Map full catalog model IDs to display choices."""
+    catalog = catalog or {}
     display_choices = []
-    prefix = f"{selected_provider}/"
     for m in model_names:
-        display_name = m
-        if m.startswith(prefix):
-            display_name = m[len(prefix) :]
-        elif "/" in m:
-            dev = m.split("/")[0]
-            if dev in DIRECT_DEV_PROVIDERS:
-                display_name = m[len(dev) + 1 :]
+        info = catalog.get(m, {})
+        display_name = get_provider_model_name(m, info, selected_provider)
         display_choices.append(display_name)
     return display_choices
+
+
+def _get_popular_rank(
+    m: str, catalog: dict, provider: str, popular_models: list[str]
+) -> tuple[bool, int, str]:
+    """Determine sort priority rank for a model based on popular_models list."""
+    info = catalog.get(m, {})
+    actual = get_provider_model_name(m, info, provider)
+    m_no_tag = m.split(":", maxsplit=1)[0]
+    actual_no_tag = actual.split(":")[0]
+    m_base = m_no_tag.split("/")[-1]
+    actual_base = actual_no_tag.split("/")[-1]
+
+    for idx, pop in enumerate(popular_models):
+        pop_no_tag = pop.split(":")[0]
+        pop_base = pop_no_tag.split("/")[-1]
+        if pop in (m, actual, m_no_tag, actual_no_tag) or pop_base in (m_base, actual_base):
+            return (False, idx, m)
+    return (True, 999, m)
 
 
 def _prompt_model_selection(
@@ -198,20 +219,12 @@ def _prompt_model_selection(
         "anthropic/claude-3-7-sonnet-20250219",
         "openai/gpt-4o",
         "openai/gpt-4o-mini",
-        "llama-3.3-70b-instruct",
-        "gemini-2.0-flash",
-        "claude-3-7-sonnet-20250219",
-        "gpt-4o",
-        "gpt-4o-mini",
     ]
     model_names.sort(
-        key=lambda m: (
-            m not in popular_models,
-            popular_models.index(m) if m in popular_models else m,
-        )
+        key=lambda m: _get_popular_rank(m, catalog, selected_provider, popular_models)
     )
 
-    display_choices = _get_display_choices(selected_provider, model_names)
+    display_choices = _get_display_choices(selected_provider, model_names, catalog)
 
     default_model = ""
     for opt in provider_options:
@@ -231,10 +244,29 @@ def _prompt_model_selection(
         raise KeyboardInterrupt
 
     catalog_id = None
-    prefix = f"{selected_provider}/"
     for m in model_names:
-        d_name = m[len(prefix) :] if m.startswith(prefix) else m
-        if selected_model in (d_name, m):
+        info = catalog.get(m, {})
+        disp = get_provider_model_name(m, info, selected_provider)
+
+        # 1. Exact match on display name or catalog ID
+        if selected_model in (disp, m):
+            catalog_id = m
+            break
+
+        # 2. Normalized match ignoring tags (:free) or provider prefixes
+        selected_clean = selected_model.split(":")[0].strip()
+        disp_clean = disp.split(":")[0].strip()
+        m_clean = m.split(":")[0].strip()
+
+        if selected_clean in (disp_clean, m_clean):
+            catalog_id = m
+            break
+
+        # 3. Match by model basename (e.g. "gpt-4o" typed for "openai/gpt-4o")
+        if "/" in disp_clean and selected_clean == disp_clean.split("/")[-1]:
+            catalog_id = m
+            break
+        if "/" in m_clean and selected_clean == m_clean.split("/")[-1]:
             catalog_id = m
             break
 
@@ -248,7 +280,7 @@ def _prompt_model_selection(
 
 
 
-def _prompt_base_url(selected_provider: str) -> str:
+def _prompt_base_url(selected_provider: str, default_url: str | None = None) -> str:
     """Prompt user for dynamic provider base URL."""
     known_base_urls = {
         "deepseek": "https://api.deepseek.com/v1",
@@ -258,7 +290,9 @@ def _prompt_base_url(selected_provider: str) -> str:
         "together": "https://api.together.xyz/v1",
         "perplexity": "https://api.perplexity.ai",
     }
-    default_base = known_base_urls.get(selected_provider, "http://localhost:8000/v1")
+    default_base = default_url or known_base_urls.get(
+        selected_provider, "http://localhost:8000/v1"
+    )
     base_url = questionary.text(
         msg.Provider.BASE_URL_PROMPT.format(selected_provider.capitalize()),
         default=default_base,
@@ -352,12 +386,10 @@ def _configure_standard_provider(
     """Configure credentials and models for a standard provider."""
     base_url = ""
     if selected_provider not in ["deepinfra", "openrouter", "openai"]:
-        # If models.dev provider catalog has base URL, pass it as default suggestion
+        catalog_api = None
         if providers_catalog and selected_provider in providers_catalog:
-            p_api = providers_catalog[selected_provider].get("api")
-            base_url = p_api if p_api else _prompt_base_url(selected_provider)
-        else:
-            base_url = _prompt_base_url(selected_provider)
+            catalog_api = providers_catalog[selected_provider].get("api")
+        base_url = _prompt_base_url(selected_provider, default_url=catalog_api)
     elif selected_provider == "openai":
         base_url = "https://api.openai.com/v1"
     elif selected_provider == "deepinfra":
