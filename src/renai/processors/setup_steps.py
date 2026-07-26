@@ -318,11 +318,11 @@ async def _validate_api_key_async(base_url: str, api_key: str) -> tuple[bool, st
     """Perform a lightweight API call to validate the API key."""
     from openai import APIConnectionError, AsyncOpenAI, AuthenticationError
 
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     try:
-        # We use a very low timeout (e.g., 5 seconds) to avoid freezing the setup wizard
-        await client.models.list(timeout=5.0)
-        return True, ""
+        async with AsyncOpenAI(api_key=api_key, base_url=base_url) as client:
+            # We use a very low timeout (e.g., 5 seconds) to avoid freezing the setup wizard
+            await client.models.list(timeout=5.0)
+            return True, ""
     except AuthenticationError as e:
         # Invalid API key
         return False, str(e)

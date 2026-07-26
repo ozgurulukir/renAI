@@ -441,3 +441,7 @@ class LLMEngine:
 
         # Final Fallback to "Other" if JSON exists
         return self._attempt_final_fallback(last_parsed_data, model_class)
+
+    async def close(self) -> None:
+        """Close the underlying OpenAI client connection pool."""
+        await self.client.close()
