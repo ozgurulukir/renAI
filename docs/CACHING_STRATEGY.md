@@ -6,12 +6,12 @@ This document describes the intelligent caching system implemented in renAI, inc
 
 ## Overview
 
-renAI uses a multi-layer **asynchronous** caching system to optimize performance and reduce API costs:
+renAI uses a multi-layer **asynchronous** caching system backed by SQLite WAL (Write-Ahead Logging) mode to optimize performance and reduce API costs:
 
 1. **Text Cache** - Stores extracted text from documents
 2. **Metadata Cache** - Stores LLM-generated metadata (title, author, category, etc.)
 
-Both cache layers use content-based addressing combined with configuration-aware keys to ensure correctness while maximizing cache reuse.
+Both cache layers use content-based addressing combined with configuration-aware keys to ensure correctness while maximizing cache reuse. SQLite WAL mode enables concurrent reads and writes without locking, significantly improving throughput for large batches.
 
 ---
 
@@ -139,9 +139,12 @@ The internal structure within the cache directory is organized as follows:
 
 ```text
 Cache/
-├── text/        # Extracted text files (*.txt)
-└── metadata/    # LLM-generated metadata (*.json)
+├── cache.db          # SQLite WAL-mode database (primary cache store)
+├── text/             # Legacy text cache files (*.txt) - fallback only
+└── metadata/         # Legacy metadata cache files (*.json) - fallback only
 ```
+
+renAI writes to SQLite first and falls back to legacy files only when SQLite is unavailable. Legacy files remain for backward compatibility during migration.
 
 ### Cache Contents
 
@@ -326,6 +329,7 @@ renai cache
 | 2026-03-14 | Unified Vision/Image cache with `_vision` suffix for PDFs                           |
 | 2026-04-08 | Transitioned to Typer CLI with centralized Orchestration pattern                    |
 | 2026-06-10 | **v2.2.0 Release**: Atomic cache writes, vision_max_pages config, eval log batching |
+| 2026-07-26 | **v2.2.1+**: Migrated cache backend to SQLite WAL mode for concurrent-safe high-performance caching |
 
 ## Status
 

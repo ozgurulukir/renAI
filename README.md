@@ -79,6 +79,8 @@ _Example: `Sunset -- [2024-07-15] -- (en).jpg`_
 - **`--fallback-mode move`**: Moves files where text extraction fails to `Needs_Scan/` folder.
 - **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + selected fallback.
 - **`--benchmark`**: Compares PDF extraction library performance on the first 3 files.
+- **`--dry-run`**: Simulate processing without renaming or moving files.
+- **`undo` / `undo-last`**: Revert file operations from the most recent renaming or organizing run.
 
 ---
 
@@ -505,7 +507,7 @@ When using `--mode organize`:
 
 ### Caching Strategy
 
-renAI uses an intelligent caching system that includes provider-model awareness:
+renAI uses an intelligent caching system backed by SQLite WAL (Write-Ahead Logging) mode for improved performance and reliability. Metadata cache entries are scoped by provider-model pairs, so switching providers or models automatically uses a different cache entry.
 
 | Cache Type         | Key Components                                   | Invalidation                                                                     |
 | :----------------- | :----------------------------------------------- | :------------------------------------------------------------------------------- |
@@ -518,6 +520,7 @@ renAI uses an intelligent caching system that includes provider-model awareness:
 - Metadata cache keys include a hash of the provider-model pair
 - Switching providers or models automatically invalidates old cache
 - Use `--update-metadata` to force fresh extraction regardless of cache
+- SQLite WAL mode ensures concurrent reads/writes are safe and performant
 
 **Example:**
 
@@ -535,7 +538,7 @@ renai process "C:/Books" --provider deepinfra
 renai process "C:/Books" --provider deepinfra --update-metadata
 ```
 
-**Cache Location:** Managed automatically by the OS via `platformdirs` (e.g., `~/.cache/renAI` on Linux, `~/Library/Caches/renAI` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows).
+**Cache Location:** Managed automatically by the OS via `platformdirs` (e.g., `~/.cache/renAI` on Linux, `~/Library/Caches/renAI` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows). Internally uses SQLite WAL mode for concurrent-safe, high-performance caching.
 
 ---
 
@@ -614,6 +617,8 @@ categories = [
 | `--move-scan-failures` | Move failed files to `Scan_Failures` folder                                                            |
 | `--benchmark`          | Benchmark PDF extractors on the first 3 files                                                          |
 | `--vision-max-pages`   | Max pages to sample for vision PDF extraction (default: 3)                                             |
+| `--dry-run`            | Simulate processing without renaming or moving files                                                   |
+| `undo` / `undo-last`   | Revert file operations from the most recent run                                                         |
 | `cache`                | Command to clear cache                                                                                 |
 | `init`                 | Command to start interactive setup wizard                                                              |
 | `providers`            | Command to list configured providers                                                                   |
