@@ -15,7 +15,7 @@ from ..cache.manager import (
 )
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
-from ..file_ops.operations import safe_move_file
+from ..file_ops.operations import resolve_target_destination, safe_move_file
 from ..filename.builder import (
     build_book_filename,
     build_image_filename,
@@ -174,12 +174,18 @@ class BookProcessor:
         rename_images: bool = False,
         update_metadata: bool = False,
         add_exif_date: bool = False,
+        dry_run: bool = False,
     ) -> ProcessingResult:
         """Unified processing entry point for documents and images asynchronously."""
         try:
             if file_path.is_symlink():
                 logging.warning(f"Skipping symlink: {file_path.name}")
-                return ProcessingResult(success=False, name=file_path.name, error="Symlink skipped")
+                return ProcessingResult(
+                    success=False,
+                    name=file_path.name,
+                    original_name=file_path.name,
+                    error="Symlink skipped",
+                )
 
             file_hash = await asyncio.to_thread(get_file_hash, file_path)
             cache_path, model_class, use_vision = self._get_cache_parameters(
@@ -202,6 +208,7 @@ class BookProcessor:
                 return ProcessingResult(
                     success=False,
                     name=file_path.name,
+                    original_name=file_path.name,
                     error="Extraction failed (No metadata generated)",
                 )
 
@@ -211,6 +218,8 @@ class BookProcessor:
                         return ProcessingResult(
                             success=False,
                             file_path=file_path,
+                            name=file_path.name,
+                            original_name=file_path.name,
                             error=(
                                 f"Internal error: Expected metadata model, "
                                 f"got {type(metadata).__name__}"
@@ -224,11 +233,14 @@ class BookProcessor:
                         add_exif_date=add_exif_date,
                         file_hash=file_hash,
                         is_vision_doc=is_vision_doc,
+                        dry_run=dry_run,
                     )
             else:
                 # evaluate mode
                 return ProcessingResult(
                     success=True,
+                    name=file_path.name,
+                    original_name=file_path.name,
                     metadata=(
                         metadata.model_dump()
                         if hasattr(metadata, "model_dump")
@@ -238,7 +250,12 @@ class BookProcessor:
 
         except Exception as e:
             logging.error(f"Failed to process {file_path.name}: {e}")
-            return ProcessingResult(success=False, name=file_path.name, error=str(e))
+            return ProcessingResult(
+                success=False,
+                name=file_path.name,
+                original_name=file_path.name,
+                error=str(e),
+            )
 
     async def _extract_document_metadata(
         self, file_path: Path, fallback_mode: FallbackMode, file_hash: str | None = None
@@ -246,17 +263,27 @@ class BookProcessor:
         """Internal helper to extract document metadata using text first, then vision."""
         text = await self.text_extractor.extract(file_path, file_hash=file_hash)
 
-        if not text.strip() and fallback_mode == FallbackMode.VISION:
-            # Fallback to PDF Vision Page Sampling
-            metadata = await self.visual_processor.extract_metadata_from_pdf(file_path)
-            return metadata, True
-
-        if text.strip():
-            # Standard LLM Metadata Extraction from text
-            if self.llm_engine:
-                metadata = await self.llm_engine.get_book_metadata(text)
+        if self.llm_engine and text and text.strip():
+            metadata = await self.llm_engine.get_book_metadata(text)
+            if metadata:
                 return metadata, False
-            logging.warning("No LLM engine available for text-based extraction.")
+
+        # Fallback to vision processing if enabled
+        if (
+            fallback_mode == FallbackMode.VISION
+            and self.visual_processor
+            and self.visual_processor.llm_engine
+        ):
+            logging.info(
+                "Text extraction yielded no metadata for %s. Trying Vision LLM fallback...",
+                file_path.name,
+            )
+            try:
+                metadata = await self.visual_processor.extract_metadata_from_pdf(file_path)
+                if metadata:
+                    return metadata, True
+            except Exception as e:
+                logging.error(f"Vision LLM fallback failed for {file_path.name}: {e}")
 
         return None, False
 
@@ -268,41 +295,42 @@ class BookProcessor:
         add_exif_date: bool = False,
         file_hash: str | None = None,
         is_vision_doc: bool = False,
+        dry_run: bool = False,
     ) -> ProcessingResult:
-        """Build filename and move file securely asynchronously."""
+        """Construct output path and execute safe file move."""
         try:
             category = extract_category_from_metadata(metadata)
             is_image = isinstance(metadata, ImageMetadata)
 
-            # 1. Build the new filename
+            # 1. Build proposed filename
             if is_image:
                 new_name = build_image_filename(
                     cast("ImageMetadata", metadata),
                     file_path.suffix,
                     add_exif_date=add_exif_date,
                 )
+                category = "Images"
             elif is_vision_doc:
                 new_name = build_vision_filename(cast("BookMetadata", metadata), file_path.suffix)
             else:
                 new_name = build_book_filename(cast("BookMetadata", metadata), file_path.suffix)
 
-            # 2. Determine target destination based on mode
-            if mode == "organize" and category:
-                # Use root_dir if available to organize everything at the top level
-                # as described in README.md. Fall back to parent if root_dir is unknown.
-                dest_root = self.root_dir or file_path.parent
-                target_dest = dest_root / category / new_name
-            else:
-                target_dest = file_path.parent / new_name
+            # 2. Determine target destination path
+            target_dest = resolve_target_destination(
+                file_path, new_name, category=category, mode=mode, root_dir=self.root_dir
+            )
 
-            # 3. Security: Ensure target_dest is contained within the root_dir (Defense in Depth)
+            # 3. Path traversal security check
             if self.root_dir:
                 resolved_root = self.root_dir.resolve()
                 resolved_dest = target_dest.resolve()
                 if not resolved_dest.is_relative_to(resolved_root):
                     logging.error("Target path %s escapes root %s", target_dest, self.root_dir)
                     return ProcessingResult(
-                        success=False, name=file_path.name, error="Security: Path traversal blocked"
+                        success=False,
+                        name=file_path.name,
+                        original_name=file_path.name,
+                        error="Security: Path traversal blocked",
                     )
 
             # 4. Check if file is already in the correct place with correct name
@@ -318,33 +346,42 @@ class BookProcessor:
                     metadata=m_data,
                     file_path=file_path,
                     name=file_path.name,
+                    original_name=file_path.name,
                     category=category,
                 )
 
             # 5. Perform the move securely
             def _do_move():
                 return safe_move_file(
-                    file_path, target_dest, operation_type=mode, source_hash=file_hash
+                    file_path,
+                    target_dest,
+                    operation_type=mode,
+                    source_hash=file_hash,
+                    dry_run=dry_run,
                 )
 
             final_path = await asyncio.to_thread(_do_move)
 
-            if final_path:
-                logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
-                m_data = (
-                    metadata.model_dump()
-                    if hasattr(metadata, "model_dump")
-                    else cast("dict", metadata)
-                )
-                return ProcessingResult(
-                    success=True,
-                    metadata=m_data,
-                    file_path=final_path,
-                    name=final_path.name,
-                    category=category,
-                )
-            return ProcessingResult(success=False, name=file_path.name, error="Safe move failed")
+            logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
+            m_data = (
+                metadata.model_dump()
+                if hasattr(metadata, "model_dump")
+                else cast("dict", metadata)
+            )
+            return ProcessingResult(
+                success=True,
+                metadata=m_data,
+                file_path=final_path,
+                name=final_path.name,
+                original_name=file_path.name,
+                category=category,
+            )
 
         except Exception as e:
             logging.error(f"Renaming logic failed for {file_path.name}: {e}")
-            return ProcessingResult(success=False, error=f"Renaming logic failed: {e!s}")
+            return ProcessingResult(
+                success=False,
+                name=file_path.name,
+                original_name=file_path.name,
+                error=f"Renaming logic failed: {e!s}",
+            )

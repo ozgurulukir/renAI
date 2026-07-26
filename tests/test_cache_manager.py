@@ -247,8 +247,7 @@ def test_write_text_cache_success(tmp_path, caplog):
         result = write_text_cache(cache_file, content)
 
     assert result is True
-    assert cache_file.exists()
-    assert cache_file.read_text(encoding="utf-8") == content
+    assert read_text_cache(cache_file) == content
     assert "Failed to write" not in caplog.text
 
 

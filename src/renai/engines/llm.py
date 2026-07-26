@@ -262,6 +262,18 @@ class LLMEngine:
             return {"HTTP-Referer": "https://github.com/renAI", "X-Title": "renAI"}
         return None
 
+    @staticmethod
+    def _try_repair_json(content: str) -> str | None:
+        """Attempt local string repairs for common LLM JSON syntax errors."""
+        # 1. Remove trailing commas before closing braces/brackets
+        repaired = re.sub(r",\s*([\}\]])", r"\1", content)
+        # 2. Extract first '{' to last '}' if surrounded by extraneous text
+        start = repaired.find("{")
+        end = repaired.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return repaired[start : end + 1]
+        return None
+
     def _parse_json_content(self, content: str) -> dict[str, Any] | None:
         """Clean markdown formatting and parse JSON content."""
         content = content.strip()
@@ -271,6 +283,12 @@ class LLMEngine:
         try:
             return json.loads(content)
         except json.JSONDecodeError:
+            repaired = self._try_repair_json(content)
+            if repaired:
+                try:
+                    return json.loads(repaired)
+                except json.JSONDecodeError:
+                    pass
             return None
 
     def _validate_and_align_metadata(

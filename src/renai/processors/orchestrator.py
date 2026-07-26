@@ -268,6 +268,7 @@ async def _execute_processing_loop(
                         rename_images=config.rename_images,
                         update_metadata=config.update_metadata,
                         add_exif_date=config.add_exif_date,
+                        dry_run=config.dry_run,
                     )
                     if config.mode == "evaluate" and res.success:
                         await log_evaluation_result(
@@ -288,14 +289,33 @@ async def _execute_processing_loop(
     return results
 
 
-def _print_final_summary(results: list[ProcessingResult]) -> None:
+def _print_final_summary(results: list[ProcessingResult], is_dry_run: bool = False) -> None:
     """Print the final static summary card to the terminal."""
+    if is_dry_run:
+        table = Table(title="[bold yellow]renAI Dry-Run Preview Table[/bold yellow]")
+        table.add_column("Original File", style="cyan")
+        table.add_column("Proposed Target / Name", style="green")
+        table.add_column("Category", style="magenta")
+        table.add_column("Status", style="bold")
+
+        for r in results:
+            orig_name = r.original_name or r.name or "Unknown"
+            dest_name = r.file_path.name if r.file_path else (r.name or "Skipped")
+            cat = r.category or "-"
+            status = "[green]Ready[/green]" if r.success else f"[red]{r.error}[/red]"
+            table.add_row(orig_name, dest_name, cat, status)
+
+        console.print()
+        console.print(table)
+        console.print()
+
     success_count = sum(1 for r in results if r.success)
     error_count = len(results) - success_count
 
     summary_table = Table.grid(padding=(0, 1))
     summary_table.add_column(justify="left", style="white")
     summary_table.add_column(justify="right", style="cyan")
+    title_suffix = " (DRY-RUN)" if is_dry_run else ""
     summary_table.add_row(
         orch_msg.Summary.SUCCESS_BADGE, orch_msg.Summary.SUCCESS_COUNT.format(success_count)
     )
@@ -308,8 +328,8 @@ def _print_final_summary(results: list[ProcessingResult]) -> None:
     console.print(
         Panel(
             summary_table,
-            title=orch_msg.Summary.TITLE,
-            border_style="green" if error_count == 0 else "yellow",
+            title=f"{orch_msg.Summary.TITLE}{title_suffix}",
+            border_style="yellow" if is_dry_run else ("green" if error_count == 0 else "yellow"),
             padding=(1, 2),
             expand=False,
         )
@@ -355,7 +375,7 @@ async def run_pipeline(
 
     # 4. Final Summary Card (Static, will stay in terminal history)
     if not config.benchmark and results:
-        _print_final_summary(results)
+        _print_final_summary(results, is_dry_run=config.dry_run)
 
     return results
 

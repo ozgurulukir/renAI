@@ -1,10 +1,10 @@
 import contextlib
 import json
 import logging
-import os
 import shutil
-import tempfile
+import sqlite3
 import threading
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, TypeVar, overload
 
@@ -17,8 +17,56 @@ from renai.utils import (
 
 T = TypeVar("T", bound=BaseModel)
 
-# Thread-safe lock for all cache operations (read + write + invalidate)
+# Thread-safe lock for all cache database operations
 _cache_lock = threading.Lock()
+
+
+def _get_db_dir(cache_path: Path | None = None, cache_dir: Path | None = None) -> Path:
+    """Determine the database directory given a cache path or explicit cache dir."""
+    if cache_dir is not None:
+        return cache_dir
+    if cache_path is not None:
+        parent = cache_path.parent
+        if parent.name in ("text", "metadata"):
+            return parent.parent
+        return parent
+    return CACHE_DIR
+
+
+@contextlib.contextmanager
+def _get_db_connection(db_dir: Path) -> Generator[sqlite3.Connection, None, None]:
+    """Create, initialize, and yield a SQLite database connection with WAL mode enabled."""
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db_path = db_dir / "cache.db"
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        _init_db(conn)
+        yield conn
+    finally:
+        conn.close()
+
+
+def _init_db(conn: sqlite3.Connection) -> None:
+    """Initialize database tables for text and metadata caching."""
+    with conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS text_cache (
+                cache_key TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS metadata_cache (
+                cache_key TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
 
 
 def get_text_cache_path(
@@ -28,7 +76,7 @@ def get_text_cache_path(
     use_mutool: bool = False,
     cache_dir: Path | None = None,
 ) -> Path:
-    """Get the cache file path for extracted text."""
+    """Get the cache file path key for extracted text."""
     if cache_dir is None:
         cache_dir = CACHE_DIR
 
@@ -49,7 +97,7 @@ def get_metadata_cache_path(
     cache_dir: Path | None = None,
     use_vision: bool = False,
 ) -> Path:
-    """Get the cache file path for metadata."""
+    """Get the cache file path key for metadata."""
     if cache_dir is None:
         cache_dir = CACHE_DIR
 
@@ -61,8 +109,23 @@ def get_metadata_cache_path(
 
 
 def read_text_cache(file_path: Path) -> str | None:
-    """Read cached text content."""
+    """Read cached text content from SQLite (with legacy file fallback)."""
     with _cache_lock:
+        db_dir = _get_db_dir(cache_path=file_path)
+        cache_key = file_path.name
+        try:
+            with _get_db_connection(db_dir) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT content FROM text_cache WHERE cache_key = ?", (cache_key,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return row[0]
+        except Exception as e:
+            logging.warning(f"Failed to read text cache {file_path}: {e}")
+
+        # Fallback to legacy file reading if present
         try:
             if file_path.exists():
                 return file_path.read_text(encoding="utf-8")
@@ -72,21 +135,19 @@ def read_text_cache(file_path: Path) -> str | None:
 
 
 def write_text_cache(file_path: Path, content: str) -> bool:
-    """Write text content to cache atomically."""
+    """Write text content to SQLite cache atomically."""
     with _cache_lock:
+        db_dir = _get_db_dir(cache_path=file_path)
+        cache_key = file_path.name
         try:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                dir=file_path.parent, prefix=".renai_tmp_", suffix=".txt"
-            )
-            try:
-                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-                    f.write(content)
-                Path(tmp_path).replace(file_path)
-            except Exception:
-                with contextlib.suppress(OSError):
-                    Path(tmp_path).unlink()
-                raise
+            with _get_db_connection(db_dir) as conn, conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO text_cache (cache_key, content)
+                    VALUES (?, ?)
+                    """,
+                    (cache_key, content),
+                )
             return True
         except Exception as e:
             logging.warning(f"Failed to write text cache {file_path}: {e}")
@@ -111,56 +172,85 @@ def read_metadata_cache[V: BaseModel](
 ) -> V | None: ...
 
 
+def _read_from_legacy_file(cache_path: Path, provider: str, model: str) -> dict[str, Any] | None:
+    """Helper to read and validate stale/legacy metadata cache file."""
+    if not cache_path.exists():
+        return None
+    cache_content = cache_path.read_text(encoding="utf-8")
+    cache_data = json.loads(cache_content)
+
+    cached_provider = cache_data.get("_provider", "")
+    cached_model = cache_data.get("_model", "")
+
+    if cached_provider == provider and cached_model == model:
+        cache_data.pop("_provider", None)
+        cache_data.pop("_model", None)
+        return cache_data
+
+    msg = f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
+    logging.debug(msg)
+    with contextlib.suppress(Exception):
+        cache_path.unlink()
+        logging.debug(f"Removed stale cache file: {cache_path}")
+    return None
+
+
 def read_metadata_cache(
     cache_path: Path,
     provider: str,
     model: str,
     model_class: type[BaseModel] | None = None,
 ) -> Any | None:
-    """
-    Read cached metadata with provider-model validation.
-    If model_class is provided, returns a validated Pydantic model instance.
-    """
+    """Read cached metadata from SQLite (with legacy file fallback)."""
     with _cache_lock:
+        db_dir = _get_db_dir(cache_path=cache_path)
+        cache_key = cache_path.name
+        cache_data = None
+
         try:
-            if not cache_path.exists():
-                return None
-
-            cache_content = cache_path.read_text(encoding="utf-8")
-            cache_data = json.loads(cache_content)
-
-            # Validate provider-model match
-            cached_provider = cache_data.get("_provider", "")
-            cached_model = cache_data.get("_model", "")
-
-            if cached_provider == provider and cached_model == model:
-                # Remove internal cache fields
-                cache_data.pop("_provider", None)
-                cache_data.pop("_model", None)
-
-                if model_class:
-                    try:
-                        return model_class(**cache_data)
-                    except Exception as e:
-                        logging.warning(
-                            f"Failed to validate cached metadata "
-                            f"against {model_class.__name__}: {e}"
+            with _get_db_connection(db_dir) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT provider, model, metadata_json "
+                    "FROM metadata_cache WHERE cache_key = ?",
+                    (cache_key,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    cached_provider, cached_model, metadata_json = row
+                    if cached_provider == provider and cached_model == model:
+                        cache_data = json.loads(metadata_json)
+                    else:
+                        msg = (
+                            f"Cache invalidated (was {cached_provider}/{cached_model}, "
+                            f"now {provider}/{model})"
                         )
-                        return None
-                return cache_data
-            logging.debug(
-                f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
-            )
-            try:
-                cache_path.unlink()
-                logging.debug(f"Removed stale cache file: {cache_path}")
-            except Exception:
-                pass
-            return None
-
+                        logging.debug(msg)
+                        with conn:
+                            conn.execute(
+                                "DELETE FROM metadata_cache WHERE cache_key = ?", (cache_key,)
+                            )
         except Exception as e:
             logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
+
+        if cache_data is None:
+            try:
+                cache_data = _read_from_legacy_file(cache_path, provider, model)
+            except Exception as e:
+                logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
+
+        if cache_data is None:
             return None
+
+        if model_class:
+            try:
+                return model_class(**cache_data)
+            except Exception as e:
+                logging.warning(
+                    f"Failed to validate cached metadata against {model_class.__name__}: {e}"
+                )
+                return None
+        return cache_data
 
 
 def write_metadata_cache(
@@ -169,34 +259,23 @@ def write_metadata_cache(
     provider: str,
     model: str,
 ) -> bool:
-    """
-    Write metadata to cache atomically.
-    Supports both Pydantic models (recommended) and dictionaries.
-    """
+    """Write metadata to SQLite cache atomically."""
     with _cache_lock:
+        db_dir = _get_db_dir(cache_path=cache_path)
+        cache_key = cache_path.name
         try:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-
             data = metadata.model_dump() if isinstance(metadata, BaseModel) else metadata
+            metadata_json = json.dumps(data, ensure_ascii=False, indent=4)
 
-            cache_data = {
-                **data,
-                "_provider": provider,
-                "_model": model,
-            }
-
-            content = json.dumps(cache_data, ensure_ascii=False, indent=4)
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                dir=cache_path.parent, prefix=".renai_tmp_", suffix=".json"
-            )
-            try:
-                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-                    f.write(content)
-                Path(tmp_path).replace(cache_path)
-            except Exception:
-                with contextlib.suppress(OSError):
-                    Path(tmp_path).unlink()
-                raise
+            with _get_db_connection(db_dir) as conn, conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO metadata_cache
+                    (cache_key, provider, model, metadata_json)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (cache_key, provider, model, metadata_json),
+                )
             return True
         except Exception as e:
             logging.warning(f"Failed to write metadata cache {cache_path}: {e}")
@@ -204,52 +283,91 @@ def write_metadata_cache(
 
 
 def invalidate_cache_for_provider_model(cache_dir: Path | None = None) -> int:
-    """Clear metadata cache when switching providers/models."""
+    """Clear metadata cache when switching providers/models without double-counting."""
     with _cache_lock:
         if cache_dir is None:
             cache_dir = CACHE_DIR
 
-        metadata_dir = cache_dir / "metadata"
-        if not metadata_dir.exists():
-            return 0
+        cleared_keys: set[str] = set()
 
-        count = 0
-        try:
-            for cache_file in metadata_dir.glob("*.json"):
-                cache_file.unlink()
-                count += 1
-        except Exception as e:
-            logging.warning(f"Failed to clear metadata cache: {e}")
-        return count
+        db_path = cache_dir / "cache.db"
+        if db_path.exists():
+            try:
+                with _get_db_connection(cache_dir) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT cache_key FROM metadata_cache")
+                    cleared_keys.update(row[0] for row in cursor.fetchall())
+                    with conn:
+                        conn.execute("DELETE FROM metadata_cache")
+            except Exception as e:
+                logging.warning(f"Failed to clear metadata cache from DB: {e}")
+
+        metadata_dir = cache_dir / "metadata"
+        if metadata_dir.exists():
+            try:
+                for cache_file in metadata_dir.glob("*.json"):
+                    cleared_keys.add(cache_file.name)
+                    cache_file.unlink()
+            except Exception as e:
+                logging.warning(f"Failed to clear metadata cache files: {e}")
+        return len(cleared_keys)
 
 
 def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
-    """Clear all caches (text, metadata, and ocr_debug)."""
+    """Clear all caches (text, metadata, and ocr_debug) without double-counting."""
     with _cache_lock:
         if cache_dir is None:
             cache_dir = CACHE_DIR
 
-        results = {"text": 0, "metadata": 0, "ocr_debug": 0}
+        text_keys: set[str] = set()
+        metadata_keys: set[str] = set()
 
-        # Define targets
+        db_path = cache_dir / "cache.db"
+        if db_path.exists():
+            try:
+                with _get_db_connection(cache_dir) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT cache_key FROM text_cache")
+                    text_keys.update(row[0] for row in cursor.fetchall())
+
+                    cursor.execute("SELECT cache_key FROM metadata_cache")
+                    metadata_keys.update(row[0] for row in cursor.fetchall())
+
+                    with conn:
+                        conn.execute("DELETE FROM text_cache")
+                        conn.execute("DELETE FROM metadata_cache")
+            except Exception as e:
+                logging.warning(f"Failed to clear DB cache: {e}")
+
         targets = [
-            ("text", cache_dir / "text"),
-            ("metadata", cache_dir / "metadata"),
-            ("ocr_debug", DEBUG_DIR),
+            ("text", cache_dir / "text", text_keys),
+            ("metadata", cache_dir / "metadata", metadata_keys),
         ]
 
-        for cache_type, target_path in targets:
-            if target_path.exists():
+        for _, target_path, keys_set in targets:
+            if target_path.exists() and target_path.is_dir():
                 try:
-                    # Count files for reporting
-                    if target_path.is_dir():
-                        count = len(list(target_path.glob("*")))
-                        shutil.rmtree(target_path)
-                    else:
-                        count = 1
-                        target_path.unlink()
-                    results[cache_type] = count
+                    for f in target_path.glob("*"):
+                        if f.is_file():
+                            keys_set.add(f.name)
+                    shutil.rmtree(target_path)
                 except Exception as e:
-                    logging.warning(f"Failed to clear {cache_type} cache at {target_path}: {e}")
+                    logging.warning(f"Failed to clear cache directory at {target_path}: {e}")
 
-        return results
+        ocr_count = 0
+        if DEBUG_DIR.exists():
+            try:
+                if DEBUG_DIR.is_dir():
+                    ocr_count = len(list(DEBUG_DIR.glob("*")))
+                    shutil.rmtree(DEBUG_DIR)
+                else:
+                    ocr_count = 1
+                    DEBUG_DIR.unlink()
+            except Exception as e:
+                logging.warning(f"Failed to clear ocr_debug cache at {DEBUG_DIR}: {e}")
+
+        return {
+            "text": len(text_keys),
+            "metadata": len(metadata_keys),
+            "ocr_debug": ocr_count,
+        }
