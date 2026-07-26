@@ -219,3 +219,88 @@ def test_prompt_and_validate_api_key_retry():
         printed_texts = [str(args[0]) for args, _ in mock_print.call_args_list]
         assert any("API Key validation failed" in text for text in printed_texts)
         assert any("API Key is valid" in text for text in printed_texts)
+
+
+def test_get_display_choices_and_mapping_openrouter():
+    from renai.processors.setup_steps import _get_display_choices, get_provider_model_name
+
+    catalog = {
+        "openai/gpt-4o": {},
+        "meta/llama-3.3-70b-instruct": {},
+        "google/gemini-2.0-flash-exp:free": {},
+    }
+    model_names = list(catalog.keys())
+
+    # For OpenRouter: display choices match post-mapping model names
+    choices = _get_display_choices("openrouter", model_names, catalog)
+    assert choices == [
+        "openai/gpt-4o",
+        "meta-llama/llama-3.3-70b-instruct",
+        "google/gemini-2.0-flash-exp:free",
+    ]
+
+    # Check get_provider_model_name outputs
+    assert get_provider_model_name("openai/gpt-4o", {}, "openrouter") == "openai/gpt-4o"
+    assert (
+        get_provider_model_name("meta/llama-3.3-70b-instruct", {}, "openrouter")
+        == "meta-llama/llama-3.3-70b-instruct"
+    )
+    assert (
+        get_provider_model_name("google/gemini-2.0-flash-exp:free", {}, "openrouter")
+        == "google/gemini-2.0-flash-exp:free"
+    )
+
+    # For direct OpenAI:
+    choices_openai = _get_display_choices("openai", ["openai/gpt-4o"], catalog)
+    assert choices_openai == ["gpt-4o"]
+    assert get_provider_model_name("openai/gpt-4o", {}, "openai") == "gpt-4o"
+
+
+def test_prompt_model_selection_autocomplete_roundtrip():
+    from renai.processors.setup_steps import _prompt_model_selection
+
+    catalog = {
+        "openai/gpt-4o": {},
+        "meta/llama-3.3-70b-instruct": {},
+        "google/gemini-2.0-flash-exp:free": {},
+    }
+    provider_options = [{"name": "openrouter", "extra": "google/gemini-2.0-flash-exp:free"}]
+
+    # Test 1: User selects displayed name for OpenRouter meta llama
+    mock_ask = MagicMock()
+    mock_ask.ask.return_value = "meta-llama/llama-3.3-70b-instruct"
+    with patch("questionary.autocomplete", return_value=mock_ask):
+        res = _prompt_model_selection("openrouter", catalog, provider_options)
+        assert res == "meta-llama/llama-3.3-70b-instruct"
+
+    # Test 2: User types unprefixed basename "gpt-4o" for OpenRouter
+    mock_ask.ask.return_value = "gpt-4o"
+    with patch("questionary.autocomplete", return_value=mock_ask):
+        res = _prompt_model_selection("openrouter", catalog, provider_options)
+        assert res == "openai/gpt-4o"
+
+    # Test 3: User types untagged "gemini-2.0-flash-exp" for openrouter free model
+    mock_ask.ask.return_value = "gemini-2.0-flash-exp"
+    with patch("questionary.autocomplete", return_value=mock_ask):
+        res = _prompt_model_selection("openrouter", catalog, provider_options)
+        assert res == "google/gemini-2.0-flash-exp:free"
+
+
+def test_popular_models_sort():
+    from renai.processors.setup_steps import _get_popular_rank
+
+    catalog = {
+        "some-vendor/obscure-model": {},
+        "openai/gpt-4o": {},
+        "meta/llama-3.3-70b-instruct": {},
+    }
+    popular_models = ["meta/llama-3.3-70b-instruct", "openai/gpt-4o"]
+
+    models = list(catalog.keys())
+    models.sort(key=lambda m: _get_popular_rank(m, catalog, "openrouter", popular_models))
+
+    # Expect popular models at top
+    assert models[0] == "meta/llama-3.3-70b-instruct"
+    assert models[1] == "openai/gpt-4o"
+    assert models[2] == "some-vendor/obscure-model"
+
