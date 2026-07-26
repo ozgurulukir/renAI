@@ -250,11 +250,11 @@ class TestSafeMoveFile:
         dest = tmp_path / "renamed.txt"
         source.write_text("sample data")
 
-        moved_dest = safe_move_file(source, dest)
+        moved_dest = safe_move_file(source, dest, cache_dir=tmp_path)
         assert not source.exists()
         assert moved_dest.exists()
 
-        reverted = undo_last_operation()
+        reverted = undo_last_operation(cache_dir=tmp_path)
         assert reverted >= 1
         assert source.exists()
         assert not dest.exists()

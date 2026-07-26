@@ -62,7 +62,7 @@ def record_undo_entry(
 
 
 def undo_last_operation(cache_dir: Path | None = None) -> int:
-    """Revert recorded file operations from the last run."""
+    """Revert file operations recorded during the last batch/run in undo_history.json."""
     if cache_dir is None:
         from renai.config import CACHE_DIR
 
@@ -102,6 +102,7 @@ def safe_move_file(
     ensure_dirs: bool = True,
     source_hash: str | None = None,
     dry_run: bool = False,
+    cache_dir: Path | None = None,
 ) -> Path:
     """Safely move a file with duplicate detection, dry-run support, and undo recording."""
     if not source_path.exists():
@@ -129,7 +130,9 @@ def safe_move_file(
         if ensure_dirs:
             final_dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source_path), str(final_dest_path))
-        record_undo_entry(source_path, final_dest_path, operation_type=operation_type)
+        record_undo_entry(
+            source_path, final_dest_path, operation_type=operation_type, cache_dir=cache_dir
+        )
         logging.debug(
             f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
         )

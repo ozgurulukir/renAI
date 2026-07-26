@@ -1,11 +1,10 @@
 import contextlib
 import json
 import logging
-import os
 import shutil
 import sqlite3
-import tempfile
 import threading
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, TypeVar, overload
 
@@ -34,15 +33,19 @@ def _get_db_dir(cache_path: Path | None = None, cache_dir: Path | None = None) -
     return CACHE_DIR
 
 
-def _get_db_connection(db_dir: Path) -> sqlite3.Connection:
-    """Create and initialize a SQLite database connection with WAL mode enabled."""
+@contextlib.contextmanager
+def _get_db_connection(db_dir: Path) -> Generator[sqlite3.Connection, None, None]:
+    """Create, initialize, and yield a SQLite database connection with WAL mode enabled."""
     db_dir.mkdir(parents=True, exist_ok=True)
     db_path = db_dir / "cache.db"
     conn = sqlite3.connect(str(db_path), timeout=30.0)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    _init_db(conn)
-    return conn
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        _init_db(conn)
+        yield conn
+    finally:
+        conn.close()
 
 
 def _init_db(conn: sqlite3.Connection) -> None:
@@ -121,7 +124,6 @@ def read_text_cache(file_path: Path) -> str | None:
                     return row[0]
         except Exception as e:
             logging.warning(f"Failed to read text cache {file_path}: {e}")
-            return None
 
         # Fallback to legacy file reading if present
         try:
@@ -138,19 +140,6 @@ def write_text_cache(file_path: Path, content: str) -> bool:
         db_dir = _get_db_dir(cache_path=file_path)
         cache_key = file_path.name
         try:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                dir=file_path.parent, prefix=".renai_tmp_", suffix=".txt"
-            )
-            try:
-                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-                    f.write(content)
-                Path(tmp_path).replace(file_path)
-            except Exception:
-                with contextlib.suppress(OSError):
-                    Path(tmp_path).unlink()
-                raise
-
             with _get_db_connection(db_dir) as conn, conn:
                 conn.execute(
                     """
@@ -237,9 +226,10 @@ def read_metadata_cache(
                             f"now {provider}/{model})"
                         )
                         logging.debug(msg)
-                        conn.execute(
-                            "DELETE FROM metadata_cache WHERE cache_key = ?", (cache_key,)
-                        )
+                        with conn:
+                            conn.execute(
+                                "DELETE FROM metadata_cache WHERE cache_key = ?", (cache_key,)
+                            )
         except Exception as e:
             logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
 
@@ -274,24 +264,8 @@ def write_metadata_cache(
         db_dir = _get_db_dir(cache_path=cache_path)
         cache_key = cache_path.name
         try:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
             data = metadata.model_dump() if isinstance(metadata, BaseModel) else metadata
             metadata_json = json.dumps(data, ensure_ascii=False, indent=4)
-
-            # Write legacy file for compatibility
-            cache_data = {**data, "_provider": provider, "_model": model}
-            content = json.dumps(cache_data, ensure_ascii=False, indent=4)
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                dir=cache_path.parent, prefix=".renai_tmp_", suffix=".json"
-            )
-            try:
-                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-                    f.write(content)
-                Path(tmp_path).replace(cache_path)
-            except Exception:
-                with contextlib.suppress(OSError):
-                    Path(tmp_path).unlink()
-                raise
 
             with _get_db_connection(db_dir) as conn, conn:
                 conn.execute(
@@ -309,19 +283,20 @@ def write_metadata_cache(
 
 
 def invalidate_cache_for_provider_model(cache_dir: Path | None = None) -> int:
-    """Clear metadata cache when switching providers/models."""
+    """Clear metadata cache when switching providers/models without double-counting."""
     with _cache_lock:
         if cache_dir is None:
             cache_dir = CACHE_DIR
 
+        cleared_keys: set[str] = set()
+
         db_path = cache_dir / "cache.db"
-        count = 0
         if db_path.exists():
             try:
                 with _get_db_connection(cache_dir) as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM metadata_cache")
-                    count = cursor.fetchone()[0]
+                    cursor.execute("SELECT cache_key FROM metadata_cache")
+                    cleared_keys.update(row[0] for row in cursor.fetchall())
                     with conn:
                         conn.execute("DELETE FROM metadata_cache")
             except Exception as e:
@@ -331,30 +306,33 @@ def invalidate_cache_for_provider_model(cache_dir: Path | None = None) -> int:
         if metadata_dir.exists():
             try:
                 for cache_file in metadata_dir.glob("*.json"):
+                    cleared_keys.add(cache_file.name)
                     cache_file.unlink()
-                    count += 1
             except Exception as e:
                 logging.warning(f"Failed to clear metadata cache files: {e}")
-        return count
+        return len(cleared_keys)
 
 
 def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
-    """Clear all caches (text, metadata, and ocr_debug)."""
+    """Clear all caches (text, metadata, and ocr_debug) without double-counting."""
     with _cache_lock:
         if cache_dir is None:
             cache_dir = CACHE_DIR
 
-        results = {"text": 0, "metadata": 0, "ocr_debug": 0}
+        text_keys: set[str] = set()
+        metadata_keys: set[str] = set()
 
         db_path = cache_dir / "cache.db"
         if db_path.exists():
             try:
                 with _get_db_connection(cache_dir) as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM text_cache")
-                    results["text"] = cursor.fetchone()[0]
-                    cursor.execute("SELECT COUNT(*) FROM metadata_cache")
-                    results["metadata"] = cursor.fetchone()[0]
+                    cursor.execute("SELECT cache_key FROM text_cache")
+                    text_keys.update(row[0] for row in cursor.fetchall())
+
+                    cursor.execute("SELECT cache_key FROM metadata_cache")
+                    metadata_keys.update(row[0] for row in cursor.fetchall())
+
                     with conn:
                         conn.execute("DELETE FROM text_cache")
                         conn.execute("DELETE FROM metadata_cache")
@@ -362,22 +340,34 @@ def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
                 logging.warning(f"Failed to clear DB cache: {e}")
 
         targets = [
-            ("text", cache_dir / "text"),
-            ("metadata", cache_dir / "metadata"),
-            ("ocr_debug", DEBUG_DIR),
+            ("text", cache_dir / "text", text_keys),
+            ("metadata", cache_dir / "metadata", metadata_keys),
         ]
 
-        for cache_type, target_path in targets:
-            if target_path.exists():
+        for _, target_path, keys_set in targets:
+            if target_path.exists() and target_path.is_dir():
                 try:
-                    if target_path.is_dir():
-                        file_count = len(list(target_path.glob("*")))
-                        shutil.rmtree(target_path)
-                        results[cache_type] = max(results[cache_type], file_count)
-                    else:
-                        results[cache_type] = max(results[cache_type], 1)
-                        target_path.unlink()
+                    for f in target_path.glob("*"):
+                        if f.is_file():
+                            keys_set.add(f.name)
+                    shutil.rmtree(target_path)
                 except Exception as e:
-                    logging.warning(f"Failed to clear {cache_type} cache at {target_path}: {e}")
+                    logging.warning(f"Failed to clear cache directory at {target_path}: {e}")
 
-        return results
+        ocr_count = 0
+        if DEBUG_DIR.exists():
+            try:
+                if DEBUG_DIR.is_dir():
+                    ocr_count = len(list(DEBUG_DIR.glob("*")))
+                    shutil.rmtree(DEBUG_DIR)
+                else:
+                    ocr_count = 1
+                    DEBUG_DIR.unlink()
+            except Exception as e:
+                logging.warning(f"Failed to clear ocr_debug cache at {DEBUG_DIR}: {e}")
+
+        return {
+            "text": len(text_keys),
+            "metadata": len(metadata_keys),
+            "ocr_debug": ocr_count,
+        }

@@ -9,7 +9,9 @@ class ProcessingResult:
     success: bool
     file_path: Path | None = None
     name: str | None = None
+    original_name: str | None = None
     category: str | None = None
     file_hash: str | None = None
     metadata: dict | None = None  # To satisfy existing code/tests
     error: str | None = None
+

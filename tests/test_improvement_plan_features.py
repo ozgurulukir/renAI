@@ -72,14 +72,15 @@ class TestCliHelpers:
         dest = tmp_path / "renamed_book.pdf"
         source.write_text("dummy PDF content")
 
-        safe_move_file(source, dest)
-        assert not source.exists()
-        assert dest.exists()
+        with patch("renai.config.CACHE_DIR", tmp_path):
+            safe_move_file(source, dest, cache_dir=tmp_path)
+            assert not source.exists()
+            assert dest.exists()
 
-        result = runner.invoke(app, ["undo"])
-        assert result.exit_code == 0
-        assert "reverted" in result.output.lower()
-        assert source.exists()
+            result = runner.invoke(app, ["undo"])
+            assert result.exit_code == 0
+            assert "reverted" in result.output.lower()
+            assert source.exists()
 
 
 class TestFileOperationsHelpers:

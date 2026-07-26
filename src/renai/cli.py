@@ -8,7 +8,7 @@ original main.py has been migrated here.
 import asyncio
 import sys
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import typer
 from rich.console import Console
@@ -193,50 +193,12 @@ def _validate_cli_flags(root_dir: Path) -> None:
         raise typer.Exit(code=1)
 
 
-def _build_processing_config(
-    mode: Literal["rename", "organize", "evaluate"],
-    workers: int,
-    recursive: bool,
-    ocr_enhanced: bool,
-    debug_ocr: bool,
-    use_mutool: bool,
-    mutool_path: str,
-    extractor: str,
-    text_length: int,
-    text_extraction: str,
-    extraction_pages: int,
-    fallback_mode: FallbackMode,
-    move_scan_failures: bool,
-    rename_images: bool,
-    exif: bool,
-    update_metadata: bool,
-    benchmark: bool,
-    vision_max_pages: int,
-    dry_run: bool,
-) -> ProcessingConfig:
-    """Build ProcessingConfig instance from CLI parameters."""
-    return ProcessingConfig(
-        mode=mode,
-        workers=workers,
-        recursive=recursive,
-        ocr_enhanced=ocr_enhanced,
-        debug_ocr=debug_ocr,
-        use_mutool=use_mutool,
-        mutool_path=mutool_path,
-        extractor=extractor,
-        text_length=text_length,
-        text_extraction=text_extraction,
-        extraction_pages=extraction_pages,
-        skip_ocr_checks=False,
-        move_scan_failures=move_scan_failures,
-        fallback_mode=fallback_mode,
-        rename_images=rename_images,
-        add_exif_date=exif,
-        update_metadata=update_metadata,
-        benchmark=benchmark,
-        vision_max_pages=vision_max_pages,
-        dry_run=dry_run,
-    )
+def _build_processing_config(**kwargs: Any) -> ProcessingConfig:
+    """Build ProcessingConfig instance from CLI parameters using kwargs forwarding."""
+    if "exif" in kwargs:
+        kwargs["add_exif_date"] = kwargs.pop("exif")
+    kwargs.setdefault("skip_ocr_checks", False)
+    return ProcessingConfig(**kwargs)
 
 
 def handle_process_command(

@@ -299,7 +299,7 @@ def _print_final_summary(results: list[ProcessingResult], is_dry_run: bool = Fal
         table.add_column("Status", style="bold")
 
         for r in results:
-            orig_name = r.name or "Unknown"
+            orig_name = r.original_name or r.name or "Unknown"
             dest_name = r.file_path.name if r.file_path else (r.name or "Skipped")
             cat = r.category or "-"
             status = "[green]Ready[/green]" if r.success else f"[red]{r.error}[/red]"

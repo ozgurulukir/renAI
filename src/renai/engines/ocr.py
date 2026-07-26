@@ -402,8 +402,20 @@ class OCREngine:
 
         return image, temp_img
 
+    @classmethod
+    def shutdown_process_pool(cls, wait: bool = False) -> None:
+        """Shutdown the shared ProcessPoolExecutor if running."""
+        if cls._process_pool is not None:
+            cls._process_pool.shutdown(wait=wait)
+            cls._process_pool = None
+
     async def _preprocess_image(self, image: Image.Image) -> Image.Image:
-        """Handles resizing and enhancements in a ProcessPoolExecutor to bypass GIL."""
+        """Handles resizing and enhancements in a ProcessPoolExecutor to bypass GIL.
+
+        Note: On Windows or environments using 'spawn' process context, pickling bound
+        methods requires top-level module pickling support. Any pickling failure automatically
+        falls back to asyncio.to_thread.
+        """
         try:
             loop = asyncio.get_running_loop()
             if OCREngine._process_pool is None:
