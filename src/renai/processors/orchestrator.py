@@ -79,7 +79,7 @@ async def setup_engines(
     # Initialize Rate Limiter
     rate_limiter = AsyncRateLimiter(rpm=app_settings.llm_rpm_limit)
 
-    # Initialize LLM engine
+    # Initialize Text LLM engine
     llm_engine = LLMEngine(
         provider=provider,
         api_key=api_key,
@@ -87,6 +87,28 @@ async def setup_engines(
         model_name=model_name,
         rate_limiter=rate_limiter,
     )
+
+    # Determine vision provider & model
+    from renai.config import get_effective_vision_model, get_effective_vision_provider
+
+    vision_provider = config.vision_provider or get_effective_vision_provider()
+    vision_model_name = config.vision_model or get_effective_vision_model(vision_provider)
+
+    vision_llm_engine: LLMEngine | None = None
+    if vision_provider and vision_model_name and vision_provider in PROVIDERS:
+        if vision_provider == provider and vision_model_name == model_name:
+            vision_llm_engine = llm_engine
+        else:
+            v_prov_config = PROVIDERS[vision_provider]
+            v_api_key = v_prov_config.api_key or get_api_key(vision_provider)
+            if v_api_key:
+                vision_llm_engine = LLMEngine(
+                    provider=vision_provider,
+                    api_key=v_api_key,
+                    base_url=v_prov_config.base_url,
+                    model_name=vision_model_name,
+                    rate_limiter=rate_limiter,
+                )
 
     # Initialize processor
     processor = BookProcessor(
@@ -100,6 +122,9 @@ async def setup_engines(
         extraction_pages=config.extraction_pages,
         move_scan_failures=config.move_scan_failures,
         vision_max_pages=config.vision_max_pages,
+        vision_llm_engine=vision_llm_engine,
+        vision_provider=vision_provider,
+        vision_model=vision_model_name,
     )
 
     return ocr_engine, llm_engine, processor

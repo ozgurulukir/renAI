@@ -49,7 +49,8 @@ def test_run_init_wizard_success_custom(tmp_path):
     # Set up mock responses for questionary prompts
     mock_confirm = MagicMock()
     mock_confirm.ask.side_effect = [
-        False,  # Add another provider confirm (Overwrite is not called since settings_user doesn't exist)
+        False,  # Add another provider confirm
+        True,  # Use text model for vision confirm
         True,  # Configure advanced settings confirm
     ]
 
@@ -92,6 +93,8 @@ def test_run_init_wizard_success_custom(tmp_path):
         assert settings_data["custom_api_base_url"] == "http://localhost:1234/v1"
         assert settings_data["custom_model"] == "custom-model"
         assert settings_data["custom_api_key"] == "custom-key"
+        assert settings_data["vision_provider"] == "custom"
+        assert settings_data["vision_model"] == "custom-model"
         assert settings_data["workers"] == 4
         assert settings_data["fallback_mode"] == "ocr"
 
@@ -106,6 +109,7 @@ def test_run_init_wizard_empty_api_key_warning(tmp_path):
     mock_confirm.ask.side_effect = [
         False,  # Add another model confirm
         False,  # Add another provider confirm
+        True,  # Use text model for vision confirm
         False,  # Configure advanced settings confirm
     ]
 
@@ -127,6 +131,7 @@ def test_run_init_wizard_empty_api_key_warning(tmp_path):
         patch("renai.processors.setup.SECRETS_FILE", secrets_file),
         patch("renai.processors.setup.CONFIG_DIR", tmp_path),
         patch("renai.processors.setup.PACKAGE_CONFIG_DIR", package_config),
+        patch("renai.utils.models_dev.is_vision_supported", return_value=True),
         patch("questionary.confirm", return_value=mock_confirm),
         patch("questionary.select", return_value=mock_select),
         patch("questionary.autocomplete", return_value=mock_autocomplete),
@@ -303,4 +308,64 @@ def test_popular_models_sort():
     assert models[0] == "meta/llama-3.3-70b-instruct"
     assert models[1] == "openai/gpt-4o"
     assert models[2] == "some-vendor/obscure-model"
+
+
+def test_run_init_wizard_separate_vision_provider_and_model(tmp_path):
+    settings_user = tmp_path / "settings.toml"
+    secrets_file = tmp_path / "secrets.toml"
+    package_config = tmp_path / "package_config"
+    package_config.mkdir()
+
+    mock_confirm = MagicMock()
+    mock_confirm.ask.side_effect = [
+        False,  # Add another model confirm
+        True,   # Add another provider confirm
+        False,  # Add another model confirm for second provider
+        False,  # Add another provider confirm
+        False,  # Use text model for vision confirm
+        True,   # Configure vision confirm
+        False,  # Configure advanced settings confirm
+    ]
+
+    mock_select = MagicMock()
+    mock_select.ask.side_effect = [
+        "deepinfra",    # Select first LLM provider
+        "openrouter",   # Select second LLM provider
+        "deepinfra",    # Select default LLM provider
+        "llama3",       # Select default text model
+        "openrouter",   # Select vision provider
+    ]
+
+    mock_autocomplete = MagicMock()
+    mock_autocomplete.ask.side_effect = [
+        "llama3",                           # Text model
+        "google/gemini-2.0-flash-exp:free", # Text model for openrouter
+        "google/gemini-2.0-flash-exp:free", # Vision model for openrouter
+    ]
+
+    mock_password = MagicMock()
+    mock_password.ask.side_effect = ["key1", "key2"]
+
+    with (
+        patch("renai.processors.setup.SETTINGS_USER_FILE", settings_user),
+        patch("renai.processors.setup.SECRETS_FILE", secrets_file),
+        patch("renai.processors.setup.CONFIG_DIR", tmp_path),
+        patch("renai.processors.setup.PACKAGE_CONFIG_DIR", package_config),
+        patch("renai.processors.setup_steps._validate_api_key", return_value=(True, "")),
+        patch("questionary.confirm", return_value=mock_confirm),
+        patch("questionary.select", return_value=mock_select),
+        patch("questionary.autocomplete", return_value=mock_autocomplete),
+        patch("questionary.password", return_value=mock_password),
+        patch("shutil.which", return_value=None),
+        patch("renai.processors.setup.console.print"),
+    ):
+        run_init_wizard()
+
+        assert settings_user.exists()
+        with settings_user.open("rb") as f:
+            data = tomllib.load(f)
+        assert data["provider"] == "deepinfra"
+        assert data["vision_provider"] == "openrouter"
+        assert data["vision_model"] == "google/gemini-2.0-flash-exp:free"
+
 

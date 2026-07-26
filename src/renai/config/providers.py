@@ -121,6 +121,34 @@ def get_effective_model(provider: str) -> str:
     return get_default_model(provider) or ""
 
 
+def get_effective_vision_provider() -> str:
+    """Get effective vision provider to use (explicit vision_provider or main provider)."""
+    app, _ = _get_settings()
+    return app.vision_provider or app.provider
+
+
+def get_effective_vision_model(vision_provider: str | None = None) -> str | None:
+    """Get effective vision model to use (explicit vision_model or fallback)."""
+    app, prov = _get_settings()
+    if app.vision_model:
+        return app.vision_model
+
+    v_provider = vision_provider or get_effective_vision_provider()
+    provider_model_map = {
+        "deepinfra": prov.deepinfra_model,
+        "openrouter": prov.openrouter_model,
+        "openai": prov.openai_model,
+    }
+    selected_model = provider_model_map.get(v_provider)
+    if selected_model:
+        return selected_model
+
+    if v_provider == app.provider and app.model:
+        return app.model
+
+    return get_default_model(v_provider) or None
+
+
 # ---------------------------------------------------------------------------
 # Category Loading
 # ---------------------------------------------------------------------------

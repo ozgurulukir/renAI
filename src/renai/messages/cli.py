@@ -84,6 +84,8 @@ class Help:
     EXIF = "Use EXIF date in filenames"
     BENCHMARK = "Benchmarking on first 3 files"
     VISION_MAX_PAGES = "Max pages to sample for vision PDF extraction"
+    VISION_PROVIDER = "LLM Provider for vision operations"
+    VISION_MODEL = "Model name for vision operations"
     EVAL_DIR = "Directory containing sample book files for evaluation"
     EVAL_PROVIDER = "LLM Provider to evaluate"
     EVAL_WORKERS = "Number of concurrent workers"

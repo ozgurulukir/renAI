@@ -128,3 +128,38 @@ def test_handle_process_command_keyboard_interrupt(tmp_path):
             )
         assert exc_info.value.exit_code == 0
         mock_console.print.assert_any_call("\n[yellow]Cancelled by user. Exiting...[/yellow]")
+
+
+def test_check_vision_model_guard_missing_model_aborts():
+    from renai.cli import check_vision_model_guard
+
+    with (
+        patch("renai.config.get_effective_vision_model", return_value=None),
+        patch("renai.cli.console.print") as mock_print,
+    ):
+        with pytest.raises(typer.Exit) as exc_info:
+            check_vision_model_guard(
+                fallback_mode=FallbackMode.VISION,
+                rename_images=False,
+            )
+        assert exc_info.value.exit_code == 1
+        mock_print.assert_called_once()
+
+
+def test_check_vision_model_guard_non_vision_model_aborts():
+    from renai.cli import check_vision_model_guard
+
+    with (
+        patch("renai.config.providers.get_effective_vision_model", return_value="llama3-text"),
+        patch("renai.utils.models_dev.is_vision_supported", return_value=False),
+        patch("renai.cli.console.print") as mock_print,
+    ):
+        with pytest.raises(typer.Exit) as exc_info:
+            check_vision_model_guard(
+                fallback_mode=FallbackMode.NONE,
+                rename_images=True,
+                vision_model="llama3-text",
+            )
+        assert exc_info.value.exit_code == 1
+        mock_print.assert_called_once()
+

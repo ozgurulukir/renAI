@@ -153,3 +153,20 @@ def _check_vision_modalities(model_info: dict) -> bool:
     return "image" in inputs
 
 
+def filter_vision_models(
+    model_names: list[str], catalog: dict | None = None
+) -> list[str]:
+    """Filter a list of catalog model IDs to only those supporting vision/image input.
+
+    Models that are explicitly known NOT to support vision (is_vision_supported is False)
+    are excluded. Unknown models (None) or vision-capable models (True) are retained.
+    """
+    catalog = catalog or get_models_catalog()
+    if not catalog:
+        return model_names
+
+    filtered = [m for m in model_names if is_vision_supported(m) is not False]
+    return filtered or model_names
+
+
+

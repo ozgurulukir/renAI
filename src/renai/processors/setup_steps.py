@@ -3,6 +3,8 @@ setup_steps.py - Step implementations for renAI interactive initialization wizar
 Contains questionary-based interactive prompts for provider and model configuration.
 """
 
+from typing import Any
+
 import questionary
 from questionary import Style
 from rich.console import Console
@@ -154,19 +156,32 @@ def _build_provider_options(catalog: dict, all_devs: list[str]) -> list[dict]:
 
 
 def _filter_catalog_models(
-    selected_provider: str, catalog: dict, providers_catalog: dict | None = None
+    selected_provider: str,
+    catalog: dict,
+    providers_catalog: dict | None = None,
+    vision_only: bool = False,
 ) -> list[str]:
-    """Filter models from catalog based on provider."""
+    """Filter models from catalog based on provider and optional vision capability."""
+    from renai.utils.models_dev import filter_vision_models
+
+    models = []
     if providers_catalog and selected_provider in providers_catalog:
         p_models = providers_catalog[selected_provider].get("models")
         if p_models and isinstance(p_models, dict) and p_models:
-            return list(p_models.keys())
+            models = list(p_models.keys())
 
-    if not catalog:
-        return []
-    if selected_provider in ["deepinfra", "openrouter"]:
-        return list(catalog.keys())
-    return [k for k in catalog if k.startswith(f"{selected_provider}/")]
+    if not models:
+        if not catalog:
+            models = []
+        elif selected_provider in ["deepinfra", "openrouter"]:
+            models = list(catalog.keys())
+        else:
+            models = [k for k in catalog if k.startswith(f"{selected_provider}/")]
+
+    if vision_only and models:
+        models = filter_vision_models(models, catalog=catalog)
+
+    return models
 
 
 def _get_display_choices(
@@ -206,9 +221,12 @@ def _prompt_model_selection(
     catalog: dict,
     provider_options: list,
     providers_catalog: dict | None = None,
+    vision_only: bool = False,
 ) -> str:
     """Prompt the user to select a model for the given provider."""
-    model_names = _filter_catalog_models(selected_provider, catalog, providers_catalog)
+    model_names = _filter_catalog_models(
+        selected_provider, catalog, providers_catalog, vision_only=vision_only
+    )
 
     popular_models = [
         "meta/llama-3.3-70b-instruct",
@@ -232,7 +250,12 @@ def _prompt_model_selection(
             default_model = opt["extra"]
             break
 
-    prompt_msg = msg.Provider.MODEL_PROMPT.format(selected_provider.capitalize())
+    prompt_template = (
+        msg.Provider.VISION_MODEL_PROMPT
+        if vision_only
+        else msg.Provider.MODEL_PROMPT
+    )
+    prompt_msg = prompt_template.format(selected_provider.capitalize())
     selected_model = questionary.autocomplete(
         prompt_msg,
         choices=display_choices,
@@ -455,11 +478,21 @@ def _configure_single_provider(
 
 
 def _build_final_config_and_secrets(
-    configured: dict, default_provider: str, default_model: str
+    configured: dict,
+    default_provider: str,
+    default_model: str,
+    vision_provider: str | None = None,
+    vision_model: str | None = None,
 ) -> tuple[dict, dict]:
     """Build the final configuration and secrets dictionaries from user selections."""
     secrets = {}
-    config = {"provider": default_provider, "model": default_model, "providers": {}}
+    config = {
+        "provider": default_provider,
+        "model": default_model,
+        "vision_provider": vision_provider,
+        "vision_model": vision_model,
+        "providers": {},
+    }
 
     for name, data in configured.items():
         secrets[f"{name}_api_key"] = data["api_key"]
@@ -481,10 +514,66 @@ def _build_final_config_and_secrets(
     return config, secrets
 
 
+def _configure_vision_selection(
+    default_provider: str,
+    default_model: str,
+    configured_names: list[str],
+    configured: dict,
+    catalog: dict,
+    provider_options: list,
+    providers_catalog: dict | None,
+    is_vision_supported_func: Any,
+) -> tuple[str | None, str | None]:
+    """Prompt user to configure vision provider and vision model."""
+    text_supports_vision = is_vision_supported_func(default_model) is not False
+    use_text_for_vision = False
+
+    if text_supports_vision:
+        use_text_for_vision = questionary.confirm(
+            msg.Provider.VISION_USE_TEXT_MODEL.format(default_model),
+            default=True,
+            style=custom_style,
+        ).ask()
+        if use_text_for_vision is None:
+            raise KeyboardInterrupt
+
+    if use_text_for_vision:
+        return default_provider, default_model
+
+    configure_vision = questionary.confirm(
+        msg.Provider.VISION_PROMPT,
+        default=True,
+        style=custom_style,
+    ).ask()
+    if configure_vision is None or not configure_vision:
+        return None, None
+
+    vision_provider = questionary.select(
+        msg.Provider.VISION_PROVIDER_SELECT,
+        choices=configured_names,
+        default=default_provider,
+        style=custom_style,
+    ).ask()
+    if vision_provider is None:
+        raise KeyboardInterrupt
+
+    vision_model = _prompt_model_selection(
+        vision_provider,
+        catalog,
+        provider_options,
+        providers_catalog,
+        vision_only=True,
+    )
+    if vision_model and vision_model not in configured[vision_provider]["models"]:
+        configured[vision_provider]["models"].append(vision_model)
+
+    return vision_provider, vision_model
+
+
 def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
-    """Prompt the user for provider selection and credentials."""
+    """Prompt the user for provider selection, credentials, text model, and vision model."""
     try:
-        from renai.utils.models_dev import get_full_catalog
+        from renai.utils.models_dev import get_full_catalog, is_vision_supported
 
         full_cat = get_full_catalog()
         catalog = full_cat.get("models", {})
@@ -492,6 +581,7 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     except Exception:
         catalog = {}
         providers_catalog = {}
+        is_vision_supported = lambda _m: None  # noqa: E731
 
     if catalog:
         all_devs = sorted({k.split("/")[0] for k in catalog if "/" in k})
@@ -499,7 +589,6 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
         all_devs = ["openai", "deepseek", "google", "anthropic", "mistral"]
 
     provider_options = _build_provider_options(catalog, all_devs)
-
     configured = {}
 
     while True:
@@ -525,7 +614,6 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
         _configure_single_provider(
             selected_provider, configured, provider_options, catalog, providers_catalog
         )
-
 
         add_another_provider = questionary.confirm(
             msg.Provider.ANOTHER, default=False, style=custom_style
@@ -558,7 +646,20 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     if default_model is None:
         raise KeyboardInterrupt
 
-    return _build_final_config_and_secrets(configured, default_provider, default_model)
+    vision_provider, vision_model = _configure_vision_selection(
+        default_provider,
+        default_model,
+        configured_names,
+        configured,
+        catalog,
+        provider_options,
+        providers_catalog,
+        is_vision_supported,
+    )
+
+    return _build_final_config_and_secrets(
+        configured, default_provider, default_model, vision_provider, vision_model
+    )
 
 
 def _configure_advanced_settings() -> dict[str, str | int]:
