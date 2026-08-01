@@ -45,6 +45,8 @@ def test_handle_process_command_success(tmp_path):
         patch("renai.cli.run_pipeline", new_callable=AsyncMock) as mock_run_pipeline,
         patch("renai.cli.display_warnings") as mock_warnings,
         patch("renai.cli._print_process_header") as mock_header,
+        patch("renai.utils.models_dev.is_vision_supported", return_value=True),
+        patch("renai.config.get_effective_vision_model", return_value="gpt-4"),
     ):
         handle_process_command(
             directory=str(tmp_path),

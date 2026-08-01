@@ -74,9 +74,6 @@ dependencies = [
     "pdfplumber",
     "structlog",
     "pytesseract",
-    "PIL",
-    "PIL.Image",
-    "PIL.ExifTags",
 ]
 
 for dep in dependencies:
