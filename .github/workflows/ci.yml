@@ -27,7 +27,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          # cache: 'uv'
 
       - name: Install dependencies
         run: uv sync --frozen --group test
@@ -60,10 +59,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          # cache: 'uv'
 
       - name: Install lint tools
-        run: uv pip install ruff pyright
+        run: uv pip install --system ruff pyright
 
       - name: Run ruff (linting)
         run: uv run ruff check src/ tests/
@@ -88,7 +86,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          # cache: 'uv'
 
       - name: Build package
         run: uv build
