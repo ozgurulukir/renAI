@@ -37,7 +37,7 @@ async def test_deskew_various_angles(angle):
     # _deskew is sync in OCREngine but called within to_thread usually.
     # We test it directly here.
     deskewed_image = engine._deskew(tilted_image)
-    assert deskewed_image != tilted_image
+    assert deskewed_image.tobytes() != tilted_image.tobytes()
 
 
 class TestOCREngineInit:

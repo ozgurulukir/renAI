@@ -241,9 +241,7 @@ class TestVisualProcessor:
 
         with patch("PIL.Image.open") as mock_image_open:
             mock_img = MagicMock()
-            mock_exif = MagicMock()
-            mock_exif.items.return_value = [(306, "2026:06:10 12:00:00")]  # 306 is DateTime tag
-            mock_img.getexif.return_value = mock_exif
+            mock_img.getexif.return_value = {306: "2026:06:10 12:00:00"}  # 306 is DateTime tag
             mock_image_open.return_value.__enter__.return_value = mock_img
 
             result = await visual_processor.get_exif_date_async(test_file)
