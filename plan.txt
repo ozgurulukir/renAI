@@ -1,0 +1,6 @@
+1. *Write test suite commands for Verification*
+   - Define execution tests.
+2. *Complete pre-commit steps*
+   - Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.
+3. *Submit change*
+   - Submit the PR with the architectural report and the implementation code.

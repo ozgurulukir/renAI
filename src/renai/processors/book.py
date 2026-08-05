@@ -15,13 +15,7 @@ from ..cache.manager import (
 )
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
-from ..file_ops.operations import resolve_target_destination, safe_move_file
-from ..filename.builder import (
-    build_book_filename,
-    build_image_filename,
-    build_vision_filename,
-    extract_category_from_metadata,
-)
+from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
 from ..models.schemas import BookMetadata, ImageMetadata
 from ..settings import CACHE_DIR, get_image_extensions
@@ -84,7 +78,7 @@ class BookProcessor:
             model=self.vision_model,
             vision_max_pages=vision_max_pages,
         )
-        self.file_operation_lock = asyncio.Lock()
+        self.file_organizer = FileOrganizer()
 
         # Tracking for reporting/failure handling
         self.root_dir: Path | None = None
@@ -105,6 +99,7 @@ class BookProcessor:
     ) -> None:
         """Delegate to text_extractor and store root_dir for organization."""
         self.root_dir = root_dir
+        self.file_organizer.root_dir = root_dir
         await asyncio.to_thread(
             self.text_extractor.setup_move_folders, root_dir, skip_ocr_checks, move_scan_failures
         )
@@ -232,40 +227,38 @@ class BookProcessor:
                 )
 
             if mode in ("rename", "organize"):
-                async with self.file_operation_lock:
-                    if not isinstance(metadata, (BookMetadata, ImageMetadata)):
-                        return ProcessingResult(
-                            success=False,
-                            file_path=file_path,
-                            name=file_path.name,
-                            original_name=file_path.name,
-                            error=(
-                                f"Internal error: Expected metadata model, "
-                                f"got {type(metadata).__name__}"
-                            ),
-                        )
-
-                    return await self._handle_renaming(
-                        file_path,
-                        metadata,
-                        mode=mode,
-                        add_exif_date=add_exif_date,
-                        file_hash=file_hash,
-                        is_vision_doc=is_vision_doc,
-                        dry_run=dry_run,
+                if not isinstance(metadata, (BookMetadata, ImageMetadata)):
+                    return ProcessingResult(
+                        success=False,
+                        file_path=file_path,
+                        name=file_path.name,
+                        original_name=file_path.name,
+                        error=(
+                            f"Internal error: Expected metadata model, "
+                            f"got {type(metadata).__name__}"
+                        ),
                     )
-            else:
-                # evaluate mode
-                return ProcessingResult(
-                    success=True,
-                    name=file_path.name,
-                    original_name=file_path.name,
-                    metadata=(
-                        metadata.model_dump()
-                        if hasattr(metadata, "model_dump")
-                        else cast("dict", metadata)
-                    ),
+
+                return await self.file_organizer.organize_file(
+                    file_path,
+                    metadata,
+                    mode=mode,
+                    add_exif_date=add_exif_date,
+                    file_hash=file_hash,
+                    is_vision_doc=is_vision_doc,
+                    dry_run=dry_run,
                 )
+            # evaluate mode
+            return ProcessingResult(
+                success=True,
+                name=file_path.name,
+                original_name=file_path.name,
+                metadata=(
+                    metadata.model_dump()
+                    if hasattr(metadata, "model_dump")
+                    else cast("dict", metadata)
+                ),
+            )
 
         except Exception as e:
             logging.error(f"Failed to process {file_path.name}: {e}")
@@ -305,100 +298,3 @@ class BookProcessor:
                 logging.error(f"Vision LLM fallback failed for {file_path.name}: {e}")
 
         return None, False
-
-    async def _handle_renaming(
-        self,
-        file_path: Path,
-        metadata: BookMetadata | ImageMetadata,
-        mode: str = "rename",
-        add_exif_date: bool = False,
-        file_hash: str | None = None,
-        is_vision_doc: bool = False,
-        dry_run: bool = False,
-    ) -> ProcessingResult:
-        """Construct output path and execute safe file move."""
-        try:
-            category = extract_category_from_metadata(metadata)
-            is_image = isinstance(metadata, ImageMetadata)
-
-            # 1. Build proposed filename
-            if is_image:
-                new_name = build_image_filename(
-                    cast("ImageMetadata", metadata),
-                    file_path.suffix,
-                    add_exif_date=add_exif_date,
-                )
-                category = "Images"
-            elif is_vision_doc:
-                new_name = build_vision_filename(cast("BookMetadata", metadata), file_path.suffix)
-            else:
-                new_name = build_book_filename(cast("BookMetadata", metadata), file_path.suffix)
-
-            # 2. Determine target destination path
-            target_dest = resolve_target_destination(
-                file_path, new_name, category=category, mode=mode, root_dir=self.root_dir
-            )
-
-            # 3. Path traversal security check
-            if self.root_dir:
-                resolved_root = self.root_dir.resolve()
-                resolved_dest = target_dest.resolve()
-                if not resolved_dest.is_relative_to(resolved_root):
-                    logging.error("Target path %s escapes root %s", target_dest, self.root_dir)
-                    return ProcessingResult(
-                        success=False,
-                        name=file_path.name,
-                        original_name=file_path.name,
-                        error="Security: Path traversal blocked",
-                    )
-
-            # 4. Check if file is already in the correct place with correct name
-            if file_path.resolve() == target_dest.resolve():
-                logging.debug(f"Skipping (Already organized/renamed): {file_path.name}")
-                m_data = (
-                    metadata.model_dump()
-                    if hasattr(metadata, "model_dump")
-                    else cast("dict", metadata)
-                )
-                return ProcessingResult(
-                    success=True,
-                    metadata=m_data,
-                    file_path=file_path,
-                    name=file_path.name,
-                    original_name=file_path.name,
-                    category=category,
-                )
-
-            # 5. Perform the move securely
-            def _do_move():
-                return safe_move_file(
-                    file_path,
-                    target_dest,
-                    operation_type=mode,
-                    source_hash=file_hash,
-                    dry_run=dry_run,
-                )
-
-            final_path = await asyncio.to_thread(_do_move)
-
-            logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
-            m_data = (
-                metadata.model_dump() if hasattr(metadata, "model_dump") else cast("dict", metadata)
-            )
-            return ProcessingResult(
-                success=True,
-                metadata=m_data,
-                file_path=final_path,
-                name=final_path.name,
-                original_name=file_path.name,
-                category=category,
-            )
-
-        except Exception as e:
-            logging.error(f"Renaming logic failed for {file_path.name}: {e}")
-            return ProcessingResult(
-                success=False,
-                name=file_path.name,
-                original_name=file_path.name,
-                error=f"Renaming logic failed: {e!s}",
-            )
