@@ -145,7 +145,7 @@ async def test_path_traversal_blocked_with_root_dir(processor, tmp_path):
     with (
         patch("renai.cache.manager.CACHE_DIR", test_cache_dir),
         patch("renai.processors.book.CACHE_DIR", test_cache_dir),
-        patch("renai.processors.book.extract_category_from_metadata", side_effect=fake_category),
+        patch("renai.file_ops.organizer.extract_category_from_metadata", side_effect=fake_category),
     ):
         result = await processor.process_file(test_file, mode="organize")
 

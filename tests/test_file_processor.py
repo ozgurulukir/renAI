@@ -1,10 +1,17 @@
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from renai.file_ops import safe_move_file
+from renai.file_ops.operations import safe_move_file
 from renai.models.schemas import BookMetadata
 from renai.processors.book import BookProcessor
+
+sys.modules["PIL"] = MagicMock()
+sys.modules["PIL.Image"] = MagicMock()
+sys.modules["PIL.ImageEnhance"] = MagicMock()
+sys.modules["PIL.ImageFilter"] = MagicMock()
+sys.modules["PIL.ImageOps"] = MagicMock()
 
 
 class TestSafeMoveFile:
@@ -57,7 +64,7 @@ class TestBookProcessor:
         with (
             patch("renai.processors.book.get_file_hash", return_value=file_hash),
             patch("renai.processors.book.read_metadata_cache", return_value=cached_metadata),
-            patch("renai.processors.book.safe_move_file", side_effect=lambda s, d, **kwargs: d),
+            patch("renai.file_ops.organizer.safe_move_file", side_effect=lambda s, d, **kwargs: d),
         ):
             result = await processor.process_file(test_file, mode="rename")
 
@@ -165,15 +172,15 @@ class TestBookProcessor:
 
         with (
             patch(
-                "renai.processors.book.build_vision_filename",
+                "renai.file_ops.organizer.build_vision_filename",
                 return_value="Vision Title -- Vision Author -- (2026) -- (tr).pdf",
             ) as mock_build_vision,
             patch(
-                "renai.processors.book.safe_move_file",
+                "renai.file_ops.organizer.safe_move_file",
                 return_value=tmp_path / "Vision Title -- Vision Author -- (2026) -- (tr).pdf",
             ),
         ):
-            result = await processor._handle_renaming(
+            result = await processor.file_organizer.organize_file(
                 test_file,
                 metadata,
                 mode="rename",
