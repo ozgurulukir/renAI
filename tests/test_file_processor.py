@@ -1,4 +1,3 @@
-import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -6,12 +5,6 @@ import pytest
 from renai.file_ops.operations import safe_move_file
 from renai.models.schemas import BookMetadata
 from renai.processors.book import BookProcessor
-
-sys.modules["PIL"] = MagicMock()
-sys.modules["PIL.Image"] = MagicMock()
-sys.modules["PIL.ImageEnhance"] = MagicMock()
-sys.modules["PIL.ImageFilter"] = MagicMock()
-sys.modules["PIL.ImageOps"] = MagicMock()
 
 
 class TestSafeMoveFile:
