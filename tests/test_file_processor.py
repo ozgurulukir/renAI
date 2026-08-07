@@ -38,7 +38,18 @@ class TestBookProcessor:
 
     @pytest.fixture
     def processor(self, mock_ocr, mock_llm):
-        return BookProcessor(mock_ocr, mock_llm)
+        from renai.models.schemas import ProcessingConfig
+        config = ProcessingConfig(
+            extractor="pymupdf",
+            text_length=10000,
+            text_extraction="head-tail",
+            extraction_pages=10,
+            move_scan_failures=False,
+            vision_max_pages=3,
+            provider="deepinfra",
+            model="test-model"
+        )
+        return BookProcessor(ocr_engine=mock_ocr, config=config, llm_engine=mock_llm)
 
     @pytest.mark.asyncio
     async def test_process_file_with_cache(self, processor, tmp_path):

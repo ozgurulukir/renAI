@@ -17,7 +17,7 @@ from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
 from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
-from ..models.schemas import BookMetadata, ImageMetadata
+from ..models.schemas import BookMetadata, ImageMetadata, ProcessingConfig
 from ..settings import CACHE_DIR, get_image_extensions
 from ..utils import get_file_hash
 from .text_extractor import FallbackMode, TextExtractor
@@ -33,50 +33,36 @@ class BookProcessor:
     def __init__(
         self,
         ocr_engine: OCREngine,
+        config: 'ProcessingConfig',
         llm_engine: LLMEngine | None = None,
-        extractor_name: str = "pymupdf",
-        provider: str = "deepinfra",
-        model: str = "",
-        target_length: int = 10000,
-        text_extraction: str = "head-tail",
-        extraction_pages: int = 10,
-        move_scan_failures: bool = False,
-        vision_max_pages: int | None = None,
         vision_llm_engine: LLMEngine | None = None,
-        vision_provider: str | None = None,
-        vision_model: str | None = None,
     ):
+        self.config = config
         self.ocr_engine = ocr_engine
         self.llm_engine = llm_engine
         self.vision_llm_engine = vision_llm_engine or llm_engine
-        self.provider = provider
-        self.model = model or (getattr(llm_engine, "model_name", "") if llm_engine else "")
-        self.vision_provider = vision_provider or (
-            getattr(self.vision_llm_engine, "provider", provider)
-            if self.vision_llm_engine
-            else provider
-        )
-        self.vision_model = vision_model or (
-            getattr(self.vision_llm_engine, "model_name", self.model)
-            if self.vision_llm_engine
-            else self.model
-        )
-        self.target_length = target_length
-        self.extractor_name = extractor_name
-        self.move_scan_failures = move_scan_failures
+
+        # Pull from config
+        self.provider = config.provider
+        self.model = config.model or ""
+        self.vision_provider = config.vision_provider or self.provider
+        self.vision_model = config.vision_model or self.model
+        self.target_length = config.text_length
+        self.extractor_name = config.extractor
+        self.move_scan_failures = config.move_scan_failures
 
         self.text_extractor = TextExtractor(
             ocr_engine=ocr_engine,
-            extractor_name=extractor_name,
-            target_length=target_length,
-            text_extraction=text_extraction,
-            extraction_pages=extraction_pages,
+            extractor_name=config.extractor,
+            target_length=config.text_length,
+            text_extraction=config.text_extraction,
+            extraction_pages=config.extraction_pages,
         )
         self.visual_processor = VisualProcessor(
             llm_engine=self.vision_llm_engine,
             provider=self.vision_provider,
             model=self.vision_model,
-            vision_max_pages=vision_max_pages,
+            vision_max_pages=config.vision_max_pages,
         )
         self.file_organizer = FileOrganizer()
 

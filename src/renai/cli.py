@@ -295,6 +295,8 @@ def handle_process_command(
 
     config = _build_processing_config(
         mode=mode,
+        provider=provider,
+        model=model,
         workers=workers,
         recursive=recursive,
         ocr_enhanced=ocr_enhanced,

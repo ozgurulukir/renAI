@@ -112,19 +112,10 @@ async def setup_engines(
 
     # Initialize processor
     processor = BookProcessor(
-        ocr_engine,
-        llm_engine,
-        extractor_name=config.extractor,
-        provider=provider,
-        model=model_name,
-        target_length=config.text_length,
-        text_extraction=config.text_extraction,
-        extraction_pages=config.extraction_pages,
-        move_scan_failures=config.move_scan_failures,
-        vision_max_pages=config.vision_max_pages,
+        ocr_engine=ocr_engine,
+        config=config,
+        llm_engine=llm_engine,
         vision_llm_engine=vision_llm_engine,
-        vision_provider=vision_provider,
-        vision_model=vision_model_name,
     )
 
     return ocr_engine, llm_engine, processor

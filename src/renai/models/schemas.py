@@ -18,6 +18,8 @@ class ProcessingConfig(BaseModel):
     """Configuration for the processing pipeline."""
 
     mode: Literal["rename", "organize", "evaluate"] = "rename"
+    provider: str = ""
+    model: str | None = None
     workers: int = 4
     recursive: bool = True
     ocr_enhanced: bool = False

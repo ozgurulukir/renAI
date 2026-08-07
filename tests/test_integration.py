@@ -11,6 +11,7 @@ def mock_engines():
     """Fixture to provide mocked OCR and LLM engines."""
     ocr = MagicMock()
     llm = MagicMock()
+    llm.provider = "deepinfra"
     llm.model_name = "test-model"
     # Default successful metadata
     llm.get_book_metadata = AsyncMock(
@@ -31,7 +32,9 @@ def mock_engines():
 def processor(mock_engines):
     """Fixture to provide a BookProcessor with mocked engines and extractor."""
     ocr, llm = mock_engines
-    proc = BookProcessor(ocr, llm)
+    from renai.models.schemas import ProcessingConfig
+    config = ProcessingConfig(extractor="pymupdf", text_length=10000, provider="deepinfra", model="test-model")
+    proc = BookProcessor(ocr_engine=ocr, config=config, llm_engine=llm)
 
     mock_extractor = MagicMock()
     mock_extractor.extract = AsyncMock(return_value="AI " * 100)
