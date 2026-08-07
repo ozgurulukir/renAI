@@ -33,7 +33,7 @@ class BookProcessor:
     def __init__(
         self,
         ocr_engine: OCREngine,
-        config: "ProcessingConfig",
+        config: 'ProcessingConfig',
         llm_engine: LLMEngine | None = None,
         vision_llm_engine: LLMEngine | None = None,
     ):
@@ -42,20 +42,11 @@ class BookProcessor:
         self.llm_engine = llm_engine
         self.vision_llm_engine = vision_llm_engine or llm_engine
 
-        # Pull from config, falling back to the resolved engine attributes so
-        # effective provider/model are preserved when the CLI leaves them unset.
+        # Pull from config
         self.provider = config.provider
-        self.model = config.model or (getattr(llm_engine, "model_name", "") if llm_engine else "")
-        self.vision_provider = config.vision_provider or (
-            getattr(self.vision_llm_engine, "provider", self.provider)
-            if self.vision_llm_engine
-            else self.provider
-        )
-        self.vision_model = config.vision_model or (
-            getattr(self.vision_llm_engine, "model_name", self.model)
-            if self.vision_llm_engine
-            else self.model
-        )
+        self.model = config.model or ""
+        self.vision_provider = config.vision_provider or self.provider
+        self.vision_model = config.vision_model or self.model
         self.target_length = config.text_length
         self.extractor_name = config.extractor
         self.move_scan_failures = config.move_scan_failures

@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from renai.config import app_settings
-from renai.models.schemas import ProcessingConfig
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode, TextExtractor
 
@@ -148,11 +147,7 @@ async def test_ocr_skip_functionality():
                 mock_mu_instance.name = "pymupdf"
                 mock_get_extractor.return_value = mock_mu_instance
 
-                processor = BookProcessor(
-                    mock_ocr_engine,
-                    config=ProcessingConfig(),
-                    llm_engine=mock_llm_engine,
-                )
+                processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
                 # Need to use the async version of folder setup if applicable
                 await processor.setup_move_folders(tmp_path, skip_ocr_checks=True)
 
@@ -185,11 +180,7 @@ async def test_ocr_skip_disabled():
             mock_mu_instance.name = "pymupdf"
             mock_get_extractor.return_value = mock_mu_instance
 
-            processor = BookProcessor(
-                mock_ocr_engine,
-                config=ProcessingConfig(),
-                llm_engine=mock_llm_engine,
-            )
+            processor = BookProcessor(mock_ocr_engine, mock_llm_engine)
             # OCR skip is disabled by default or via setup_move_folders
             await processor.setup_move_folders(tmp_path, skip_ocr_checks=False)
 
