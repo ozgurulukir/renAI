@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from renai.file_ops.operations import safe_move_file
-from renai.models.schemas import BookMetadata
+from renai.models.schemas import BookMetadata, ProcessingConfig
 from renai.processors.book import BookProcessor
 
 
@@ -38,7 +38,7 @@ class TestBookProcessor:
 
     @pytest.fixture
     def processor(self, mock_ocr, mock_llm):
-        return BookProcessor(mock_ocr, mock_llm)
+        return BookProcessor(mock_ocr, ProcessingConfig(), mock_llm)
 
     @pytest.mark.asyncio
     async def test_process_file_with_cache(self, processor, tmp_path):
@@ -183,6 +183,26 @@ class TestBookProcessor:
         assert result.success is True
         assert result.name == "Vision Title -- Vision Author -- (2026) -- (tr).pdf"
         mock_build_vision.assert_called_once()
+
+    def test_model_resolution_from_engine(self, mock_ocr, mock_llm):
+        """Test that processor.model is derived from llm_engine.model_name, not config."""
+        mock_llm.provider = "deepinfra"
+        mock_llm.model_name = "resolved-model"
+
+        processor = BookProcessor(mock_ocr, ProcessingConfig(), mock_llm)
+
+        assert processor.model == "resolved-model"
+        assert processor.provider == "deepinfra"
+
+    def test_vision_model_fallback_to_text_engine(self, mock_ocr, mock_llm):
+        """Test that vision_provider/vision_model fall back to text engine when no vision engine."""
+        mock_llm.provider = "deepinfra"
+        mock_llm.model_name = "text-model"
+
+        processor = BookProcessor(mock_ocr, ProcessingConfig(), mock_llm, vision_llm_engine=None)
+
+        assert processor.vision_provider == "deepinfra"
+        assert processor.vision_model == "text-model"
 
 
 # Simplified version for the plan

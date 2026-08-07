@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidate `BookProcessor` configuration into `ProcessingConfig`, reducing the constructor from 13 parameters to 4 and removing primitive obsession.
+
 ## [2.2.0] - 2026-06-10
 
 ### Added

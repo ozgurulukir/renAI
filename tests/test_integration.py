@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from renai.models.schemas import BookMetadata
+from renai.models.schemas import BookMetadata, ProcessingConfig
 from renai.processors.book import BookProcessor
 
 
@@ -11,6 +11,7 @@ def mock_engines():
     """Fixture to provide mocked OCR and LLM engines."""
     ocr = MagicMock()
     llm = MagicMock()
+    llm.provider = "deepinfra"
     llm.model_name = "test-model"
     # Default successful metadata
     llm.get_book_metadata = AsyncMock(
@@ -31,7 +32,7 @@ def mock_engines():
 def processor(mock_engines):
     """Fixture to provide a BookProcessor with mocked engines and extractor."""
     ocr, llm = mock_engines
-    proc = BookProcessor(ocr, llm)
+    proc = BookProcessor(ocr, ProcessingConfig(), llm)
 
     mock_extractor = MagicMock()
     mock_extractor.extract = AsyncMock(return_value="AI " * 100)

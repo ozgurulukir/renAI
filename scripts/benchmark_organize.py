@@ -13,6 +13,7 @@ elif (Path.cwd().parent / "src").exists():
     sys.path.insert(0, str(Path.cwd().parent / "src"))
 
 from renai.models import ProcessingResult
+from renai.models.schemas import ProcessingConfig
 from renai.processors.book import BookProcessor
 
 
@@ -63,7 +64,7 @@ async def run_benchmark():
         source_dir, _dest_dir, _files = setup_files(tmp_path, 10, 20)
 
         # Mock engines since we only care about organization speed (hash + move)
-        processor = BookProcessor(Mock(), Mock())
+        processor = BookProcessor(Mock(), ProcessingConfig(), Mock())
         # Mock extract_document_metadata to avoid LLM/OCR calls
         processor._extract_document_metadata = Mock(return_value=None)
         # We'll patch write_metadata_cache to avoid disk-bound cache writes during move benchmark
