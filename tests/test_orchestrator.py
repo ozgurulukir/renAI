@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from rich.table import Table
 
 from renai.processors.orchestrator import _run_benchmark_mode, run_evaluation_pipeline
 
@@ -33,7 +34,6 @@ async def test_run_benchmark():
 
         # Verify the benchmark table was printed
         assert mock_print.call_count > 0
-        from rich.table import Table
         # The last print should be the table, or one of them at least
         table_found = False
         for call_args in mock_print.call_args_list:
@@ -48,7 +48,7 @@ async def test_run_evaluation_pipeline_no_models():
     """Test evaluation pipeline when no models match the filter."""
     with patch("renai.processors.orchestrator._resolve_target_models", return_value=[]):
         with patch("renai.processors.orchestrator.console.print") as mock_print:
-            await run_evaluation_pipeline(Path("."), provider_filter="invalid_provider", workers=2)
+            await run_evaluation_pipeline(Path.cwd(), provider_filter="invalid_provider", workers=2)
             mock_print.assert_called_once()
 
 @pytest.mark.asyncio
@@ -59,7 +59,7 @@ async def test_run_evaluation_pipeline_success():
         with patch("renai.processors.orchestrator.run_pipeline", return_value=[]) as mock_run:
             with patch("renai.processors.orchestrator.console.print"):
                 with patch("renai.processors.orchestrator._print_evaluation_summary") as mock_summary:
-                    await run_evaluation_pipeline(Path("."), provider_filter=None, workers=2)
+                    await run_evaluation_pipeline(Path.cwd(), provider_filter=None, workers=2)
                     mock_run.assert_called_once()
                     mock_summary.assert_called_once()
 
