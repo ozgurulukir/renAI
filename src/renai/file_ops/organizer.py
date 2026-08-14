@@ -15,8 +15,9 @@ from renai.models.schemas import BookMetadata, ImageMetadata
 
 
 class FileOrganizer:
-    def __init__(self, root_dir: Path | None = None):
+    def __init__(self, root_dir: Path | None = None, *, max_filename_length: int):
         self.root_dir = root_dir
+        self.max_filename_length = max_filename_length
         self.file_operation_lock = asyncio.Lock()
 
     async def organize_file(
@@ -30,18 +31,25 @@ class FileOrganizer:
         dry_run: bool = False,
     ) -> ProcessingResult:
         try:
-            category = extract_category_from_metadata(metadata)
+            category = extract_category_from_metadata(metadata, self.max_filename_length)
             is_image = isinstance(metadata, ImageMetadata)
 
             if is_image:
                 new_name = build_image_filename(
-                    cast("ImageMetadata", metadata), file_path.suffix, add_exif_date=add_exif_date
+                    cast("ImageMetadata", metadata),
+                    file_path.suffix,
+                    self.max_filename_length,
+                    add_exif_date=add_exif_date,
                 )
                 category = "Images"
             elif is_vision_doc:
-                new_name = build_vision_filename(cast("BookMetadata", metadata), file_path.suffix)
+                new_name = build_vision_filename(
+                    cast("BookMetadata", metadata), file_path.suffix, self.max_filename_length
+                )
             else:
-                new_name = build_book_filename(cast("BookMetadata", metadata), file_path.suffix)
+                new_name = build_book_filename(
+                    cast("BookMetadata", metadata), file_path.suffix, self.max_filename_length
+                )
 
             target_dest = resolve_target_destination(
                 file_path, new_name, category=category, mode=mode, root_dir=self.root_dir

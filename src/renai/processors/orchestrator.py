@@ -362,6 +362,12 @@ async def run_pipeline(
     if config is None:
         config = ProcessingConfig()
 
+    # Single population point: always reflect the app singleton so every caller
+    # (process CLI path and evaluate path) gets the same value regardless of how
+    # the ProcessingConfig was constructed. model_copy is a shallow copy of
+    # plain immutable fields, so the caller's original object is not mutated.
+    config = config.model_copy(update={"max_filename_length": app_settings.max_filename_length})
+
     # 1. Setup
     _ocr_engine, _llm_engine, processor = await setup_engines(
         provider,

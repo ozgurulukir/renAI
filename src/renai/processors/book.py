@@ -69,7 +69,7 @@ class BookProcessor:
             model=self.vision_model,
             vision_max_pages=config.vision_max_pages,
         )
-        self.file_organizer = FileOrganizer()
+        self.file_organizer = FileOrganizer(max_filename_length=config.max_filename_length)
 
         # Tracking for reporting/failure handling
         self.root_dir: Path | None = None

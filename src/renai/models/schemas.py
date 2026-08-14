@@ -39,6 +39,7 @@ class ProcessingConfig(BaseModel):
     vision_provider: str | None = None
     vision_model: str | None = None
     dry_run: bool = False
+    max_filename_length: int = Field(default=200, ge=50, le=255)
 
 
 class BaseMetadata(BaseModel):

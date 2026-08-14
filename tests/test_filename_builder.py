@@ -74,27 +74,16 @@ class TestBuildBookFilename:
             category="Technology",
             language="en",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert "Machine Learning" in result
         assert "Kevin Murphy" in result
         assert "(2012)" in result
         assert result.endswith(".pdf")
 
-    def test_full_metadata_dict(self):
-        """Test filename with dictionary (backward compatibility)."""
-        data = {
-            "title": "Machine Learning",
-            "author": "Kevin Murphy",
-            "year": 2012,
-        }
-        result = build_book_filename(data, ".pdf")
-        assert "Machine Learning" in result
-        assert "(2012)" in result
-
     def test_minimal_metadata(self):
         """Test filename with only title."""
         data = BookMetadata(title="My Book", category="Other", language="en")
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert result == "My Book.pdf"
 
 
@@ -109,7 +98,7 @@ class TestQuotedFieldStripping:
             category="Other",
             language="en",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert result.startswith("Clean Code")
         assert "'Clean Code'" not in result
         assert "'Robert C. Martin'" not in result
@@ -122,7 +111,7 @@ class TestQuotedFieldStripping:
             category="Other",
             language="en",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert result.startswith("Clean Code")
         assert '"Clean Code"' not in result
 
@@ -135,7 +124,7 @@ class TestQuotedFieldStripping:
             category="Other",
             language="en",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert "'2nd'" in result
         assert "''2nd''" not in result
 
@@ -148,19 +137,13 @@ class TestQuotedFieldStripping:
             category="Other",
             language="en",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert "'A Handbook" not in result
         assert "A Handbook" in result
 
-    def test_dict_single_quoted_fields(self):
-        data = {"title": "'Clean Code'", "author": "'Bob'", "year": 2008}
-        result = build_book_filename(data, ".pdf")
-        assert result.startswith("Clean Code")
-        assert "'Clean Code'" not in result
-
     def test_image_quoted_description_stripped(self):
         data = ImageMetadata(description="'A beautiful sunset'", language="en", category="Photo")
-        result = build_image_filename(data, ".jpg")
+        result = build_image_filename(data, ".jpg", 200)
         assert "'A beautiful" not in result
         assert "A beautiful sunset" in result
 
@@ -168,7 +151,7 @@ class TestQuotedFieldStripping:
         data = BookMetadata(
             title="'Clean Code'", author="'Bob'", year=2008, category="Other", language="en"
         )
-        result = build_vision_filename(data, ".pdf")
+        result = build_vision_filename(data, ".pdf", 200)
         assert "'Clean Code'" not in result
         assert "Clean Code" in result
 
@@ -185,14 +168,14 @@ class TestBuildImageFilename:
             visual_context="Beach",
             exif_date="2024-07-15",
         )
-        result = build_image_filename(data, ".jpg", add_exif_date=True)
+        result = build_image_filename(data, ".jpg", 200, add_exif_date=True)
         assert "Sunset" in result
         assert "[2024-07-15]" in result
 
     def test_turkish_language(self):
         """Test image filename with Turkish language."""
         data = ImageMetadata(description="İstanbul", language="tr", category="Photo")
-        result = build_image_filename(data, ".jpg")
+        result = build_image_filename(data, ".jpg", 200)
         assert "(tr)" in result
 
 
@@ -204,7 +187,7 @@ class TestBuildVisionFilename:
         data = BookMetadata(
             title="Research Paper", author="Author", year=2023, category="Paper", language="en"
         )
-        result = build_vision_filename(data, ".pdf")
+        result = build_vision_filename(data, ".pdf", 200)
         assert "Research Paper" in result
         assert "(2023)" in result
         assert "(en)" in result
@@ -216,68 +199,32 @@ class TestExtractCategoryFromMetadata:
     def test_model_safe_category(self):
         """Test category extraction from Model using safe_category property."""
         data = BookMetadata(title="T", category="Science/Fiction", language="en")
-        result = extract_category_from_metadata(data)
+        result = extract_category_from_metadata(data, 200)
         assert result == "Science&Fiction"
-
-    def test_dict_fallback_sanitization(self):
-        """Test that dicts still get sanitized for backward compatibility."""
-        data = {"category": "Science/Fiction"}
-        result = extract_category_from_metadata(data)
-        assert result == "Science&Fiction"
-
-    def test_dict_missing_key_returns_default(self):
-        """Test dict without 'category' key returns default."""
-        data = {"title": "Book"}
-        result = extract_category_from_metadata(data)
-        assert result == "Uncategorized"
-
-    def test_dict_none_category_returns_default(self):
-        """Test dict with None category returns default."""
-        data = {"category": None}
-        result = extract_category_from_metadata(data)
-        assert result == "Uncategorized"
-
-    def test_dict_empty_string_category_returns_default(self):
-        """Test dict with empty string category returns default."""
-        data = {"category": ""}
-        result = extract_category_from_metadata(data)
-        assert result == "Uncategorized"
-
-    def test_dict_whitespace_category_returns_default(self):
-        """Test dict with whitespace-only category returns 'unnamed' after strip+sanitize."""
-        data = {"category": "   "}
-        result = extract_category_from_metadata(data)
-        assert result == "unnamed"
-
-    def test_custom_default_used_when_no_category(self):
-        """Test custom default is used when category is missing."""
-        data = {"title": "Book"}
-        result = extract_category_from_metadata(data, default="General")
-        assert result == "General"
 
     def test_model_empty_category_safe_category_returns_uncategorized(self):
         """Test model with empty string category uses safe_category fallback to 'Uncategorized'."""
         data = BookMetadata(title="T", category="", language="en")
-        result = extract_category_from_metadata(data)
+        result = extract_category_from_metadata(data, 200)
         assert result == "Uncategorized"
 
     def test_model_empty_string_category_returns_default(self):
         """Test model with empty string category returns default."""
         data = BookMetadata(title="T", category="", language="en")
-        result = extract_category_from_metadata(data)
+        result = extract_category_from_metadata(data, 200)
         assert result == "Uncategorized"
 
-    def test_backslash_sanitization_in_dict(self):
-        """Test backslash is replaced with ampersand in dict category."""
-        data = {"category": "Fiction\\Sci-Fi"}
-        result = extract_category_from_metadata(data)
+    def test_model_backslash_sanitization(self):
+        """Test backslash is replaced with ampersand in model category."""
+        metadata = BookMetadata(category="Fiction\\Sci-Fi", language="en")
+        result = extract_category_from_metadata(metadata, 200)
         assert result == "Fiction&Sci-Fi"
 
-    def test_both_slash_and_backslash_sanitization(self):
-        """Test both slash types are replaced in dict category."""
-        data = {"category": "A/B\\C"}
-        result = extract_category_from_metadata(data)
-        assert result == "A&B&C"
+    def test_model_slash_and_backslash_sanitization(self):
+        """Test both slash types are replaced in model category."""
+        metadata = BookMetadata(category="History/Military\\Biography", language="en")
+        result = extract_category_from_metadata(metadata, 200)
+        assert result == "History&Military&Biography"
 
 
 class TestIsFilenameChanged:
@@ -311,7 +258,7 @@ class TestSeriesAndVolumeInFilename:
             language="en",
             category="Other",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert "Lord of the Rings #2" in result
 
     def test_series_without_volume(self):
@@ -323,7 +270,7 @@ class TestSeriesAndVolumeInFilename:
             language="en",
             category="Other",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert "Dune Chronicles" in result
         assert "#" not in result
 
@@ -336,7 +283,7 @@ class TestSeriesAndVolumeInFilename:
             language="en",
             category="Other",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert "Vol. 3" in result
 
     def test_no_series_no_volume(self):
@@ -347,7 +294,7 @@ class TestSeriesAndVolumeInFilename:
             language="en",
             category="Other",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert "Vol." not in result
         assert "#" not in result
 
@@ -361,19 +308,8 @@ class TestSeriesAndVolumeInFilename:
             language="en",
             category="Other",
         )
-        result = build_vision_filename(data, ".pdf")
+        result = build_vision_filename(data, ".pdf", 200)
         assert "Lord of the Rings #2" in result
-
-    def test_dict_series_and_volume(self):
-        data = {
-            "title": "Dune",
-            "author": "Frank Herbert",
-            "year": 1965,
-            "series": "Dune Chronicles",
-            "volume": "1",
-        }
-        result = build_book_filename(data, ".pdf")
-        assert "Dune Chronicles #1" in result
 
     def test_metadata_only_fields_not_in_filename(self):
         data = BookMetadata(
@@ -388,7 +324,7 @@ class TestSeriesAndVolumeInFilename:
             language="en",
             category="Other",
         )
-        result = build_book_filename(data, ".pdf")
+        result = build_book_filename(data, ".pdf", 200)
         assert "978-0-13-235088-4" not in result
         assert "Prentice Hall" not in result
         assert "10.1234" not in result
