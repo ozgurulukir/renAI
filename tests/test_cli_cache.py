@@ -25,13 +25,7 @@ def test_handle_clear_cache_empty():
 
         cli.handle_clear_cache()
 
-        # Verify console.print was called with the empty message
-        found = False
-        for call in mock_console.print.call_args_list:
-            if "Cache is already empty" in str(call):
-                found = True
-                break
-        assert found
+        mock_console.print.assert_called_once_with(cli.msg.Info.CACHE_EMPTY)
 
 
 def test_handle_clear_cache_with_files():
@@ -45,13 +39,9 @@ def test_handle_clear_cache_with_files():
 
         cli.handle_clear_cache()
 
-        found = False
-        for call in mock_console.print.call_args_list:
-            call_str = str(call)
-            if "Cache cleared: 8 items removed" in call_str and "5 text, 2 metadata" in call_str:
-                found = True
-                break
-        assert found
+        mock_console.print.assert_called_once_with(
+            cli.msg.Info.CACHE_CLEARED.format(8, "5 text, 2 metadata, 1 ocr_debug")
+        )
 
 
 def test_clear_cache_command_confirm():
@@ -68,7 +58,7 @@ def test_clear_cache_command_confirm():
         # Test 'cache' command with confirmation
         cli_module.clear_cache_cmd(confirm=False)
 
-        assert mock_handle.called
+        mock_handle.assert_called_once()
 
 
 def test_clear_cache_command_cancel():
@@ -87,7 +77,7 @@ def test_clear_cache_command_cancel():
         with pytest.raises(typer.Exit):
             cli_module.clear_cache_cmd(confirm=False)
 
-        assert not mock_handle.called
+        mock_handle.assert_not_called()
 
 
 def test_clear_cache_command_yes_flag():
@@ -101,4 +91,4 @@ def test_clear_cache_command_yes_flag():
         # Test 'cache --yes' command
         cli_module.clear_cache_cmd(confirm=True)
 
-        assert mock_handle.called
+        mock_handle.assert_called_once()

@@ -264,3 +264,70 @@ def test_write_text_cache_io_error(tmp_path, caplog):
     assert result is False
     assert "Failed to write text cache" in caplog.text
     assert "Disk full" in caplog.text
+
+
+def test_read_metadata_cache_sqlite_error(tmp_path, caplog):
+    """Test that SQLite errors during metadata read are logged and fallback occurs."""
+    cache_path = tmp_path / "metadata" / "test.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(
+        '{"title": "Fallback Book", "_provider": "p", "_model": "m"}', encoding="utf-8"
+    )
+
+    with (
+        patch("renai.cache.manager._get_db_connection", side_effect=Exception("DB lock error")),
+        caplog.at_level(logging.WARNING),
+    ):
+        result = read_metadata_cache(cache_path, "p", "m")
+        assert result == {"title": "Fallback Book"}
+        assert "Failed to read metadata cache" in caplog.text
+        assert "DB lock error" in caplog.text
+
+
+def test_read_metadata_cache_validation_error(tmp_path, caplog):
+    """Test that metadata schema validation failure logs warning and returns None."""
+    cache_path = tmp_path / "metadata" / "invalid_schema.json"
+    # Write invalid data for BookMetadata (missing required fields)
+    write_metadata_cache(cache_path, {"invalid_field": 123}, "p", "m")
+
+    with caplog.at_level(logging.WARNING):
+        result = read_metadata_cache(cache_path, "p", "m", model_class=BookMetadata)
+        assert result is None
+        assert "Failed to validate cached metadata against BookMetadata" in caplog.text
+
+
+def test_clear_debug_cache_exception(tmp_path, caplog):
+    """Test that exceptions during OCR debug cache clearing are handled safely."""
+    from renai.cache.manager import _clear_debug_cache
+
+    debug_dir = tmp_path / "ocr_debug"
+    debug_dir.mkdir()
+    (debug_dir / "sample.png").write_text("dummy")
+
+    with (
+        patch("renai.cache.manager.DEBUG_DIR", debug_dir),
+        patch("shutil.rmtree", side_effect=PermissionError("Cannot remove debug dir")),
+        caplog.at_level(logging.WARNING),
+    ):
+        count = _clear_debug_cache()
+        assert count == 0
+        assert "Failed to clear ocr_debug cache" in caplog.text
+        assert "Cannot remove debug dir" in caplog.text
+
+
+def test_clear_models_dev_cache_exception(tmp_path, caplog):
+    """Test that exceptions during models.dev cache unlink are handled safely."""
+    from renai.cache.manager import _clear_models_dev_cache
+
+    models_file = tmp_path / "models_dev_cache.json"
+    models_file.write_text("{}")
+
+    with (
+        patch("renai.config.constants.APP_DATA_DIR", tmp_path),
+        patch.object(Path, "unlink", side_effect=PermissionError("Cannot unlink")),
+        caplog.at_level(logging.WARNING),
+    ):
+        count = _clear_models_dev_cache()
+        assert count == 0
+        assert "Failed to clear models.dev cache" in caplog.text
+        assert "Cannot unlink" in caplog.text

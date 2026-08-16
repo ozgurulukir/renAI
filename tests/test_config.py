@@ -337,24 +337,48 @@ class TestDisplayWarnings:
 
     def test_enabled_shown(self):
         """Warnings should be shown when setting is True."""
+        from rich.panel import Panel
+
+        from renai.messages import cli as msg
+
         with patch("builtins.input", return_value=""), patch("renai.cli.console.print") as mock:
             display_warnings("rename", False)
-            mock.assert_called()
+            assert mock.call_count == 2
+            panel = mock.call_args_list[0][0][0]
+            assert isinstance(panel, Panel)
+            assert panel.title == msg.PANEL_TITLE_REVIEW
 
     def test_display_warnings_organize_mode(self):
         """Warnings should include directory layout warning when mode is organize."""
+        from rich.panel import Panel
+
+        from renai.messages import cli as msg
+
         with patch("builtins.input", return_value=""), patch("renai.cli.console.print") as mock:
             display_warnings("organize", False)
-            assert mock.called
-            # Rich objects are hard to string-match, so we verify call count
-            assert mock.call_count >= 1
+            assert mock.call_count == 2
+            panel = mock.call_args_list[0][0][0]
+            assert isinstance(panel, Panel)
+            assert panel.title == msg.PANEL_TITLE_REVIEW
+            assert any(
+                msg.Warn.BADGE_ORGANIZE in str(cell) for cell in panel.renderable.columns[0]._cells
+            )
 
     def test_display_warnings_recursive_true(self):
         """Warnings should include recursive mode warning when recursive is True."""
+        from rich.panel import Panel
+
+        from renai.messages import cli as msg
+
         with patch("builtins.input", return_value=""), patch("renai.cli.console.print") as mock:
             display_warnings("rename", True)
-            assert mock.called
-            assert mock.call_count >= 1
+            assert mock.call_count == 2
+            panel = mock.call_args_list[0][0][0]
+            assert isinstance(panel, Panel)
+            assert panel.title == msg.PANEL_TITLE_REVIEW
+            assert any(
+                msg.Warn.BADGE_RECURSIVE in str(cell) for cell in panel.renderable.columns[0]._cells
+            )
 
     def test_display_warnings_cancel_keyboard_interrupt(self):
         """Should log cancellation and exit when KeyboardInterrupt is raised."""

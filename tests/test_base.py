@@ -7,7 +7,7 @@ from renai.extractors.base import BaseExtractor
 
 def test_cannot_instantiate_base_extractor():
     """Verify that BaseExtractor cannot be instantiated directly."""
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="Can't instantiate abstract class"):
         BaseExtractor()
 
 

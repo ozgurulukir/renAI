@@ -47,8 +47,12 @@ def test_get_file_hash_large(tmp_path):
 
 def test_get_file_hash_nonexistent():
     """Test that get_file_hash raises FileNotFoundError for non-existent files."""
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError) as exc_info:
         get_file_hash(Path("non_existent_file.txt"))
+    assert (
+        "non_existent_file.txt" in str(exc_info.value)
+        or exc_info.value.filename == "non_existent_file.txt"
+    )
 
 
 def test_get_file_hash_mocked():

@@ -86,6 +86,7 @@ class TestExtractText:
                         # Should have loaded 2 pages and then stopped
                         assert mock_extract.await_count == 2
 
+
 @pytest.mark.asyncio
 async def test_extract_page_image_mutool_success():
     """Test _extract_page_image mutool success path."""
@@ -101,8 +102,10 @@ async def test_extract_page_image_mutool_success():
     process_mock.returncode = 0
     process_mock.communicate.return_value = (b"", b"")
 
-    with patch("asyncio.create_subprocess_exec", return_value=process_mock) as mock_exec, \
-         patch("PIL.Image.open") as mock_open:
+    with (
+        patch("asyncio.create_subprocess_exec", return_value=process_mock) as mock_exec,
+        patch("PIL.Image.open") as mock_open,
+    ):
         mock_img = MagicMock()
         mock_open.return_value = mock_img
 
@@ -116,12 +119,15 @@ async def test_extract_page_image_mutool_success():
         mock_page.get_pixmap.return_value = mock_pix
 
         with patch("PIL.Image.frombytes", return_value=mock_img):
-                img, temp_img = await engine._extract_image_from_page(mock_doc, pno, file_path, target_dpi)
+            img, temp_img = await engine._extract_image_from_page(
+                mock_doc, pno, file_path, target_dpi
+            )
 
         assert img == mock_img
         assert temp_img is not None
         assert "temp_page_0" in str(temp_img)
         mock_exec.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_extract_page_image_mutool_timeout():
@@ -147,8 +153,10 @@ async def test_extract_page_image_mutool_timeout():
     process_mock.communicate.side_effect = TimeoutError()
     process_mock.kill = MagicMock()
 
-    with patch("asyncio.create_subprocess_exec", return_value=process_mock), \
-         patch("PIL.Image.frombytes") as mock_frombytes:
+    with (
+        patch("asyncio.create_subprocess_exec", return_value=process_mock),
+        patch("PIL.Image.frombytes") as mock_frombytes,
+    ):
         mock_img = MagicMock()
         mock_frombytes.return_value = mock_img
 

@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -11,6 +11,8 @@ class TestHashingOptimization:
     async def test_extract_uses_provided_hash(self):
         """Verify that get_file_hash is NOT called when file_hash is provided."""
         ocr_engine = MagicMock()
+        ocr_engine.enhanced = False
+        ocr_engine.use_mutool = False
         extractor = TextExtractor(ocr_engine=ocr_engine)
         file_path = Path("test.txt")
         provided_hash = "precomputed_hash"
@@ -27,14 +29,19 @@ class TestHashingOptimization:
 
             assert result == "cached text"
             mock_get_hash.assert_not_called()
-            mock_get_cache_path.assert_called()
-            args, _ = mock_get_cache_path.call_args
-            assert args[0] == provided_hash
+            mock_get_cache_path.assert_called_once_with(
+                provided_hash,
+                ocr_enabled=False,
+                use_mutool=False,
+                cache_dir=ANY,
+            )
 
     @pytest.mark.asyncio
     async def test_extract_computes_hash_if_not_provided(self):
         """Verify that get_file_hash IS called when file_hash is NOT provided."""
         ocr_engine = MagicMock()
+        ocr_engine.enhanced = False
+        ocr_engine.use_mutool = False
         extractor = TextExtractor(ocr_engine=ocr_engine)
         file_path = Path("test.txt")
         computed_hash = "computed_hash"
@@ -51,5 +58,9 @@ class TestHashingOptimization:
 
             assert result == "cached text"
             mock_get_hash.assert_called_once_with(file_path)
-            args, _ = mock_get_cache_path.call_args
-            assert args[0] == computed_hash
+            mock_get_cache_path.assert_called_once_with(
+                computed_hash,
+                ocr_enabled=False,
+                use_mutool=False,
+                cache_dir=ANY,
+            )
