@@ -236,76 +236,108 @@ def test_get_api_logger(mock_get_logger):
     assert result == mock_get_logger.return_value
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-
 def test_analyze_exception():
+    from renai.exceptions import (
+        CacheError,
+        ConfigurationError,
+        ExtractionError,
+        FileOperationError,
+        LLMError,
+        OCRError,
+        RenAIError,
+    )
     from renai.logging_config import _analyze_exception
-    from renai.exceptions import ConfigurationError, LLMError, OCRError, ExtractionError, CacheError, FileOperationError, RenAIError
+    from renai.messages import errors as err
 
     # API key
-    why, how = _analyze_exception(Exception("Invalid API Key"))
-    assert "api key" in why.lower() or "missing" in why.lower() or "invalid" in why.lower()
+    assert _analyze_exception(Exception("Invalid API Key")) == (err.API_KEY_WHY, err.API_KEY_HOW)
+    assert _analyze_exception(Exception("Missing api_key parameter")) == (
+        err.API_KEY_WHY,
+        err.API_KEY_HOW,
+    )
 
     # Missing tool
-    why, how = _analyze_exception(Exception("Tesseract not found"))
-    assert "tool" in why.lower() or "tesseract" in why.lower() or "missing" in why.lower()
+    assert _analyze_exception(Exception("Tesseract is not installed")) == (
+        err.TOOL_MISSING_WHY,
+        err.TOOL_MISSING_HOW,
+    )
+    assert _analyze_exception(Exception("mutool binary not found")) == (
+        err.TOOL_MISSING_WHY,
+        err.TOOL_MISSING_HOW,
+    )
 
     # File not found
-    why, how = _analyze_exception(FileNotFoundError(2, "No such file or directory", "test.txt"))
-    assert "test.txt" in why or "find" in why.lower()
+    file_err = FileNotFoundError(2, "No such file or directory", "test.txt")
+    assert _analyze_exception(file_err) == (
+        err.FILE_NOT_FOUND_WHY.format("test.txt"),
+        err.FILE_NOT_FOUND_HOW,
+    )
 
     # Permission error
-    why, how = _analyze_exception(PermissionError("Permission denied"))
-    assert "permission" in why.lower()
+    assert _analyze_exception(PermissionError("Permission denied")) == (
+        err.PERMISSION_WHY,
+        err.PERMISSION_HOW,
+    )
 
-    # Config error
-    why, how = _analyze_exception(ConfigurationError("Bad config"))
-    assert "config" in why.lower()
+    # RenAI Custom Exceptions
+    assert _analyze_exception(ConfigurationError("Bad config")) == (err.CONFIG_WHY, err.CONFIG_HOW)
+    assert _analyze_exception(LLMError("API down")) == (err.LLM_WHY, err.LLM_HOW)
+    assert _analyze_exception(OCRError("Failed to OCR")) == (err.OCR_WHY, err.OCR_HOW)
+    assert _analyze_exception(ExtractionError("Failed to extract")) == (
+        err.EXTRACTION_WHY,
+        err.EXTRACTION_HOW,
+    )
+    assert _analyze_exception(CacheError("Cache corrupted")) == (err.CACHE_WHY, err.CACHE_HOW)
+    assert _analyze_exception(FileOperationError("Could not move")) == (
+        err.FILE_OP_WHY,
+        err.FILE_OP_HOW,
+    )
 
-    # LLM error
-    why, how = _analyze_exception(LLMError("API down"))
-    assert "llm" in why.lower() or "api" in why.lower() or "provider" in why.lower()
+    # RenAI Base Error
+    assert _analyze_exception(RenAIError("Some internal error")) == (
+        err.REN_AI_WHY,
+        err.REN_AI_HOW.format("Some internal error"),
+    )
 
-    # OCR error
-    why, how = _analyze_exception(OCRError("Failed to OCR"))
-    assert "ocr" in why.lower()
+    # Default fallback
+    assert _analyze_exception(ValueError("Unknown crash")) == (err.DEFAULT_WHY, err.DEFAULT_HOW)
 
-    # Extraction error
-    why, how = _analyze_exception(ExtractionError("Failed to extract"))
-    assert "extract" in why.lower() or "read" in why.lower()
-
-    # Cache error
-    why, how = _analyze_exception(CacheError("Cache corrupted"))
-    assert "cache" in why.lower()
-
-    # File OP error
-    why, how = _analyze_exception(FileOperationError("Could not move"))
-    assert "file" in why.lower() or "mov" in why.lower() or "copy" in why.lower()
-
-    # RenAI error
-    why, how = _analyze_exception(RenAIError("Some internal error"))
-    assert "renai" in why.lower() or "internal" in why.lower()
-
-    # Default error
-    why, how = _analyze_exception(Exception("Unknown crash"))
-    assert why != ""
 
 def test_handle_unhandled_exception():
-    from renai.logging_config import handle_unhandled_exception
-    from unittest.mock import patch, MagicMock
+    from rich.panel import Panel
 
-    exc_type, exc_value, exc_traceback = Exception, Exception("crash"), MagicMock()
+    from renai.logging_config import handle_unhandled_exception
+    from renai.messages import errors as err
+
+    exc_type, exc_value, exc_traceback = (
+        ValueError,
+        ValueError("unexpected system error"),
+        MagicMock(),
+    )
     with patch("rich.console.Console.print") as mock_print:
         handle_unhandled_exception(exc_type, exc_value, exc_traceback)
         assert mock_print.call_count == 2
+        mock_print.assert_any_call()
+        panel_arg = mock_print.call_args_list[1][0][0]
+        assert isinstance(panel_arg, Panel)
+        assert panel_arg.title == err.PANEL_TITLE_SYSTEM_ERROR
+        assert panel_arg.border_style == "red"
+        assert "unexpected system error" in str(panel_arg.renderable)
+
 
 def test_handle_unhandled_exception_keyboard_interrupt():
-    from renai.logging_config import handle_unhandled_exception
-    from unittest.mock import patch, MagicMock
-    import sys
 
-    exc_type, exc_value, exc_traceback = KeyboardInterrupt, KeyboardInterrupt("interrupted"), MagicMock()
+    from renai.logging_config import handle_unhandled_exception
+
+    exc_type, exc_value, exc_traceback = (
+        KeyboardInterrupt,
+        KeyboardInterrupt("interrupted"),
+        MagicMock(),
+    )
     with patch("sys.__excepthook__") as mock_excepthook:
         handle_unhandled_exception(exc_type, exc_value, exc_traceback)
         mock_excepthook.assert_called_once_with(exc_type, exc_value, exc_traceback)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -52,4 +52,5 @@ async def test_run_pipeline_with_progress_mock(tmp_path):
         )
 
         assert mock_book_processor.process_file.await_count == 3
-        assert mock_update.called or mock_advance.called
+        assert mock_advance.call_count == 3
+        mock_update.assert_not_called()
