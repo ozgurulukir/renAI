@@ -3,9 +3,10 @@ models_dev.py - Integration with models.dev directory for AI model capabilities.
 """
 
 import contextlib
+import functools
 import json
 import logging
-import time
+from pathlib import Path
 
 import requests
 
@@ -14,22 +15,6 @@ from renai.config.constants import APP_DATA_DIR
 CACHE_FILE = APP_DATA_DIR / "models_dev_cache.json"
 CACHE_EXPIRY = 86400  # 24 hours in seconds
 HTTP_STATUS_OK = 200
-
-
-def _load_cached_catalog(force_refresh: bool) -> dict | None:
-    """Try loading catalog data from local cache file."""
-    if force_refresh or not CACHE_FILE.exists():
-        return None
-    try:
-        mtime = CACHE_FILE.stat().st_mtime
-        if time.time() - mtime < CACHE_EXPIRY:
-            with CACHE_FILE.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict) and (data.get("models") or data.get("providers")):
-                    return data
-    except Exception as e:
-        logging.debug(f"Failed to read models.dev cache: {e}")
-    return None
 
 
 def _fetch_remote_json(endpoint: str) -> dict | None:
@@ -95,12 +80,41 @@ def is_openai_supported_provider(provider_id: str, provider_info: dict) -> bool:
     return bool(api_str and "/anthropic/" not in api_str and has_openai_path)
 
 
+@functools.lru_cache(maxsize=8)
+def _load_cached_catalog_parsed(cache_path: str) -> tuple:
+    """Parse the on-disk catalog cache once per process per cache file.
+
+    The models.dev catalog JSON is multi-megabyte; re-parsing it on every
+    ``is_vision_supported`` / ``get_full_catalog`` call (which happens hundreds
+    of times during the setup wizard) dominates runtime. Memoizing the parse
+    here collapses that churn to a single ``json.load`` per process. The cache
+    is keyed by the cache-file path so tests that patch ``CACHE_FILE`` get their
+    own isolated entry rather than stale data. The result is wrapped in a tuple
+    (to satisfy ``lru_cache`` hashability); callers copy what they need so no
+    shared mutable state escapes.
+    """
+    path = Path(cache_path)
+    if path.exists():
+        with contextlib.suppress(Exception), path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and (data.get("models") or data.get("providers")):
+                return (data,)
+    return ({},)
+
+
 def _get_raw_catalog(force_refresh: bool = False) -> dict:
     """Fetch raw catalog from cache or remote endpoint."""
     with contextlib.suppress(Exception):
         CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    cached = _load_cached_catalog(force_refresh)
+    if force_refresh:
+        # ``force_refresh`` bypasses the memoized read entirely (used only for an
+        # explicit refresh, never in the wizard path) and falls through to the
+        # fresh-load/remote-fetch logic below.
+        cached: dict = {}
+    else:
+        cached = _load_cached_catalog_parsed(str(CACHE_FILE))[0]
+
     if cached:
         return cached
 
@@ -109,6 +123,7 @@ def _get_raw_catalog(force_refresh: bool = False) -> dict:
     if data and (data.get("models") or data.get("providers")):
         with contextlib.suppress(Exception), CACHE_FILE.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
+        _load_cached_catalog_parsed.cache_clear()
         return data
 
     # Fallback: try fetching models.json
@@ -117,6 +132,7 @@ def _get_raw_catalog(force_refresh: bool = False) -> dict:
         data = {"models": models_data, "providers": {}}
         with contextlib.suppress(Exception), CACHE_FILE.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
+        _load_cached_catalog_parsed.cache_clear()
         return data
 
     # Fallback to expired cache if fetch failed
