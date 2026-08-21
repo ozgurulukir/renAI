@@ -422,6 +422,10 @@ async def _run_benchmark_mode(
             ocr_engine=processor.ocr_engine,
             extractor_name=ext_name,
             target_length=processor.target_length,
+            text_extraction=processor.config.text_extraction,
+            extraction_pages=processor.config.extraction_pages,
+            head_ratio=processor.config.head_ratio,
+            min_sufficient_text=processor.config.min_sufficient_text,
         )
 
         start_t = time.perf_counter()
@@ -493,6 +497,11 @@ async def run_evaluation_pipeline(
                 text_extraction=app_settings.text_extraction,
                 extraction_pages=app_settings.extraction_pages,
                 vision_max_pages=app_settings.vision_max_pages,
+                head_ratio=app_settings.head_ratio,
+                min_sufficient_text=app_settings.min_sufficient_text,
+                vision_image_max_size=app_settings.vision_image_max_size,
+                vision_image_quality=app_settings.vision_image_quality,
+                vision_dpi=app_settings.vision_dpi,
             ),
         )
         all_eval_results[f"{provider}/{model_name}"] = results

@@ -11,7 +11,6 @@ from renai.cache.manager import (
     write_text_cache,
 )
 from renai.config import (
-    app_settings,
     get_max_text_read_size,
 )
 from renai.engines.ocr import OCREngine
@@ -55,6 +54,8 @@ class TextExtractor:
         target_length: int = 10000,
         text_extraction: str = "head-tail",
         extraction_pages: int = 10,
+        head_ratio: float = 0.7,
+        min_sufficient_text: int = 100,
     ):
         """
         Initialize the text extractor.
@@ -65,6 +66,8 @@ class TextExtractor:
             target_length: Target text length for LLM processing
             text_extraction: Extraction mode ("head-tail" or "regular")
             extraction_pages: Safety limit for pages per side
+            head_ratio: Head segment ratio for head-tail extraction
+            min_sufficient_text: Minimum characters for successful extraction
         """
         self.ocr_engine = ocr_engine
         self.extractor_name = extractor_name
@@ -74,6 +77,8 @@ class TextExtractor:
             text_extraction = "head-tail"
         self.text_extraction_mode = text_extraction
         self.extraction_pages = extraction_pages
+        self.head_ratio = head_ratio
+        self.min_sufficient_text = min_sufficient_text
         self.office_extensions = OFFICE_EXTENSIONS
         self.plain_text_extensions = PLAIN_TEXT_EXTENSIONS
         self.needs_scan_dir = None
@@ -146,7 +151,7 @@ class TextExtractor:
     def _apply_extraction_mode(self, text: str, target_length: int) -> str:
         """Trim text based on the configured extraction mode (head-tail or regular)."""
         if self.text_extraction_mode == "head-tail":
-            return head_tail_trim(text, target_length, app_settings.head_ratio)
+            return head_tail_trim(text, target_length, self.head_ratio)
         return text[:target_length]
 
     async def _handle_extraction_fallback(
@@ -240,7 +245,7 @@ class TextExtractor:
                 self.extractor.extract_text(
                     file_path,
                     target_chars=target_length,
-                    head_ratio=app_settings.head_ratio,
+                    head_ratio=self.head_ratio,
                     max_pages_per_side=self.extraction_pages,
                 )
                 or ""
@@ -248,7 +253,7 @@ class TextExtractor:
 
         full_text = await asyncio.to_thread(_extract)
 
-        sufficient_threshold = app_settings.min_sufficient_text
+        sufficient_threshold = self.min_sufficient_text
 
         # Check if we got meaningful text
         if len(full_text.strip()) > sufficient_threshold:
