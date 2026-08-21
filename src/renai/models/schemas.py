@@ -41,6 +41,13 @@ class ProcessingConfig(BaseModel):
     dry_run: bool = False
     max_filename_length: int = Field(default=200, ge=50, le=255)
 
+    # Decoupled heuristics configuration
+    head_ratio: float = 0.7
+    min_sufficient_text: int = 100
+    vision_image_max_size: int = 1024
+    vision_image_quality: int = 85
+    vision_dpi: int = 150
+
 
 class BaseMetadata(BaseModel):
     """Base schema for all metadata extracted by renAI."""

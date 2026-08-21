@@ -62,12 +62,17 @@ class BookProcessor:
             target_length=config.text_length,
             text_extraction=config.text_extraction,
             extraction_pages=config.extraction_pages,
+            head_ratio=config.head_ratio,
+            min_sufficient_text=config.min_sufficient_text,
         )
         self.visual_processor = VisualProcessor(
             llm_engine=self.vision_llm_engine,
             provider=self.vision_provider,
             model=self.vision_model,
             vision_max_pages=config.vision_max_pages,
+            image_max_size=config.vision_image_max_size,
+            image_quality=config.vision_image_quality,
+            vision_dpi=config.vision_dpi,
         )
         self.file_organizer = FileOrganizer(max_filename_length=config.max_filename_length)
 

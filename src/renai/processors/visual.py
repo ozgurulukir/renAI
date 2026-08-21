@@ -9,7 +9,6 @@ from PIL.ExifTags import TAGS
 
 from ..engines.llm import LLMEngine
 from ..models.schemas import BookMetadata, ImageMetadata
-from ..settings import app_settings
 
 
 class VisualProcessor:
@@ -23,16 +22,18 @@ class VisualProcessor:
         llm_engine: LLMEngine | None = None,
         provider: str = "deepinfra",
         model: str = "",
-        vision_max_pages: int | None = None,
+        vision_max_pages: int = 3,
+        image_max_size: int = 1024,
+        image_quality: int = 85,
+        vision_dpi: int = 150,
     ):
         self.llm_engine = llm_engine
         self.provider = provider
         self.model = model or (llm_engine.model_name if llm_engine else "")
-        self.image_max_size = app_settings.vision_image_max_size
-        self.image_quality = app_settings.vision_image_quality
-        self.vision_max_pages = (
-            vision_max_pages if vision_max_pages is not None else app_settings.vision_max_pages
-        )
+        self.image_max_size = image_max_size
+        self.image_quality = image_quality
+        self.vision_max_pages = vision_max_pages
+        self.vision_dpi = vision_dpi
 
     def _convert_page(self, doc: pymupdf.Document, page_number: int, dpi: int) -> bytes | None:
         """Helper to convert a loaded PDF page to optimized image bytes (synchronous)."""
@@ -64,7 +65,7 @@ class VisualProcessor:
                     pages_to_process = self._select_pages(total_pages)
                     images = []
                     for page_num in pages_to_process:
-                        img_bytes = self._convert_page(doc, page_num, app_settings.vision_dpi)
+                        img_bytes = self._convert_page(doc, page_num, self.vision_dpi)
                         if img_bytes is not None:
                             images.append(img_bytes)
                     return images
@@ -137,7 +138,7 @@ class VisualProcessor:
     ) -> bytes | None:
         """Convert a PDF page to optimized image bytes asynchronously."""
         if dpi is None:
-            dpi = app_settings.vision_dpi
+            dpi = self.vision_dpi
 
         try:
 
