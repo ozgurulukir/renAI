@@ -38,6 +38,7 @@ class BookProcessor:
         vision_llm_engine: LLMEngine | None = None,
     ):
         self.ocr_engine = ocr_engine
+        self.config = config
         self.llm_engine = llm_engine
         self.vision_llm_engine = vision_llm_engine or llm_engine
         self.provider = getattr(llm_engine, "provider", "") if llm_engine else ""

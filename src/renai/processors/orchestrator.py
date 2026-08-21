@@ -422,6 +422,10 @@ async def _run_benchmark_mode(
             ocr_engine=processor.ocr_engine,
             extractor_name=ext_name,
             target_length=processor.target_length,
+            text_extraction=processor.config.text_extraction,
+            extraction_pages=processor.config.extraction_pages,
+            head_ratio=processor.config.head_ratio,
+            min_sufficient_text=processor.config.min_sufficient_text,
         )
 
         start_t = time.perf_counter()
