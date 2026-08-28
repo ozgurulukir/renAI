@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from renai.config import app_settings
 from renai.models.schemas import ProcessingConfig
 from renai.processors.book import BookProcessor
 from renai.processors.text_extractor import FallbackMode, TextExtractor
@@ -24,26 +23,21 @@ async def test_sufficient_text_threshold_at_boundary():
         mock_llm_engine = MagicMock()
         mock_llm_engine.model_name = "test"
 
-        original_threshold = app_settings.min_sufficient_text
-        try:
-            app_settings.min_sufficient_text = 10
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_extractor = MagicMock()
+            mock_extractor.name = "pymupdf"
+            mock_extractor.extract_text = MagicMock(return_value="1234567890")  # exactly 10
+            mock_get_extractor.return_value = mock_extractor
 
-            with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
-                mock_extractor = MagicMock()
-                mock_extractor.name = "pymupdf"
-                mock_extractor.extract_text = MagicMock(return_value="1234567890")  # exactly 10
-                mock_get_extractor.return_value = mock_extractor
+            extractor = TextExtractor(
+                ocr_engine=mock_ocr_engine,
+                extractor_name="pymupdf",
+                text_extraction="regular",
+                min_sufficient_text=10,
+            )
 
-                extractor = TextExtractor(
-                    ocr_engine=mock_ocr_engine,
-                    extractor_name="pymupdf",
-                    text_extraction="regular",
-                )
-
-                result = await extractor.extract(test_file, fallback=FallbackMode.OCR)
-                assert result == "OCR fallback text"
-        finally:
-            app_settings.min_sufficient_text = original_threshold
+            result = await extractor.extract(test_file, fallback=FallbackMode.OCR)
+            assert result == "OCR fallback text"
 
 
 @pytest.mark.asyncio
@@ -60,26 +54,21 @@ async def test_sufficient_text_threshold_below_boundary():
         mock_llm_engine = MagicMock()
         mock_llm_engine.model_name = "test"
 
-        original_threshold = app_settings.min_sufficient_text
-        try:
-            app_settings.min_sufficient_text = 100
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_extractor = MagicMock()
+            mock_extractor.name = "pymupdf"
+            mock_extractor.extract_text = MagicMock(return_value="short")
+            mock_get_extractor.return_value = mock_extractor
 
-            with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
-                mock_extractor = MagicMock()
-                mock_extractor.name = "pymupdf"
-                mock_extractor.extract_text = MagicMock(return_value="short")
-                mock_get_extractor.return_value = mock_extractor
+            extractor = TextExtractor(
+                ocr_engine=mock_ocr_engine,
+                extractor_name="pymupdf",
+                text_extraction="regular",
+                min_sufficient_text=100,
+            )
 
-                extractor = TextExtractor(
-                    ocr_engine=mock_ocr_engine,
-                    extractor_name="pymupdf",
-                    text_extraction="regular",
-                )
-
-                result = await extractor.extract(test_file, fallback=FallbackMode.OCR)
-                assert result == "OCR fallback text"
-        finally:
-            app_settings.min_sufficient_text = original_threshold
+            result = await extractor.extract(test_file, fallback=FallbackMode.OCR)
+            assert result == "OCR fallback text"
 
 
 @pytest.mark.asyncio
@@ -95,30 +84,26 @@ async def test_sufficient_text_threshold_above_boundary():
         mock_llm_engine = MagicMock()
         mock_llm_engine.model_name = "test"
 
-        original_threshold = app_settings.min_sufficient_text
-        try:
-            app_settings.min_sufficient_text = 10
-            text_content = "12345678901"  # 11 chars > threshold of 10
+        text_content = "12345678901"  # 11 chars > threshold of 10
 
-            with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
-                mock_extractor = MagicMock()
-                mock_extractor.name = "pymupdf"
-                mock_extractor.extract_text = MagicMock(return_value=text_content)
-                mock_get_extractor.return_value = mock_extractor
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_extractor = MagicMock()
+            mock_extractor.name = "pymupdf"
+            mock_extractor.extract_text = MagicMock(return_value=text_content)
+            mock_get_extractor.return_value = mock_extractor
 
-                with patch("renai.cache.manager.read_text_cache", return_value=None):
-                    with patch("renai.cache.manager.write_text_cache"):
-                        extractor = TextExtractor(
-                            ocr_engine=mock_ocr_engine,
-                            extractor_name="pymupdf",
-                            text_extraction="regular",
-                        )
+            with patch("renai.cache.manager.read_text_cache", return_value=None):
+                with patch("renai.cache.manager.write_text_cache"):
+                    extractor = TextExtractor(
+                        ocr_engine=mock_ocr_engine,
+                        extractor_name="pymupdf",
+                        text_extraction="regular",
+                        min_sufficient_text=10,
+                    )
 
-                        result = await extractor.extract(test_file, fallback=FallbackMode.OCR)
-                        assert result == text_content
-                        mock_ocr_engine.extract_text.assert_not_called()
-        finally:
-            app_settings.min_sufficient_text = original_threshold
+                    result = await extractor.extract(test_file, fallback=FallbackMode.OCR)
+                    assert result == text_content
+                    mock_ocr_engine.extract_text.assert_not_called()
 
 
 @pytest.mark.asyncio
