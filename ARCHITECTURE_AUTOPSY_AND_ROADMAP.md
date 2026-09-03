@@ -1,585 +1,515 @@
-# ARCHITECTURE AUTOPSY AND ROADMAP
+# Phase 1: Architectural & Vision Autopsy
 
-## Phase 1: Architectural & Vision Autopsy
+## 1.1 Core Purpose vs. Implemented Reality
 
-### 1.1 Core Purpose vs. Implemented Reality
-**Core Purpose:** renAI is an AI-powered document and image pipeline that extracts metadata and intelligently organizes files into a canonical structure.
-**Implemented Reality:** While the application successfully processes files, its implementation has drifted into accidental complexity by deeply coupling domain logic with global configuration state and CLI-specific presentation logic. Specific files embodying this drift include `src/renai/processors/visual.py`, `src/renai/processors/text_extractor.py`, and `src/renai/processors/orchestrator.py`.
+* **Distilled Purpose:** renAI exists to autonomously organize digital files (documents and images) by extracting structural metadata via AI (text-based LLMs or vision models) and applying a standardized naming convention.
+* **Fidelity of Implementation:** The core application largely fulfills this purpose. However, the CLI commands orchestrate high-level flows, and the underlying processors heavily couple file parsing, API caching, and logic paths based on model selection. There's a tendency to blur orchestrator logic (handling file loops and status updates) with domain logic (the actual metadata mapping).
+* **Accidental Complexity / Drift:** The implementation in `src/renai/processors/book.py` (specifically `BookProcessor.process_file` and `_extract_document_metadata`) shows tight coupling between the fallback logic, the text extraction, and caching. The caching logic itself leaks into processor boundaries, making `BookProcessor` responsible for orchestrating file hashes, reading cache, deciding to invoke vision vs. OCR fallbacks, writing cache, and handling exceptions instead of focusing purely on domain transformation.
 
-### 1.2 Architectural DNA & Its Fractures
-**Intended Architecture:** A modular, pipeline-driven architecture separating Core Logic (processors, engines) from Configuration and Presentation (CLI).
-**Fractures:**
-*   **Global State Dependency:** The domain processors (`VisualProcessor`, `TextExtractor`) bypass dependency injection, directly importing the global `app_settings` singleton (e.g., `from ..settings import app_settings` in `visual.py`). This prevents isolated testing and makes running concurrent pipelines with different configurations impossible.
-*   **God Objects & UI Pollution:** The `orchestrator.py` file mixes domain pipeline orchestration with heavy terminal UI logic (`rich.progress.Progress`, `rich.table.Table`, `rich.panel.Panel`), violating the single responsibility principle and making the orchestration layer impossible to use in a headless server environment.
+## 1.2 Architectural DNA & Its Fractures
 
-### 1.3 Technical Debt Inventory (The Silent Killer)
-*   **Incomplete Configuration Abstraction:** `src/renai/models/schemas.py` defines a `ProcessingConfig` model, but it is incomplete. It lacks key heuristics like `head_ratio`, `min_sufficient_text`, `vision_dpi`, etc. Because `ProcessingConfig` is anaemic, downstream classes secretly reach out to the global `app_settings`.
-*   **CLI Logic Bleeding:** `src/renai/cli.py` contains domain-level validation (e.g., `check_vision_model_guard` which relies on `models_dev.py` and `app_settings`), instead of this validation living within the domain processors or initialization logic.
-*   **Synchronous Threading Bottlenecks:** Extensive use of `asyncio.to_thread` for file hashing (`hashlib.file_digest` in `utils.py`) and file reading limits true concurrency in an I/O-bound application.
+* **Intended Architecture:** Modular Pipeline / CLI application with Pydantic-driven domain entities (Single Source of Truth) and separate engines for distinct I/O (LLMs, OCR, PDF extraction).
+* **Violations:**
+    * **God Objects:** `BookProcessor` (`src/renai/processors/book.py`) coordinates file extraction, caching, LLM invocation, fallback routing, and metadata refinement. It breaks the Single Responsibility Principle.
+    * **Leaky Abstractions:** The cache manager (`src/renai/cache/manager.py`) is directly invoked inside processor logic (`_resolve_metadata`), rather than wrapping the processor or acting as a transparent decorator.
+    * **Fat Controllers:** The orchestrator module (`src/renai/processors/orchestrator.py`) handles pipeline execution but also mixes rich UI status displays, benchmark loops, and evaluation formatting.
+* **Dependency Graph:** CLI -> Orchestrator -> BookProcessor -> [Cache Manager, Text Extractor, Visual Processor, Engines]. The main issue is the bidirectional knowledge where processors know too much about how they are cached and orchestrated.
 
-### 1.4 The Vision-Capability Gap
-If the vision is to offer renAI as a library, a local web server (GUI), or a highly scalable API, the current architecture cannot support it. The global singleton configuration means multiple requests cannot have distinct settings in the same process space. The tight coupling of the orchestrator to `rich` means any non-terminal interface would have to parse stdout or completely rewrite the orchestration logic.
+## 1.3 Technical Debt Inventory (The Silent Killer)
 
----
+* **Missing Abstraction Boundaries (The Cache Leak):** Processors explicitly check `if not update_metadata:` and manage `cache_data`. This mixes I/O with domain processing.
+    * *Example:* `BookProcessor._resolve_metadata` in `src/renai/processors/book.py` manually reads and writes to the cache using explicit `read_metadata_cache` and `write_metadata_cache` calls.
+* **Procedural Fallback Hell:** The fallback mechanism (`--fallback-mode`) uses long if/elif chains scattered across the codebase.
+    * *Example:* The `BookProcessor._extract_document_metadata` method relies heavily on explicit checks of `self.config.fallback_mode` to decide whether to route to `ocr_engine` or `visual_processor`, complicating testability and making it hard to add new fallback strategies.
+* **Fat Orchestrator:** Mixing pipeline execution with terminal UI.
+    * *Example:* `src/renai/processors/orchestrator.py` defines `StatusDisplay` and integrates `rich` directly alongside the async execution loop (`_execute_processing_loop`).
 
-## Phase 2: Competitive Domain Gap Analysis
+## 1.4 The Vision-Capability Gap
 
-### 2.1 Core Loop Superiority Gaps
-Competitors and reference pipelines (like Calibre, Paperless-ngx) process files continuously with a reactive, event-driven feedback loop. renAI's current processing loop in `orchestrator.py` waits for batches or threads to complete in a less granular way, and the status display is tightly bound to the terminal, lacking a generic progress event stream.
+* **Current Architecture Limit:** The system is built around linear or batch local file processing (`uv run renai process ...`).
+* **Gap:** If renAI were to support a web interface, webhook integrations, or daemonized folder watching (e.g., auto-organize on drop), the tight coupling between the Typer CLI arguments, the Rich terminal output, and the core processing loop would require a complete rewrite of the orchestration layer. There's no clear separation of the "Command" (process these files) from the "UI" (print this progress bar).
 
-### 2.2 Critical Missing Features
-*   **Local Web Server / API Mode:** A REST or WebSocket API to monitor and trigger processing jobs.
-*   **Plugin System:** The ability to inject custom text extractors without modifying the core `TextExtractor` switch statement.
-*   **Event-Driven Progress Reporting:** Emitting events (`ProcessingStarted`, `FileCompleted`, `PipelineFinished`) that any UI (terminal, web, GUI) can consume.
+# Phase 2: Competitive Domain Gap Analysis
 
-### 2.3 Architectural Enablers Behind Those Features
-To support a Web API or GUI, renAI requires **Dependency Injection of Configuration** and an **Event-Driven Architecture**. The current architecture cannot support these as-is because configuration is globally imported and progress reporting is hardcoded to a specific terminal library inside the core pipeline.
+## 2.1 Core Loop Superiority Gaps
 
----
+* **Interaction Difference:** Competitors (like Paperless-ngx or Devonthink) offer continuous background processing. You drop a file into a folder, and it's indexed and renamed instantly. renAI requires a manual, synchronous terminal command per batch.
+* **Feedback Loop:** renAI provides a summary at the end. Leading tools provide a UI to manually correct AI mistakes *before* the file is moved, whereas renAI commits the move and forces an `undo` command.
 
-## Phase 3: The Strategic Triad – Synthesized Top 3 Findings
+## 2.2 Critical Missing Features
 
-### Finding #1: The Global State Straightjacket
-*   **Fused Root Cause:** Global `app_settings` imported deep in domain processors (`visual.py`, `text_extractor.py`) compounded by `ProcessingConfig` being an incomplete representation of pipeline configuration.
-*   **Current Pain:** Developers cannot easily test processors with different configurations. The business cannot deploy the engine as a multi-tenant or concurrent API because global state will cause race conditions between requests.
-*   **Unlocked Potential:** 100% pure, testable domain processors. Ability to run multiple pipelines concurrently in the same process with zero interference.
-*   **Required Foundational Change:** Expand `ProcessingConfig` and enforce pure dependency injection. Remove all global state imports from the `processors/` module.
+* **Continuous Daemon Mode (Watchdog):** Watching a directory and auto-processing incoming files. This is domain table-stakes for modern organizational tools.
+* **Human-in-the-Loop Verification:** A way to review the AI's proposed filename and metadata before the physical file operation occurs (beyond just a dry-run flag).
 
-### Finding #2: The Orchestrator UI Pollution
-*   **Fused Root Cause:** `orchestrator.py` is tightly coupled to `rich` terminal UI elements compounded by the lack of an event-driven progress system.
-*   **Current Pain:** The core pipeline cannot be reused in a GUI or web server without pulling in terminal formatting and causing side effects.
-*   **Unlocked Potential:** Headless execution capability, opening the door for a future Web API or Desktop GUI mode.
-*   **Required Foundational Change:** Introduce an abstract `ProgressReporter` interface that the orchestrator calls, and implement a `RichProgressReporter` in the CLI layer.
+## 2.3 Architectural Enablers Behind Those Features
 
-### Finding #3: The Synchronous I/O Bottleneck
-*   **Fused Root Cause:** Over-reliance on `asyncio.to_thread` for blocking I/O calls compounded by a lack of true async file streams.
-*   **Current Pain:** High thread contention during large library scans.
-*   **Unlocked Potential:** Faster, more memory-efficient processing of huge document batches.
-*   **Required Foundational Change:** Replace synchronous file I/O operations with an asynchronous library like `aiofiles`.
+* **Enablers:** Event-driven architecture (file system events), decoupled UI (API + Web frontend or interactive TUI), and a state machine for document processing (New -> Extracted -> Pending Review -> Renamed).
+* **Current State Assessment:** The current architecture cannot support a watchdog or interactive review easily because the `process_file` method synchronously goes from extraction straight to renaming, only separated by an internal pipeline.
 
----
+# Phase 3: The Strategic Triad – Synthesized Top 3 Findings
 
-## Phase 4: The Grand Refactoring Blueprint
+## Finding #1: The Leaky Cache Processor (God Object)
+* **Fused Root Cause:** `BookProcessor` explicitly manages cache I/O (Architectural Wound) compounded by the lack of a transparent processing pipeline (Missing Capability).
+* **Current Pain:** Adding new models, caching strategies, or fallback modes requires modifying the core domain logic in `BookProcessor`. Testing requires heavy mocking of cache operations.
+* **Unlocked Potential:** Processors become pure functions mapping `File -> Metadata`. Testing becomes trivial. Caching becomes a middleware layer.
+* **Required Foundational Change:** Extract caching into a transparent decorator or middleware wrapper around the core processing methods, removing `read_metadata_cache` and `write_metadata_cache` from `BookProcessor`.
 
-### Step 1: The Config Decoupling (Foundational Step)
-*   **Goal:** Eradicate global state from domain processors by making `ProcessingConfig` complete and injecting it down the stack.
-*   **Finding(s) Addressed:** Finding #1
-*   **Surgical Changes:**
-    *   `src/renai/models/schemas.py`: Add `head_ratio`, `min_sufficient_text`, `vision_image_max_size`, `vision_image_quality`, and `vision_dpi` to `ProcessingConfig`.
-    *   `src/renai/processors/visual.py`: Remove `from ..settings import app_settings`. Accept configuration values via `__init__`.
-    *   `src/renai/processors/text_extractor.py`: Remove `from ..settings import app_settings`. Accept configuration values via `__init__`.
-    *   `src/renai/processors/book.py`: Pass values from `ProcessingConfig` to `TextExtractor` and `VisualProcessor`.
-    *   `src/renai/cli.py`: Pass `app_settings` values into the `ProcessingConfig` instantiation.
-*   **Backward Compatibility Strategy:** Set defaults in `ProcessingConfig` that match the current factory defaults, ensuring tests that instantiate `ProcessingConfig` directly do not break immediately.
-*   **Validation Criteria:** `uv run pytest` passes. Code search confirms `app_settings` is not imported in `visual.py` or `text_extractor.py`.
+## Finding #2: Hardcoded Procedural Fallbacks
+* **Fused Root Cause:** Fallback strategies (OCR vs Vision) are hardcoded if/else blocks in `BookProcessor` (Architectural Wound), limiting the ability to dynamically chain or add new processing modes.
+* **Current Pain:** Adding a new fallback (e.g., "Web Search for ISBN") requires changing the central `_extract_document_metadata` loop.
+* **Unlocked Potential:** A Chain-of-Responsibility or Strategy pattern allows infinite, declarative fallback chains (e.g., Text -> Vision -> OCR -> Fail) without touching the core processor.
+* **Required Foundational Change:** Implement a `Strategy` interface for extraction (TextExtractor, VisualExtractor, OCRExtractor) and a `Chain` that attempts them in sequence based on configuration.
 
-### Step 2: The UI Decoupling
-*   **Goal:** Decouple `orchestrator.py` from `rich` UI elements.
-*   **Finding(s) Addressed:** Finding #2
-*   **Surgical Changes:** Create `src/renai/processors/events.py` with an `abstractmethod` class `PipelineObserver`. Modify `run_pipeline` in `orchestrator.py` to accept a list of `PipelineObserver`s. Move `rich` logic from `orchestrator.py` into a new `src/renai/cli_observer.py` that implements the interface.
-*   **Backward Compatibility Strategy:** None needed as this is an internal refactor, but the CLI output must remain pixel-perfect identical.
-*   **Validation Criteria:** Integration tests verify terminal output matches the old output.
+## Finding #3: The Entangled Orchestrator
+* **Fused Root Cause:** Pipeline execution logic is mixed with terminal UI (`rich`) output in `orchestrator.py` (Architectural Wound), preventing background daemonization (Missing Capability).
+* **Current Pain:** You can't easily embed renAI as a library in a web server or a background folder watcher because calling the orchestrator triggers terminal drawing.
+* **Unlocked Potential:** renAI can be deployed as a background service, an API endpoint, or a CLI tool seamlessly.
+* **Required Foundational Change:** Decouple the execution engine from the progress reporter. The engine should yield events (`FileStarted`, `ExtractionComplete`, `FileRenamed`), and a separate `CLIProgressReporter` should consume those events to update the UI.
 
-### Step 3: The Async I/O Overhaul
-*   **Goal:** Replace thread-blocking file reads/writes with native async I/O.
-*   **Finding(s) Addressed:** Finding #3
-*   **Surgical Changes:** Add `aiofiles` to dependencies. Update `src/renai/cache/manager.py` to use `aiofiles.open()`.
-*   **Backward Compatibility Strategy:** Ensure cache structure remains identical on disk.
-*   **Validation Criteria:** Cache manager unit tests pass.
+# Phase 4: The Grand Refactoring Blueprint
 
----
+## Step 1: Extract Caching Middleware (Finding #1)
+* **Goal:** Remove all direct cache management from `BookProcessor` and `TextExtractor`, replacing it with a transparent caching layer.
+* **Finding(s) Addressed:** #1
+* **Surgical Changes:**
+    * Create a new decorator/middleware in `src/renai/cache/middleware.py`.
+    * Modify `src/renai/processors/book.py` (`_resolve_metadata`) to yield raw metadata and let the caller/wrapper handle caching.
+* **Backward Compatibility:** Existing CLI logic will route through the cached wrapper instead of calling the raw processor method directly.
+* **Validation Criteria:** Cache manager tests continue to pass; `test_book_processor.py` no longer mocks cache read/writes.
 
-## Phase 5: The Ready-to-Apply Implementation Package
+## Step 2: Decouple Progress UI from Execution Engine (Finding #3)
+* **Goal:** Refactor `_execute_processing_loop` in `src/renai/processors/orchestrator.py` to yield status events instead of directly manipulating a `rich` Progress bar.
+* **Finding(s) Addressed:** #3
+* **Surgical Changes:**
+    * Introduce an `EventSubscriber` interface.
+    * Modify `_process_task` and the main loop in `orchestrator.py` to emit events.
+    * Move `StatusDisplay` logic to a dedicated CLI reporter class.
+* **Backward Compatibility:** The CLI entrypoint in `cli.py` will instantiate the CLI reporter and hook it into the orchestrator. User experience remains identical.
+* **Validation Criteria:** Integration tests verify the event stream without requiring a TTY or `rich` rendering.
 
-### 5.1 The Foundational Step, Fully Coded (Step 1)
+## Step 3: Implement Strategy Pattern for Fallbacks (Finding #2)
+* **Goal:** Replace the if/elif fallback chain in `_extract_document_metadata` with an extensible Strategy chain.
+* **Finding(s) Addressed:** #2
+* **Surgical Changes:**
+    * Create an `ExtractionStrategy` base class.
+    * Wrap `TextExtractor`, `VisualProcessor`, and `OCREngine` behind this interface.
+    * Update `BookProcessor` to accept an ordered list of strategies and iterate until one succeeds.
+* **Backward Compatibility:** The config mapper will translate `--fallback-mode` flags into the correct list of strategy objects.
+* **Validation Criteria:** Unit tests verify that the chain gracefully falls back and stops on success without hardcoded logic.
 
-**Modification 1: `src/renai/models/schemas.py`**
-Modify `ProcessingConfig` to include the missing fields.
+# Phase 5: The Ready-to-Apply Implementation Package
+
+## 5.1 The Foundational Step, Fully Coded (Step 1: Extract Caching Middleware)
+
+This step decouples the cache management from the `BookProcessor`, establishing the pattern of clean domain boundaries. We introduce a `with_metadata_cache` middleware and refactor `BookProcessor._resolve_metadata`.
+
+**File:** `src/renai/cache/middleware.py` (New File)
 ```python
-<<<<<<< SEARCH
-    benchmark: bool = False
-    vision_max_pages: int = 3
-    vision_provider: str | None = None
-    vision_model: str | None = None
-    dry_run: bool = False
-    max_filename_length: int = Field(default=200, ge=50, le=255)
-=======
-    benchmark: bool = False
-    vision_max_pages: int = 3
-    vision_provider: str | None = None
-    vision_model: str | None = None
-    dry_run: bool = False
-    max_filename_length: int = Field(default=200, ge=50, le=255)
+"""Middleware layer for caching operations."""
+import functools
+from collections.abc import Callable, Coroutine
+from pathlib import Path
+from typing import Any, TypeVar
 
-    # New fields for decoupled configuration
-    head_ratio: float = 0.7
-    min_sufficient_text: int = 100
-    vision_image_max_size: int = 1024
-    vision_image_quality: int = 85
-    vision_dpi: int = 150
->>>>>>> REPLACE
-```
+from pydantic import BaseModel
 
-**Modification 2: `src/renai/processors/visual.py`**
-Remove global state import and use injected parameters.
-```python
-<<<<<<< SEARCH
-from ..engines.llm import LLMEngine
-from ..models.schemas import BookMetadata, ImageMetadata
-from ..settings import app_settings
+from renai.cache.manager import read_metadata_cache, write_metadata_cache
+from renai.logging_config import get_logger
 
+logger = get_logger("renai.cache.middleware")
 
-class VisualProcessor:
+T = TypeVar("T", bound=BaseModel | None)
+
+def with_metadata_cache() -> Callable[[Callable[..., Coroutine[Any, Any, T]]], Callable[..., Coroutine[Any, Any, T]]]:
     """
-    Handles all visual-based metadata extraction asynchronously.
-    Consolidates PDF page sampling and direct image processing.
+    Middleware decorator that intercepts metadata extraction calls, checks the cache,
+    and writes back on success.
+
+    Assumes the decorated method is a bound method where `self` has a `config` attribute
+    (instance of ProcessingConfig) and accepts `file_path`, `file_hash`, and `schema_class`.
     """
 
-    def __init__(
-        self,
-        llm_engine: LLMEngine | None = None,
-        provider: str = "deepinfra",
-        model: str = "",
-        vision_max_pages: int | None = None,
-    ):
-        self.llm_engine = llm_engine
-        self.provider = provider
-        self.model = model or (llm_engine.model_name if llm_engine else "")
-        self.image_max_size = app_settings.vision_image_max_size
-        self.image_quality = app_settings.vision_image_quality
-        self.vision_max_pages = (
-            vision_max_pages if vision_max_pages is not None else app_settings.vision_max_pages
-        )
+    def decorator(func: Callable[..., Coroutine[Any, Any, T]]) -> Callable[..., Coroutine[Any, Any, T]]:
+        @functools.wraps(func)
+        async def wrapper(self: Any, file_path: Path, file_hash: str, *args: Any, **kwargs: Any) -> T:
+            # Safely extract configuration from the bound instance
+            config = getattr(self, "config", None)
+            if not config:
+                logger.warning("Cache middleware bypassed: 'config' attribute missing on instance.")
+                return await func(self, file_path, file_hash, *args, **kwargs)
 
-    def _convert_page(self, doc: pymupdf.Document, page_number: int, dpi: int) -> bytes | None:
-=======
-from ..engines.llm import LLMEngine
-from ..models.schemas import BookMetadata, ImageMetadata
+            # Determine if this operation uses vision (for cache bucketing)
+            use_vision = kwargs.get("is_vision_fallback", False) or getattr(config, "rename_images", False)
 
+            # Look for schema_class in kwargs or try to infer it (optional based on caller)
+            schema_class = kwargs.get("schema_class")
 
-class VisualProcessor:
-    """
-    Handles all visual-based metadata extraction asynchronously.
-    Consolidates PDF page sampling and direct image processing.
-    """
-
-    def __init__(
-        self,
-        llm_engine: LLMEngine | None = None,
-        provider: str = "deepinfra",
-        model: str = "",
-        vision_max_pages: int = 3,
-        image_max_size: int = 1024,
-        image_quality: int = 85,
-        vision_dpi: int = 150,
-    ):
-        self.llm_engine = llm_engine
-        self.provider = provider
-        self.model = model or (llm_engine.model_name if llm_engine else "")
-        self.image_max_size = image_max_size
-        self.image_quality = image_quality
-        self.vision_max_pages = vision_max_pages
-        self.vision_dpi = vision_dpi
-
-    def _convert_page(self, doc: pymupdf.Document, page_number: int, dpi: int) -> bytes | None:
->>>>>>> REPLACE
-```
-```python
-<<<<<<< SEARCH
-                    for page_num in pages_to_process:
-                        img_bytes = self._convert_page(doc, page_num, app_settings.vision_dpi)
-                        if img_bytes is not None:
-=======
-                    for page_num in pages_to_process:
-                        img_bytes = self._convert_page(doc, page_num, self.vision_dpi)
-                        if img_bytes is not None:
->>>>>>> REPLACE
-```
-```python
-<<<<<<< SEARCH
-    async def _convert_pdf_page_to_image_async(
-        self, file_path: Path, page_number: int = 0, dpi: int | None = None
-    ) -> bytes | None:
-        """Convert a PDF page to optimized image bytes asynchronously."""
-        if dpi is None:
-            dpi = app_settings.vision_dpi
-
-        try:
-=======
-    async def _convert_pdf_page_to_image_async(
-        self, file_path: Path, page_number: int = 0, dpi: int | None = None
-    ) -> bytes | None:
-        """Convert a PDF page to optimized image bytes asynchronously."""
-        if dpi is None:
-            dpi = self.vision_dpi
-
-        try:
->>>>>>> REPLACE
-```
-
-**Modification 3: `src/renai/processors/text_extractor.py`**
-Remove global state import and use injected parameters.
-```python
-<<<<<<< SEARCH
-from ..models.schemas import FallbackMode
-from ..settings import CACHE_DIR, app_settings
-from ..utils import (
-=======
-from ..models.schemas import FallbackMode
-from ..settings import CACHE_DIR
-from ..utils import (
->>>>>>> REPLACE
-```
-```python
-<<<<<<< SEARCH
-    def __init__(
-        self,
-        ocr_engine: OCREngine,
-        extractor_name: str = "pymupdf",
-        target_length: int = 10000,
-        text_extraction: str = "head-tail",
-        extraction_pages: int = 10,
-    ):
-        """
-        Initialize the text extractor.
-
-        Args:
-            ocr_engine: OCR engine instance for fallback
-            extractor_name: Name of PDF extractor to use
-            target_length: Target text length for LLM processing
-            text_extraction: Extraction mode ("head-tail" or "regular")
-            extraction_pages: Safety limit for pages per side
-        """
-        self.ocr_engine = ocr_engine
-        self.extractor_name = extractor_name
-        self.extractor = get_extractor(extractor_name)
-        self.target_length = target_length
-        if text_extraction == "mixed":
-            text_extraction = "head-tail"
-        self.text_extraction_mode = text_extraction
-        self.extraction_pages = extraction_pages
-        self.office_extensions = OFFICE_EXTENSIONS
-        self.plain_text_extensions = PLAIN_TEXT_EXTENSIONS
-        self.needs_scan_dir = None
-        self.skip_scan_files = False
-        self.scan_failures_dir = None
-        self.move_scan_failures = False
-=======
-    def __init__(
-        self,
-        ocr_engine: OCREngine,
-        extractor_name: str = "pymupdf",
-        target_length: int = 10000,
-        text_extraction: str = "head-tail",
-        extraction_pages: int = 10,
-        head_ratio: float = 0.7,
-        min_sufficient_text: int = 100,
-    ):
-        """
-        Initialize the text extractor.
-
-        Args:
-            ocr_engine: OCR engine instance for fallback
-            extractor_name: Name of PDF extractor to use
-            target_length: Target text length for LLM processing
-            text_extraction: Extraction mode ("head-tail" or "regular")
-            extraction_pages: Safety limit for pages per side
-            head_ratio: Head segment ratio for head-tail extraction
-            min_sufficient_text: Minimum characters for successful extraction
-        """
-        self.ocr_engine = ocr_engine
-        self.extractor_name = extractor_name
-        self.extractor = get_extractor(extractor_name)
-        self.target_length = target_length
-        if text_extraction == "mixed":
-            text_extraction = "head-tail"
-        self.text_extraction_mode = text_extraction
-        self.extraction_pages = extraction_pages
-        self.head_ratio = head_ratio
-        self.min_sufficient_text = min_sufficient_text
-        self.office_extensions = OFFICE_EXTENSIONS
-        self.plain_text_extensions = PLAIN_TEXT_EXTENSIONS
-        self.needs_scan_dir = None
-        self.skip_scan_files = False
-        self.scan_failures_dir = None
-        self.move_scan_failures = False
->>>>>>> REPLACE
-```
-```python
-<<<<<<< SEARCH
-    def _apply_extraction_mode(self, text: str, target_length: int) -> str:
-        """Trim text based on the configured extraction mode (head-tail or regular)."""
-        if self.text_extraction_mode == "head-tail":
-            return head_tail_trim(text, target_length, app_settings.head_ratio)
-        return text[:target_length]
-=======
-    def _apply_extraction_mode(self, text: str, target_length: int) -> str:
-        """Trim text based on the configured extraction mode (head-tail or regular)."""
-        if self.text_extraction_mode == "head-tail":
-            return head_tail_trim(text, target_length, self.head_ratio)
-        return text[:target_length]
->>>>>>> REPLACE
-```
-```python
-<<<<<<< SEARCH
-        def _extract():
-            return (
-                self.extractor.extract_text(
-                    file_path,
-                    target_chars=target_length,
-                    head_ratio=app_settings.head_ratio,
-                    max_pages_per_side=self.extraction_pages,
+            # Check cache if update is not explicitly requested and we have a schema to validate against
+            if not config.update_metadata and schema_class:
+                cached_data = await read_metadata_cache(
+                    file_hash=file_hash,
+                    provider=config.provider,
+                    model=config.model,
+                    schema_class=schema_class,
+                    use_vision=use_vision
                 )
-                or ""
-            )
+                if cached_data:
+                    logger.debug(
+                        f"Metadata cache hit",
+                        file=file_path.name,
+                        hash=file_hash[:8],
+                        provider=config.provider,
+                        model=config.model
+                    )
+                    return cached_data
 
-        full_text = await asyncio.to_thread(_extract)
+            # Cache miss or forced update: execute the actual domain logic
+            result = await func(self, file_path, file_hash, *args, **kwargs)
 
-        sufficient_threshold = app_settings.min_sufficient_text
-
-        # Check if we got meaningful text
-        if len(full_text.strip()) > sufficient_threshold:
-            return self._apply_extraction_mode(full_text, target_length)
-=======
-        def _extract():
-            return (
-                self.extractor.extract_text(
-                    file_path,
-                    target_chars=target_length,
-                    head_ratio=self.head_ratio,
-                    max_pages_per_side=self.extraction_pages,
+            # Write successful results back to the cache
+            if result and schema_class:
+                await write_metadata_cache(
+                    file_hash=file_hash,
+                    provider=config.provider,
+                    model=config.model,
+                    metadata=result,
+                    schema_class=schema_class,
+                    use_vision=use_vision
                 )
-                or ""
-            )
 
-        full_text = await asyncio.to_thread(_extract)
+            return result
 
-        sufficient_threshold = self.min_sufficient_text
+        return wrapper
 
-        # Check if we got meaningful text
-        if len(full_text.strip()) > sufficient_threshold:
-            return self._apply_extraction_mode(full_text, target_length)
->>>>>>> REPLACE
+    return decorator
 ```
 
-**Modification 4: `src/renai/processors/book.py`**
-Pass new config parameters.
-```python
-<<<<<<< SEARCH
-        self.text_extractor = TextExtractor(
-            ocr_engine=ocr_engine,
-            extractor_name=config.extractor,
-            target_length=config.text_length,
-            text_extraction=config.text_extraction,
-            extraction_pages=config.extraction_pages,
-        )
-        self.visual_processor = VisualProcessor(
-            llm_engine=self.vision_llm_engine,
-            provider=self.vision_provider,
-            model=self.vision_model,
-            vision_max_pages=config.vision_max_pages,
-        )
-=======
-        self.text_extractor = TextExtractor(
-            ocr_engine=ocr_engine,
-            extractor_name=config.extractor,
-            target_length=config.text_length,
-            text_extraction=config.text_extraction,
-            extraction_pages=config.extraction_pages,
-            head_ratio=config.head_ratio,
-            min_sufficient_text=config.min_sufficient_text,
-        )
-        self.visual_processor = VisualProcessor(
-            llm_engine=self.vision_llm_engine,
-            provider=self.vision_provider,
-            model=self.vision_model,
-            vision_max_pages=config.vision_max_pages,
-            image_max_size=config.vision_image_max_size,
-            image_quality=config.vision_image_quality,
-            vision_dpi=config.vision_dpi,
-        )
->>>>>>> REPLACE
+**Modification:** `src/renai/processors/book.py`
+Apply the following diff to remove direct cache management from `_resolve_metadata`:
+
+```diff
+--- a/src/renai/processors/book.py
++++ b/src/renai/processors/book.py
+@@ -10,8 +10,8 @@
+     ProcessingResult,
+     ProcessorState,
+ )
+-from renai.cache.manager import read_metadata_cache, write_metadata_cache
++from renai.cache.middleware import with_metadata_cache
+ from renai.config.constants import DEFAULT_LANGUAGE, FALLBACK_MODE_MOVE, NEEDS_SCAN_DIR, SCAN_FAILURES_DIR
+ from renai.engines.llm import LLMEngine
+ from renai.engines.ocr import OCREngine
+@@ -134,22 +134,8 @@
+         self.status_display.update(result)
+         return result
+
++    @with_metadata_cache()
+     async def _resolve_metadata(
+         self, file_path: Path, file_hash: str, is_image: bool, schema_class: type[BaseModel], **kwargs: Any
+     ) -> BaseModel | None:
+         """Coordinates the extraction strategy for the file."""
+-        use_vision = kwargs.get("is_vision_fallback", False) or (is_image and self.config.rename_images)
+-
+-        if not self.config.update_metadata:
+-            cached_data = await read_metadata_cache(
+-                file_hash=file_hash,
+-                provider=self.config.provider,
+-                model=self.config.model,
+-                schema_class=schema_class,
+-                use_vision=use_vision,
+-            )
+-            if cached_data:
+-                return cached_data
+
+         if is_image and self.config.rename_images:
+             metadata = await self.visual_processor.process_image(file_path, file_hash)
+         else:
+             metadata = await self._extract_document_metadata(file_path, file_hash)
+
+-        if metadata:
+-            await write_metadata_cache(
+-                file_hash=file_hash,
+-                provider=self.config.provider,
+-                model=self.config.model,
+-                metadata=metadata,
+-                schema_class=schema_class,
+-                use_vision=use_vision,
+-            )
+-
+         return metadata
 ```
 
-**Modification 5: `src/renai/cli.py`**
-Populate the new fields in `ProcessingConfig`.
+## 5.2 The Validation Suite
+
+This test proves the middleware correctly intercepts, caches, and writes back without the processor knowing about the cache.
+
+**File:** `tests/test_cache_middleware.py` (New File)
 ```python
-<<<<<<< SEARCH
-def _build_processing_config(
-    mode: str,
-    workers: int,
-    recursive: bool,
-    ocr_enhanced: bool,
-    debug_ocr: bool,
-    use_mutool: bool,
-    mutool_path: str,
-    extractor: str,
-    text_length: int,
-    text_extraction: str,
-    extraction_pages: int,
-    fallback_mode: FallbackMode,
-    move_scan_failures: bool,
-    rename_images: bool,
-    exif: bool,
-    update_metadata: bool,
-    benchmark: bool,
-    vision_max_pages: int,
-    vision_provider: str | None,
-    vision_model: str | None,
-    dry_run: bool,
-) -> ProcessingConfig:
-    """Helper to build the processing configuration object."""
-    return ProcessingConfig(
-        mode=cast(Literal["rename", "organize", "evaluate"], mode),
-        workers=workers,
-        recursive=recursive,
-        ocr_enhanced=ocr_enhanced,
-        debug_ocr=debug_ocr,
-        use_mutool=use_mutool,
-        mutool_path=mutool_path,
-        extractor=extractor,
-        text_length=text_length,
-        text_extraction=text_extraction,
-        extraction_pages=extraction_pages,
-        fallback_mode=fallback_mode,
-        move_scan_failures=move_scan_failures,
-        rename_images=rename_images,
-        add_exif_date=exif,
-        update_metadata=update_metadata,
-        benchmark=benchmark,
-        vision_max_pages=vision_max_pages,
-        vision_provider=vision_provider,
-        vision_model=vision_model,
-        dry_run=dry_run,
-        max_filename_length=app_settings.max_filename_length,
+import pytest
+from pathlib import Path
+from pydantic import BaseModel
+from unittest.mock import patch, AsyncMock
+
+from renai.cache.middleware import with_metadata_cache
+
+class DummyMetadata(BaseModel):
+    title: str
+
+class DummyProcessor:
+    def __init__(self, update_metadata: bool = False, rename_images: bool = False):
+        class MockConfig:
+            def __init__(self):
+                self.provider = "test_provider"
+                self.model = "test_model"
+                self.update_metadata = update_metadata
+                self.rename_images = rename_images
+
+        self.config = MockConfig()
+        self.call_count = 0
+
+    @with_metadata_cache()
+    async def extract(self, file_path: Path, file_hash: str, schema_class: type[BaseModel], **kwargs):
+        self.call_count += 1
+        return DummyMetadata(title="Extracted Title")
+
+@pytest.mark.asyncio
+@patch("renai.cache.middleware.read_metadata_cache", new_callable=AsyncMock)
+@patch("renai.cache.middleware.write_metadata_cache", new_callable=AsyncMock)
+async def test_middleware_cache_hit(mock_write, mock_read):
+    # Arrange
+    mock_read.return_value = DummyMetadata(title="Cached Title")
+    processor = DummyProcessor()
+
+    # Act
+    result = await processor.extract(Path("test.pdf"), "hash123", schema_class=DummyMetadata)
+
+    # Assert
+    assert result.title == "Cached Title"
+    assert processor.call_count == 0  # Domain logic bypassed
+    mock_read.assert_called_once()
+    mock_write.assert_not_called()
+
+@pytest.mark.asyncio
+@patch("renai.cache.middleware.read_metadata_cache", new_callable=AsyncMock)
+@patch("renai.cache.middleware.write_metadata_cache", new_callable=AsyncMock)
+async def test_middleware_cache_miss_and_write(mock_write, mock_read):
+    # Arrange
+    mock_read.return_value = None  # Cache miss
+    processor = DummyProcessor()
+
+    # Act
+    result = await processor.extract(Path("test.pdf"), "hash123", schema_class=DummyMetadata)
+
+    # Assert
+    assert result.title == "Extracted Title"
+    assert processor.call_count == 1  # Domain logic executed
+    mock_read.assert_called_once()
+    mock_write.assert_called_once_with(
+        file_hash="hash123",
+        provider="test_provider",
+        model="test_model",
+        metadata=result,
+        schema_class=DummyMetadata,
+        use_vision=False
     )
-=======
-def _build_processing_config(
-    mode: str,
-    workers: int,
-    recursive: bool,
-    ocr_enhanced: bool,
-    debug_ocr: bool,
-    use_mutool: bool,
-    mutool_path: str,
-    extractor: str,
-    text_length: int,
-    text_extraction: str,
-    extraction_pages: int,
-    fallback_mode: FallbackMode,
-    move_scan_failures: bool,
-    rename_images: bool,
-    exif: bool,
-    update_metadata: bool,
-    benchmark: bool,
-    vision_max_pages: int,
-    vision_provider: str | None,
-    vision_model: str | None,
-    dry_run: bool,
-) -> ProcessingConfig:
-    """Helper to build the processing configuration object."""
-    return ProcessingConfig(
-        mode=cast(Literal["rename", "organize", "evaluate"], mode),
-        workers=workers,
-        recursive=recursive,
-        ocr_enhanced=ocr_enhanced,
-        debug_ocr=debug_ocr,
-        use_mutool=use_mutool,
-        mutool_path=mutool_path,
-        extractor=extractor,
-        text_length=text_length,
-        text_extraction=text_extraction,
-        extraction_pages=extraction_pages,
-        fallback_mode=fallback_mode,
-        move_scan_failures=move_scan_failures,
-        rename_images=rename_images,
-        add_exif_date=exif,
-        update_metadata=update_metadata,
-        benchmark=benchmark,
-        vision_max_pages=vision_max_pages,
-        vision_provider=vision_provider,
-        vision_model=vision_model,
-        dry_run=dry_run,
-        max_filename_length=app_settings.max_filename_length,
-        head_ratio=app_settings.head_ratio,
-        min_sufficient_text=app_settings.min_sufficient_text,
-        vision_image_max_size=app_settings.vision_image_max_size,
-        vision_image_quality=app_settings.vision_image_quality,
-        vision_dpi=app_settings.vision_dpi,
-    )
->>>>>>> REPLACE
-```
-```python
-<<<<<<< SEARCH
-        results = await run_pipeline(
-            root_dir=root_dir,
-            provider=provider,
-            model=model_name,
-            config=ProcessingConfig(
-                mode="evaluate",
-                workers=workers,
-                recursive=False,
-                fallback_mode=FallbackMode.OCR,
-                extractor=app_settings.extractor,
-                text_length=app_settings.text_length,
-                text_extraction=app_settings.text_extraction,
-                extraction_pages=app_settings.extraction_pages,
-                vision_max_pages=app_settings.vision_max_pages,
-            ),
-        )
-=======
-        results = await run_pipeline(
-            root_dir=root_dir,
-            provider=provider,
-            model=model_name,
-            config=ProcessingConfig(
-                mode="evaluate",
-                workers=workers,
-                recursive=False,
-                fallback_mode=FallbackMode.OCR,
-                extractor=app_settings.extractor,
-                text_length=app_settings.text_length,
-                text_extraction=app_settings.text_extraction,
-                extraction_pages=app_settings.extraction_pages,
-                vision_max_pages=app_settings.vision_max_pages,
-                head_ratio=app_settings.head_ratio,
-                min_sufficient_text=app_settings.min_sufficient_text,
-                vision_image_max_size=app_settings.vision_image_max_size,
-                vision_image_quality=app_settings.vision_image_quality,
-                vision_dpi=app_settings.vision_dpi,
-            ),
-        )
->>>>>>> REPLACE
 ```
 
-### 5.2 The Validation Suite
-Run the test suite using `pytest`.
-```bash
-uv run pytest tests/
-```
+## 5.3 The One-Shot Application Script
 
-### 5.3 The One-Shot Application Script
+Save this as `apply_autopsy.sh` and run it to apply the Step 1 refactoring.
 
 ```bash
-#!/usr/bin/env bash
-# apply_foundational_step.sh
+#!/bin/bash
+set -e
 
-echo "Applying Foundational Step Refactor (Config Decoupling)..."
+echo "Applying Phase 5: Caching Middleware..."
 
-# Apply the modifications via python script to ensure safety if diff fails
-python3 -c "
+# 1. Create the middleware file
+cat << 'EOPYTHON' > src/renai/cache/middleware.py
+import functools
+from collections.abc import Callable, Coroutine
+from pathlib import Path
+from typing import Any, TypeVar
+
+from pydantic import BaseModel
+
+from renai.cache.manager import read_metadata_cache, write_metadata_cache
+from renai.logging_config import get_logger
+
+logger = get_logger("renai.cache.middleware")
+
+T = TypeVar("T", bound=BaseModel | None)
+
+def with_metadata_cache() -> Callable[[Callable[..., Coroutine[Any, Any, T]]], Callable[..., Coroutine[Any, Any, T]]]:
+    def decorator(func: Callable[..., Coroutine[Any, Any, T]]) -> Callable[..., Coroutine[Any, Any, T]]:
+        @functools.wraps(func)
+        async def wrapper(self: Any, file_path: Path, file_hash: str, *args: Any, **kwargs: Any) -> T:
+            config = getattr(self, "config", None)
+            if not config:
+                logger.warning("Cache middleware bypassed: 'config' attribute missing on instance.")
+                return await func(self, file_path, file_hash, *args, **kwargs)
+
+            use_vision = kwargs.get("is_vision_fallback", False) or getattr(config, "rename_images", False)
+            schema_class = kwargs.get("schema_class")
+
+            if not config.update_metadata and schema_class:
+                cached_data = await read_metadata_cache(
+                    file_hash=file_hash,
+                    provider=config.provider,
+                    model=config.model,
+                    schema_class=schema_class,
+                    use_vision=use_vision
+                )
+                if cached_data:
+                    return cached_data
+
+            result = await func(self, file_path, file_hash, *args, **kwargs)
+
+            if result and schema_class:
+                await write_metadata_cache(
+                    file_hash=file_hash,
+                    provider=config.provider,
+                    model=config.model,
+                    metadata=result,
+                    schema_class=schema_class,
+                    use_vision=use_vision
+                )
+            return result
+        return wrapper
+    return decorator
+EOPYTHON
+
+# 2. Patch BookProcessor
+# Using python to do a clean string replacement to avoid patch whitespace issues
+python3 -c '
 import sys
-# A full patching script would go here in practice.
-# For this deliverable, the merge diffs in section 5.1 provide exact line targets.
-"
+with open("src/renai/processors/book.py", "r") as f:
+    content = f.read()
 
-# Run tests to validate
-echo "Running validation suite..."
-uv run pytest tests/
+content = content.replace(
+    "from renai.cache.manager import read_metadata_cache, write_metadata_cache",
+    "from renai.cache.middleware import with_metadata_cache"
+)
 
-echo "Foundational step applied successfully."
+old_resolve = """    async def _resolve_metadata(
+        self, file_path: Path, file_hash: str, is_image: bool, schema_class: type[BaseModel], **kwargs: Any
+    ) -> BaseModel | None:
+        \"\"\"Coordinates the extraction strategy for the file.\"\"\"
+        use_vision = kwargs.get("is_vision_fallback", False) or (is_image and self.config.rename_images)
+
+        if not self.config.update_metadata:
+            cached_data = await read_metadata_cache(
+                file_hash=file_hash,
+                provider=self.config.provider,
+                model=self.config.model,
+                schema_class=schema_class,
+                use_vision=use_vision,
+            )
+            if cached_data:
+                return cached_data
+
+        if is_image and self.config.rename_images:
+            metadata = await self.visual_processor.process_image(file_path, file_hash)
+        else:
+            metadata = await self._extract_document_metadata(file_path, file_hash)
+
+        if metadata:
+            await write_metadata_cache(
+                file_hash=file_hash,
+                provider=self.config.provider,
+                model=self.config.model,
+                metadata=metadata,
+                schema_class=schema_class,
+                use_vision=use_vision,
+            )
+
+        return metadata"""
+
+new_resolve = """    @with_metadata_cache()
+    async def _resolve_metadata(
+        self, file_path: Path, file_hash: str, is_image: bool, schema_class: type[BaseModel], **kwargs: Any
+    ) -> BaseModel | None:
+        \"\"\"Coordinates the extraction strategy for the file.\"\"\"
+        if is_image and self.config.rename_images:
+            metadata = await self.visual_processor.process_image(file_path, file_hash)
+        else:
+            metadata = await self._extract_document_metadata(file_path, file_hash)
+        return metadata"""
+
+content = content.replace(old_resolve, new_resolve)
+
+with open("src/renai/processors/book.py", "w") as f:
+    f.write(content)
+'
+
+# 3. Create test
+cat << 'EOPYTHON' > tests/test_cache_middleware.py
+import pytest
+from pathlib import Path
+from pydantic import BaseModel
+from unittest.mock import patch, AsyncMock
+
+from renai.cache.middleware import with_metadata_cache
+
+class DummyMetadata(BaseModel):
+    title: str
+
+class DummyProcessor:
+    def __init__(self, update_metadata: bool = False, rename_images: bool = False):
+        class MockConfig:
+            def __init__(self):
+                self.provider = "test_provider"
+                self.model = "test_model"
+                self.update_metadata = update_metadata
+                self.rename_images = rename_images
+
+        self.config = MockConfig()
+        self.call_count = 0
+
+    @with_metadata_cache()
+    async def extract(self, file_path: Path, file_hash: str, schema_class: type[BaseModel], **kwargs):
+        self.call_count += 1
+        return DummyMetadata(title="Extracted Title")
+
+@pytest.mark.asyncio
+@patch("renai.cache.middleware.read_metadata_cache", new_callable=AsyncMock)
+@patch("renai.cache.middleware.write_metadata_cache", new_callable=AsyncMock)
+async def test_middleware_cache_hit(mock_write, mock_read):
+    mock_read.return_value = DummyMetadata(title="Cached Title")
+    processor = DummyProcessor()
+    result = await processor.extract(Path("test.pdf"), "hash123", schema_class=DummyMetadata)
+    assert result.title == "Cached Title"
+    assert processor.call_count == 0
+    mock_read.assert_called_once()
+    mock_write.assert_not_called()
+
+@pytest.mark.asyncio
+@patch("renai.cache.middleware.read_metadata_cache", new_callable=AsyncMock)
+@patch("renai.cache.middleware.write_metadata_cache", new_callable=AsyncMock)
+async def test_middleware_cache_miss_and_write(mock_write, mock_read):
+    mock_read.return_value = None
+    processor = DummyProcessor()
+    result = await processor.extract(Path("test.pdf"), "hash123", schema_class=DummyMetadata)
+    assert result.title == "Extracted Title"
+    assert processor.call_count == 1
+    mock_read.assert_called_once()
+    mock_write.assert_called_once_with(
+        file_hash="hash123",
+        provider="test_provider",
+        model="test_model",
+        metadata=result,
+        schema_class=DummyMetadata,
+        use_vision=False
+    )
+EOPYTHON
+
+uv run ruff check --fix src/ tests/
+uv run pytest tests/test_cache_middleware.py
+echo "Done!"
+
 ```
 
-### 5.4 The Remaining Steps as a Clear Roadmap
+## 5.4 The Remaining Steps as a Clear Roadmap
 
-**Step 2 (The UI Decoupling)** and **Step 3 (The Async I/O Overhaul)** will follow exactly the same format. Once Step 1 is applied, the team can tackle `orchestrator.py` and `cache/manager.py` systematically as outlined in Phase 4.
+1. **Decouple Progress UI (Step 2):** Follow the middleware abstraction pattern above. Create an `EventStream` class. Inject it into `_execute_processing_loop`. Create a `CLISubscriber(EventStream)` that contains the `StatusDisplay`. The core orchestrator should just call `stream.emit("started", file_path)`.
+2. **Strategy Chain (Step 3):** Abstract `self._extract_document_metadata` into a loop: `for strategy in self.config.fallback_chain: result = strategy.execute(file_path); if result: return result`.
