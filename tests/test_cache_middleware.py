@@ -1,8 +1,10 @@
-import pytest
 from pathlib import Path
+
+import pytest
 from pydantic import BaseModel
 
 from renai.cache.middleware import with_metadata_cache
+
 
 class DummyMetadata(BaseModel):
     title: str
@@ -99,7 +101,7 @@ async def test_middleware_bypass_no_config(tmp_path: Path):
 
     # Call multiple times, should always miss
     for _ in range(3):
-        result, _ = await processor.extract(
+        _result, _ = await processor.extract(
             file_path=Path("test.pdf"),
             cache_path=test_cache_path,
             model_class=DummyMetadata,

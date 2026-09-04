@@ -68,7 +68,12 @@ def with_metadata_cache(
                     model_class=model_class
                 )
                 if cached_data:
-                    logger.debug("Metadata cache hit", file=file_path.name, provider=provider, model=model)
+                    logger.debug(
+                        "Metadata cache hit",
+                        file=file_path.name,
+                        provider=provider,
+                        model=model
+                    )
                     return cached_data, use_vision_cache
 
             metadata, is_vision_fallback = await func(
