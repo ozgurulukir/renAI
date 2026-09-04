@@ -8,11 +8,8 @@ import logging
 from pathlib import Path
 from typing import cast
 
-from ..cache.manager import (
-    get_metadata_cache_path,
-    read_metadata_cache,
-    write_metadata_cache,
-)
+from ..cache.manager import get_metadata_cache_path
+from ..cache.middleware import with_metadata_cache
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
 from ..file_ops.organizer import FileOrganizer
@@ -128,53 +125,30 @@ class BookProcessor:
         model_class = ImageMetadata if (is_image and rename_images) else BookMetadata
         return cache_path, model_class, use_vision_cache
 
+    @with_metadata_cache()
     async def _resolve_metadata(
         self,
         file_path: Path,
-        cache_path: Path,
-        model_class: type[BookMetadata] | type[ImageMetadata],
-        use_vision_cache: bool,
+        cache_path: Path,  # noqa: ARG002  forwarded to with_metadata_cache
+        model_class: type[BookMetadata] | type[ImageMetadata],  # noqa: ARG002
+        use_vision_cache: bool,  # noqa: ARG002
         fallback_mode: FallbackMode,
         rename_images: bool,
-        update_metadata: bool,
+        update_metadata: bool,  # noqa: ARG002
         add_exif_date: bool,
         file_hash: str | None = None,
     ) -> tuple[BookMetadata | ImageMetadata | None, bool]:
-        """Resolve metadata by reading from cache or executing extraction engines."""
-        metadata = None
+        """Resolve metadata by executing extraction engines (caching handled by middleware)."""
         is_image = file_path.suffix.lower() in get_image_extensions()
-        cache_provider = self.vision_provider if use_vision_cache else self.provider
-        cache_model = self.vision_model if use_vision_cache else self.model
-
-        if not update_metadata:
-            metadata = await asyncio.to_thread(
-                read_metadata_cache,
-                cache_path,
-                cache_provider,
-                cache_model,
-                model_class=model_class,
+        if is_image and rename_images:
+            metadata = await self.visual_processor.extract_metadata_from_image(
+                file_path, add_exif_date=add_exif_date
             )
+            return metadata, False
 
-        is_vision_doc = False
-        if metadata:
-            logging.debug(f"Cache hit for {file_path.name}")
-            if not (is_image and rename_images) and use_vision_cache:
-                is_vision_doc = True
-        else:
-            if is_image and rename_images:
-                metadata = await self.visual_processor.extract_metadata_from_image(
-                    file_path, add_exif_date=add_exif_date
-                )
-            else:
-                metadata, is_vision_doc = await self._extract_document_metadata(
-                    file_path, fallback_mode, file_hash
-                )
-
-            if metadata:
-                await asyncio.to_thread(
-                    write_metadata_cache, cache_path, metadata, cache_provider, cache_model
-                )
-
+        metadata, is_vision_doc = await self._extract_document_metadata(
+            file_path, fallback_mode, file_hash
+        )
         return metadata, is_vision_doc
 
     async def process_file(
