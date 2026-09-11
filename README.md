@@ -67,6 +67,7 @@ _Example: `Sunset -- [2024-07-15] -- (en).jpg`_
 | **Unified Refinement**      | Standardized second-pass 'Senior Editor' logic for both text and vision modes                                    |
 | **Token Optimization**      | Context-free refinement pass reduces secondary API costs by ~90%                                                 |
 | **Custom Categories**       | Define your own categories per language in `categories.toml`                                                     |
+| **Folder Rules**            | Restrict categories and override filename templates per folder via `folder_rules.toml`                           |
 
 ### Operating Modes
 
@@ -150,6 +151,7 @@ renAI uses a robust, layered configuration system:
 - `secrets.toml`: Sensitive API keys. **Never share this file!**
 - `providers.toml`: Register custom LLM providers or override endpoints.
 - `categories.toml`: Define your own categories for organization (`--mode organize`).
+- `folder_rules.toml`: Per-folder category restrictions and filename template overrides.
 - `eval_models.toml`: List models to test with the `evaluate` command.
 
 Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrouter.ai) | [OpenAI](https://platform.openai.com/api-keys)
@@ -573,7 +575,7 @@ renAI now utilizes modern OS-agnostic path management via the `platformdirs` lib
 
 - **Cache Data**: Managed in `%LOCALAPPDATA%\renAI\Cache` (Windows) or `~/.cache/renAI` (Linux).
 - **Log and Debug Data**: Managed in the OS user data directory.
-- **Configuration**: Managed via `settings.toml`, `secrets.toml`, and `categories.toml` in the flat OS config directory (no nested folders).
+- **Configuration**: Managed via `settings.toml`, `secrets.toml`, `categories.toml`, and `folder_rules.toml` in the flat OS config directory (no nested folders).
 
 ### Defining Custom Categories
 
@@ -594,6 +596,45 @@ categories = [
     "Diğer", "Sözlük", "Dergi"
 ]
 ```
+
+### Folder Rules (Per-Folder Categories & Filename Templates)
+
+Create `folder_rules.toml` in your user config directory (e.g., `~/.config/renAI/folder_rules.toml` on Linux) to change how renAI behaves for specific folders. Rules match by path prefix: files processed from the rule folder — or any of its subfolders — use the rule. When several rules match, the most specific (deepest) path wins.
+
+Each rule supports:
+
+| Key                | Effect                                                                                             |
+| :----------------- | :------------------------------------------------------------------------------------------------- |
+| `path`             | (required) Folder the rule applies to. `~` is expanded.                                             |
+| `categories`       | Replaces the document category list offered to the LLM for that folder.                             |
+| `image_categories` | Same, but for image files (`--rename-images`).                                                      |
+| `doc_template`     | Filename template for text-extracted documents.                                                     |
+| `vision_template`  | Filename template for vision-fallback documents.                                                    |
+| `image_template`   | Filename template for image files.                                                                  |
+
+```toml
+[[rules]]
+path = "~/Documents/Akademik"
+categories = ["Tez", "Makale", "Araştırma"]
+doc_template = "{author} -- {title} -- ({year})"
+
+[[rules]]
+path = "~/Pictures/Screenshots"
+image_categories = ["Screenshot"]
+image_template = "{description} -- ({language})"
+```
+
+**Template tokens**: every metadata field — `{title}`, `{subtitle}`, `{edition}`, `{author}`, `{year}`, `{series}`, `{volume}`, `{publisher}`, `{isbn}`, `{doi}`, `{translator}`, `{page_count}`, `{description}`, `{visual_context}`, `{exif_date}` — plus the composites `{language}` (normalized to `tr`/`en`), `{category}`, and `{series_volume}` (renders `Series #3` or `Vol. 3`).
+
+Behavior notes:
+
+- Empty fields collapse away; dangling `()`/`[]` pairs and repeated ` -- ` separators are cleaned automatically.
+- If a template produces an empty name, renAI falls back to the built-in filename pattern.
+- File types without a template in the rule keep the built-in pattern.
+- Templates with unknown tokens are ignored at load time (a warning is logged).
+- Rule categories fully replace the global list for that folder; if the model still returns an out-of-list category, it is remapped to `Other`/`Diğer` when allowed, otherwise to the first category in the rule.
+- Metadata caches are keyed per file/provider/model, not per rule: a category cached while a rule was active keeps its restricted value after the rule is removed or relaxed. Re-process the affected files with `--update-metadata` (or run `renai clear-cache`) to refresh them.
+- Rule loading is layered: the first config file that *exists* wins (user → default → package). A user file that exists but defines no valid rules disables packaged defaults; only a missing file lets the next layer be consulted.
 
 ### Command Options
 

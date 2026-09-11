@@ -1,0 +1,44 @@
+# folder_rules.default.toml -- Template for per-folder category & filename rules.
+#
+# Copy or edit as folder_rules.toml in this directory. Every entry below is
+# commented out, so no rule is active by default and behavior is unchanged.
+#
+# Each [[rules]] entry matches by path prefix: files processed from the rule
+# folder (or any of its subfolders) use the rule. When several rules match,
+# the most specific (deepest) path wins.
+#
+# Available keys per rule:
+#   path             (required) Folder the rule applies to. "~" is expanded.
+#   categories       Restrict/replace the document category list offered to
+#                    the LLM. Either a flat list (applied to every language)
+#                    or a [rules.categories] table with tr/en lists placed
+#                    directly after the [[rules]] entry it belongs to.
+#   image_categories Same as categories but for image files (--rename-images).
+#   doc_template     Filename template for text-extracted documents.
+#   vision_template  Filename template for vision-fallback documents.
+#   image_template   Filename template for image files.
+#
+# Template tokens: every metadata field -- {title} {subtitle} {edition}
+# {author} {year} {series} {volume} {publisher} {isbn} {doi} {translator}
+# {page_count} {description} {visual_context} {exif_date} -- plus the
+# composites {language} (tr/en), {category}, and {series_volume} ("Series #3"
+# or "Vol. 3"). Empty fields collapse and leftover " -- " separators are
+# cleaned automatically. A rule without a template for a file type keeps the
+# built-in filename pattern.
+#
+# [[rules]]
+# path = "~/Documents/Akademik"
+# categories = ["Tez", "Makale", "Araştırma"]
+# doc_template = "{author} -- {title} -- ({year})"
+#
+# [[rules]]
+# path = "/data/archive/comics"
+# [rules.categories]
+# tr = ["Çizgi Roman"]
+# en = ["Comic"]
+# vision_template = "{title} -- {series_volume} -- ({year})"
+#
+# [[rules]]
+# path = "~/Pictures/Screenshots"
+# image_categories = ["Screenshot"]
+# image_template = "{description} -- ({language})"

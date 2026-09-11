@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import cast
 
+from renai.config.folder_rules import FolderRule
 from renai.file_ops.operations import resolve_target_destination, safe_move_file
 from renai.filename.builder import (
     build_book_filename,
@@ -29,6 +30,7 @@ class FileOrganizer:
         file_hash: str | None = None,
         is_vision_doc: bool = False,
         dry_run: bool = False,
+        folder_rule: FolderRule | None = None,
     ) -> ProcessingResult:
         try:
             category = extract_category_from_metadata(metadata, self.max_filename_length)
@@ -40,16 +42,26 @@ class FileOrganizer:
                     file_path.suffix,
                     self.max_filename_length,
                     add_exif_date=add_exif_date,
+                    template=folder_rule.image_template if folder_rule else None,
                 )
                 category = "Images"
             elif is_vision_doc:
                 new_name = build_vision_filename(
-                    cast("BookMetadata", metadata), file_path.suffix, self.max_filename_length
+                    cast("BookMetadata", metadata),
+                    file_path.suffix,
+                    self.max_filename_length,
+                    template=folder_rule.vision_template if folder_rule else None,
                 )
             else:
                 new_name = build_book_filename(
-                    cast("BookMetadata", metadata), file_path.suffix, self.max_filename_length
+                    cast("BookMetadata", metadata),
+                    file_path.suffix,
+                    self.max_filename_length,
+                    template=folder_rule.doc_template if folder_rule else None,
                 )
+
+            if folder_rule:
+                logging.debug("Applied folder rule %s to %s", folder_rule.path, file_path.name)
 
             target_dest = resolve_target_destination(
                 file_path, new_name, category=category, mode=mode, root_dir=self.root_dir

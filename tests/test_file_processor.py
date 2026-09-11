@@ -148,7 +148,9 @@ class TestBookProcessor:
 
         assert metadata == mock_metadata
         assert is_vision is True
-        processor.visual_processor.extract_metadata_from_pdf.assert_awaited_once_with(test_file)
+        processor.visual_processor.extract_metadata_from_pdf.assert_awaited_once_with(
+            test_file, allowed_categories=None
+        )
 
     @pytest.mark.asyncio
     async def test_handle_renaming_vision_doc(self, processor, tmp_path):

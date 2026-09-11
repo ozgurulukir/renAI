@@ -55,7 +55,9 @@ class VisualProcessor:
         img.save(buffer, format="JPEG", quality=self.image_quality, optimize=True)
         return buffer.getvalue()
 
-    async def extract_metadata_from_pdf(self, file_path: Path) -> BookMetadata | None:
+    async def extract_metadata_from_pdf(
+        self, file_path: Path, allowed_categories: dict[str, list] | None = None
+    ) -> BookMetadata | None:
         """Extract metadata from PDF asynchronously by sampling pages and using vision model."""
         try:
 
@@ -76,14 +78,19 @@ class VisualProcessor:
                 return None
 
             # Pass all extracted page images together for a consolidated vision analysis
-            return await self.llm_engine.get_book_metadata_from_image(file_path, page_images)
+            return await self.llm_engine.get_book_metadata_from_image(
+                file_path, page_images, allowed_categories=allowed_categories
+            )
 
         except Exception as e:
             logging.error(f"Vision extraction failed for PDF {file_path.name}: {e}")
             return None
 
     async def extract_metadata_from_image(
-        self, file_path: Path, add_exif_date: bool = False
+        self,
+        file_path: Path,
+        add_exif_date: bool = False,
+        image_categories: dict[str, list] | None = None,
     ) -> ImageMetadata | None:
         """Extract metadata from a direct image file asynchronously."""
         try:
@@ -91,7 +98,9 @@ class VisualProcessor:
             if not self.llm_engine:
                 return None
 
-            metadata = await self.llm_engine.get_image_metadata(file_path, image_bytes)
+            metadata = await self.llm_engine.get_image_metadata(
+                file_path, image_bytes, image_categories=image_categories
+            )
 
             if metadata and add_exif_date:
                 exif_date = await self.get_exif_date_async(file_path)

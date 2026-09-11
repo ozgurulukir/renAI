@@ -95,7 +95,7 @@ class TestVisualProcessor:
                     result = await visual_processor.extract_metadata_from_pdf(test_file)
                     assert result.title == "Vision Book"
                     visual_processor.llm_engine.get_book_metadata_from_image.assert_awaited_once_with(
-                        test_file, [b"image bytes"]
+                        test_file, [b"image bytes"], allowed_categories=None
                     )
 
     @pytest.mark.asyncio

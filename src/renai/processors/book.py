@@ -10,15 +10,50 @@ from typing import cast
 
 from ..cache.manager import get_metadata_cache_path
 from ..cache.middleware import with_metadata_cache
+from ..config.folder_rules import (
+    FolderRule,
+    get_folder_rule_for,
+    resolve_allowed_bucket,
+    resolve_fallback_category,
+)
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
 from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
-from ..models.schemas import BookMetadata, ImageMetadata, ProcessingConfig
+from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata, ProcessingConfig
 from ..settings import CACHE_DIR, get_image_extensions
 from ..utils import get_file_hash
 from .text_extractor import FallbackMode, TextExtractor
 from .visual import VisualProcessor
+
+
+def _clamp_category_to_rule(metadata: BaseMetadata, folder_rule: FolderRule | None) -> None:
+    """Force metadata.category into a restricted folder-rule category list.
+
+    Mirrors the LLM fallback semantics via the shared resolvers in
+    ``config.folder_rules``. This also covers cache hits, which bypass the
+    per-call category restriction.
+    """
+    if folder_rule is None:
+        return
+    allowed_dict = (
+        folder_rule.image_categories
+        if isinstance(metadata, ImageMetadata)
+        else folder_rule.categories
+    )
+    if not allowed_dict:
+        return
+
+    bucket = resolve_allowed_bucket(allowed_dict, metadata.language)
+    if not bucket or metadata.category in bucket:
+        return
+
+    metadata.category = resolve_fallback_category(metadata.language, allowed_dict)
+    logging.debug(
+        "Folder rule %s: clamped category to '%s'",
+        folder_rule.path,
+        metadata.category,
+    )
 
 
 class BookProcessor:
@@ -137,17 +172,19 @@ class BookProcessor:
         update_metadata: bool,  # noqa: ARG002
         add_exif_date: bool,
         file_hash: str | None = None,
+        doc_categories: dict[str, list] | None = None,
+        image_categories: dict[str, list] | None = None,
     ) -> tuple[BookMetadata | ImageMetadata | None, bool]:
         """Resolve metadata by executing extraction engines (caching handled by middleware)."""
         is_image = file_path.suffix.lower() in get_image_extensions()
         if is_image and rename_images:
             metadata = await self.visual_processor.extract_metadata_from_image(
-                file_path, add_exif_date=add_exif_date
+                file_path, add_exif_date=add_exif_date, image_categories=image_categories
             )
             return metadata, False
 
         metadata, is_vision_doc = await self._extract_document_metadata(
-            file_path, fallback_mode, file_hash
+            file_path, fallback_mode, file_hash, doc_categories=doc_categories
         )
         return metadata, is_vision_doc
 
@@ -172,6 +209,7 @@ class BookProcessor:
                     error="Symlink skipped",
                 )
 
+            folder_rule = get_folder_rule_for(file_path)
             file_hash = await asyncio.to_thread(get_file_hash, file_path)
             cache_path, model_class, use_vision = self._get_cache_parameters(
                 file_path, file_hash, fallback_mode, rename_images
@@ -187,6 +225,8 @@ class BookProcessor:
                 update_metadata=update_metadata,
                 add_exif_date=add_exif_date,
                 file_hash=file_hash,
+                doc_categories=folder_rule.categories if folder_rule else None,
+                image_categories=folder_rule.image_categories if folder_rule else None,
             )
 
             if not metadata:
@@ -196,6 +236,10 @@ class BookProcessor:
                     original_name=file_path.name,
                     error="Extraction failed (No metadata generated)",
                 )
+
+            # Cache hits bypass the per-call LLM category restriction, so the
+            # rule is enforced on the resolved metadata unconditionally.
+            _clamp_category_to_rule(cast("BaseMetadata", metadata), folder_rule)
 
             if mode in ("rename", "organize"):
                 if not isinstance(metadata, (BookMetadata, ImageMetadata)):
@@ -218,6 +262,7 @@ class BookProcessor:
                     file_hash=file_hash,
                     is_vision_doc=is_vision_doc,
                     dry_run=dry_run,
+                    folder_rule=folder_rule,
                 )
             # evaluate mode
             return ProcessingResult(
@@ -241,13 +286,19 @@ class BookProcessor:
             )
 
     async def _extract_document_metadata(
-        self, file_path: Path, fallback_mode: FallbackMode, file_hash: str | None = None
+        self,
+        file_path: Path,
+        fallback_mode: FallbackMode,
+        file_hash: str | None = None,
+        doc_categories: dict[str, list] | None = None,
     ) -> tuple[BookMetadata | None, bool]:
         """Internal helper to extract document metadata using text first, then vision."""
         text = await self.text_extractor.extract(file_path, file_hash=file_hash)
 
         if self.llm_engine and text and text.strip():
-            metadata = await self.llm_engine.get_book_metadata(text)
+            metadata = await self.llm_engine.get_book_metadata(
+                text, allowed_categories=doc_categories
+            )
             if metadata:
                 return metadata, False
 
@@ -262,7 +313,9 @@ class BookProcessor:
                 file_path.name,
             )
             try:
-                metadata = await self.visual_processor.extract_metadata_from_pdf(file_path)
+                metadata = await self.visual_processor.extract_metadata_from_pdf(
+                    file_path, allowed_categories=doc_categories
+                )
                 if metadata:
                     return metadata, True
             except Exception as e:
