@@ -267,7 +267,7 @@ python -m build
 
 - **pytest** with `asyncio_mode = "auto"` (no explicit `@pytest.mark.asyncio` needed)
 - **pytest-cov** for coverage
-- Tests run against `src/` (configured in both `pytest.ini` and `pyproject.toml`)
+- Tests run against `src/` (single pytest config in `pyproject.toml` `[tool.pytest.ini_options]`)
 
 ### Test Structure
 
