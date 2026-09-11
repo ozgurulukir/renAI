@@ -8,6 +8,8 @@ from .builder import (
     build_vision_filename,
     extract_category_from_metadata,
     is_filename_changed,
+    render_filename_template,
+    validate_filename_template,
 )
 
 __all__ = [
@@ -16,4 +18,6 @@ __all__ = [
     "build_vision_filename",
     "extract_category_from_metadata",
     "is_filename_changed",
+    "render_filename_template",
+    "validate_filename_template",
 ]

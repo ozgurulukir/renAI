@@ -7,11 +7,60 @@ filename length is threaded in explicitly as ``max_filename_length``; this
 module has no dependency on the global ``app_settings`` singleton.
 """
 
+import logging
+import re
 from pathlib import Path
 from typing import Any
 
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
 from ..utils import sanitize_filename
+
+_TEMPLATE_TOKEN_RE = re.compile(r"\{(\w+)\}")
+# Composite tokens rendered on top of the raw metadata fields.
+_COMPOSITE_TOKENS = frozenset({"series_volume"})
+
+
+class _EmptyTokenDefaults(dict):
+    """``format_map`` mapping that renders missing/unknown tokens as empty."""
+
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
+def _known_template_tokens(model_class: type[BaseMetadata]) -> frozenset[str]:
+    """Template tokens derivable from the metadata SSoT plus composites."""
+    return frozenset(set(model_class.model_fields) | _COMPOSITE_TOKENS)
+
+
+def validate_filename_template(template: str, model_class: type[BaseMetadata]) -> str | None:
+    """Return the template if it renders against ``model_class`` fields, else None.
+
+    Rejects unknown tokens and malformed braces (which would otherwise crash
+    ``render_filename_template`` at per-file processing time).
+    """
+    unknown = set(_TEMPLATE_TOKEN_RE.findall(template)) - _known_template_tokens(model_class)
+    if unknown:
+        logging.warning(
+            "Ignoring template %r: unknown token(s): %s", template, ", ".join(sorted(unknown))
+        )
+        return None
+    try:
+        template.format_map(_EmptyTokenDefaults())
+    except (ValueError, IndexError):
+        logging.warning("Ignoring template %r: malformed braces", template)
+        return None
+    return template
+
+
+def _series_volume_label(series: str, volume: str) -> str:
+    """Composite label shared by the built-in patterns and templates."""
+    if series and volume:
+        return f"{series} #{volume}"
+    if series:
+        return series
+    if volume:
+        return f"Vol. {volume}"
+    return ""
 
 
 def _normalize_string(value: Any, default: str = "") -> Any:
@@ -31,18 +80,53 @@ def _normalize_string(value: Any, default: str = "") -> Any:
     return value
 
 
-def build_book_filename(
-    book_data: BookMetadata,
+def _template_values(metadata: BaseMetadata) -> dict[str, str]:
+    """Flatten a metadata model into string template values plus composites."""
+    values: dict[str, str] = {}
+    for field in type(metadata).model_fields:
+        raw = getattr(metadata, field)
+        if field in ("year", "page_count"):
+            values[field] = str(raw) if raw else ""
+            continue
+        normalized = _normalize_string(raw)
+        values[field] = str(normalized) if normalized else ""
+
+    values["language"] = "tr" if values.get("language", "").lower() == "tr" else "en"
+    values["series_volume"] = _series_volume_label(
+        values.get("series", ""), values.get("volume", "")
+    )
+    return values
+
+
+def render_filename_template(
+    template: str,
+    metadata: BaseMetadata,
     original_extension: str,
     max_filename_length: int,
-) -> str:
-    """
-    Build a filename from book metadata for document processing.
-    Uses the strict SSoT BookMetadata model.
+) -> str | None:
+    """Render a user-defined filename template into a sanitized filename.
 
-    Format: Title -- Subtitle -- Series #Vol -- 'Edition' -- Author -- (Year).ext
-    isbn, publisher, doi, translator, page_count are stored in metadata only, not filenames.
+    Empty metadata fields collapse away; dangling ``()``/``[]`` pairs and
+    repeated `` -- `` separators are cleaned up. Returns ``None`` when nothing
+    usable remains so callers can fall back to the built-in pattern.
     """
+    values = _template_values(metadata)
+    base = template.format_map(_EmptyTokenDefaults(values))
+    base = re.sub(r"\(\s*\)", "", base)
+    base = re.sub(r"\[\s*\]", "", base)
+    base = re.sub(r"\s*--(?:\s*--)+", " -- ", base)
+    base = re.sub(r"^\s*--\s*", "", base)
+    base = re.sub(r"\s*--\s*$", "", base)
+    base = re.sub(r"\s{2,}", " ", base).strip()
+
+    if not base:
+        return None
+    sanitized = sanitize_filename(base, max_filename_length)
+    return f"{sanitized}{original_extension}" if sanitized else None
+
+
+def _book_name_parts(book_data: BookMetadata) -> list[str]:
+    """Build the built-in book filename components (no template)."""
     title = _normalize_string(book_data.title)
     subtitle = _normalize_string(book_data.subtitle)
     edition = _normalize_string(book_data.edition)
@@ -57,11 +141,9 @@ def build_book_filename(
         name_parts.append(title)
     if subtitle:
         name_parts.append(subtitle)
-    if series:
-        series_label = f"{series} #{volume}" if volume else series
+    series_label = _series_volume_label(series, volume)
+    if series_label:
         name_parts.append(series_label)
-    elif volume:
-        name_parts.append(f"Vol. {volume}")
     if edition:
         name_parts.append(f"'{edition}'")
     if author:
@@ -78,6 +160,33 @@ def build_book_filename(
         except (ValueError, TypeError):
             pass
 
+    return name_parts
+
+
+def build_book_filename(
+    book_data: BookMetadata,
+    original_extension: str,
+    max_filename_length: int,
+    template: str | None = None,
+) -> str:
+    """
+    Build a filename from book metadata for document processing.
+    Uses the strict SSoT BookMetadata model.
+
+    Format: Title -- Subtitle -- Series #Vol -- 'Edition' -- Author -- (Year).ext
+    isbn, publisher, doi, translator, page_count are stored in metadata only, not filenames.
+
+    When ``template`` is given, it is rendered instead of the built-in pattern
+    (falling back to it if the template yields nothing usable).
+    """
+    if template:
+        rendered = render_filename_template(
+            template, book_data, original_extension, max_filename_length
+        )
+        if rendered:
+            return rendered
+
+    name_parts = _book_name_parts(book_data)
     if not name_parts:
         return f"Unknown_Document{original_extension}"
 
@@ -91,13 +200,22 @@ def build_image_filename(
     max_filename_length: int,
     exif_date: str | None = None,
     add_exif_date: bool = False,
+    template: str | None = None,
 ) -> str:
     """
     Build a filename from image metadata.
     Uses the strict SSoT ImageMetadata model.
 
     Format: Description -- [Date] -- (Language).ext
+    A ``template`` replaces the whole pattern, including the (Language) suffix.
     """
+    if template:
+        rendered = render_filename_template(
+            template, image_data, original_extension, max_filename_length
+        )
+        if rendered:
+            return rendered
+
     description = _normalize_string(image_data.description)
     language = _normalize_string(getattr(image_data, "language", "en"))
     visual_context = _normalize_string(image_data.visual_context)
@@ -145,11 +263,21 @@ def build_vision_filename(
     book_data: BookMetadata,
     original_extension: str,
     max_filename_length: int,
+    template: str | None = None,
 ) -> str:
     """
     Build a filename from vision-processed metadata for PDFs.
     Uses the strict SSoT BookMetadata model.
+
+    A ``template`` replaces the built-in pattern (with fallback to it).
     """
+    if template:
+        rendered = render_filename_template(
+            template, book_data, original_extension, max_filename_length
+        )
+        if rendered:
+            return rendered
+
     title = _normalize_string(book_data.title)
     author = _normalize_string(book_data.author)
     year = str(book_data.year or "")  # raw int|None -> str, do NOT go through _normalize_string
@@ -161,8 +289,8 @@ def build_vision_filename(
 
     if title:
         name_parts.append(title)
-    if series:
-        series_label = f"{series} #{volume}" if volume else series
+    series_label = _series_volume_label(series, volume)
+    if series_label:
         name_parts.append(series_label)
     if author:
         name_parts.append(author)

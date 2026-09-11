@@ -24,6 +24,8 @@ from renai.config.constants import (
     EVAL_MODELS_DEFAULT_FILE,
     EVAL_MODELS_USER_FILE,
     FACTORY_DEFAULTS,
+    FOLDER_RULES_DEFAULT_FILE,
+    FOLDER_RULES_USER_FILE,
     IMAGE_CATEGORIES,
     PACKAGE_CONFIG_DIR,
     PROVIDERS_USER_FILE,
@@ -38,6 +40,11 @@ from renai.config.constants import (
     get_tesseract_path,
 )
 from renai.config.directories import initialize_directories
+from renai.config.folder_rules import (
+    FolderRule,
+    get_folder_rule_for,
+    load_folder_rules,
+)
 from renai.config.providers import (
     get_allowed_categories,
     get_api_key,
@@ -85,6 +92,8 @@ __all__ = [
     "EVAL_MODELS_USER_FILE",
     # Constants and helpers
     "FACTORY_DEFAULTS",
+    "FOLDER_RULES_DEFAULT_FILE",
+    "FOLDER_RULES_USER_FILE",
     "IMAGE_CATEGORIES",
     "PACKAGE_CONFIG_DIR",
     "PROVIDERS",  # pyright: ignore[reportUnsupportedDunderAll]
@@ -96,6 +105,7 @@ __all__ = [
     "TESSERACT_PATH",
     "AppSettings",
     # Settings classes
+    "FolderRule",
     "ProviderConfig",
     "ProviderSettings",
     "app_settings",
@@ -106,6 +116,7 @@ __all__ = [
     "get_effective_model",
     "get_effective_vision_model",
     "get_effective_vision_provider",
+    "get_folder_rule_for",
     "get_image_categories",
     "get_image_extensions",
     "get_max_text_read_size",
@@ -117,6 +128,7 @@ __all__ = [
     "load_all_eval_models",
     "load_categories_from_file",
     "load_eval_models",
+    "load_folder_rules",
     "load_providers_config",
     "provider_settings",
 ]

@@ -9,6 +9,7 @@ from typing import Any, TypeVar, cast
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
+from ..config.folder_rules import resolve_allowed_bucket, resolve_fallback_category
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
 from ..settings import app_settings, get_allowed_categories, get_image_categories
 from ..utils.rate_limiter import AsyncRateLimiter
@@ -67,14 +68,21 @@ class LLMEngine:
         return f"| **Turkish (tr)** | {tr_cats} |\n| **English/Other (en)** | {en_cats} |"
 
     def _get_system_role(
-        self, template_name: str, model_class: type[BaseMetadata], is_image_mode: bool = False
+        self,
+        template_name: str,
+        model_class: type[BaseMetadata],
+        is_image_mode: bool = False,
+        categories: dict[str, list] | None = None,
     ) -> str:
-        """Compose a full system role prompt using templates and schema injection."""
+        """Compose a full system role prompt using templates and schema injection.
+
+        ``categories`` replaces the engine-level category table (per-folder rules).
+        """
         base = self._templates.get("system_base", "")
         template = self._templates.get(template_name, "")
 
         # Determine which categories to inject
-        cats = get_image_categories() if is_image_mode else self.allowed_categories
+        cats = categories or (get_image_categories() if is_image_mode else self.allowed_categories)
         category_table = self._format_category_table(cats)
 
         # Generate JSON schema example from Pydantic model
@@ -99,27 +107,36 @@ class LLMEngine:
             json_schema=json.dumps(example_json, indent=4, ensure_ascii=False),
         )
 
-    async def get_book_metadata(self, text: str) -> BookMetadata | None:
-        """Generate book metadata from text using SSoT models and modular prompts."""
+    async def get_book_metadata(
+        self, text: str, allowed_categories: dict[str, list] | None = None
+    ) -> BookMetadata | None:
+        """Generate book metadata from text using SSoT models and modular prompts.
+
+        ``allowed_categories`` (per-folder rule) replaces the engine-wide list
+        in both the prompt and category validation.
+        """
         if not self.client.api_key:
             logging.error(f"API Key for {self.provider} not found.")
             return None
 
         prompt = self._build_document_prompt(text)
-        system_role = self._get_system_role("book_extractor", BookMetadata)
+        system_role = self._get_system_role(
+            "book_extractor", BookMetadata, categories=allowed_categories
+        )
 
         # 1. Initial Extraction
         initial_model = await self._call_llm(
             prompt=prompt,
             system_role=system_role,
             model_class=BookMetadata,
+            allowed_categories=allowed_categories,
         )
 
         if not initial_model:
             return None
 
         # 2. Refinement Pass
-        return await self._refine_metadata(initial_model)
+        return await self._refine_metadata(initial_model, allowed_categories)
 
     @staticmethod
     def _build_document_prompt(text: str) -> str:
@@ -135,11 +152,15 @@ class LLMEngine:
             )
         return f"<document_content>\n{text}\n</document_content>"
 
-    async def _refine_metadata(self, initial_model: BookMetadata) -> BookMetadata:
+    async def _refine_metadata(
+        self, initial_model: BookMetadata, allowed_categories: dict[str, list] | None = None
+    ) -> BookMetadata:
         """Refine extracted metadata using the editor persona and SSoT schema."""
         logging.debug("Refining metadata using SSoT-based validation pass...")
 
-        system_role = self._get_system_role("refinement", BookMetadata)
+        system_role = self._get_system_role(
+            "refinement", BookMetadata, categories=allowed_categories
+        )
         refinement_prompt = (
             f"<initial_metadata>\n"
             f"{initial_model.model_dump_json(ensure_ascii=False)}\n"
@@ -150,12 +171,16 @@ class LLMEngine:
             prompt=refinement_prompt,
             system_role=system_role,
             model_class=BookMetadata,
+            allowed_categories=allowed_categories,
         )
 
         return refined_model if refined_model else initial_model
 
     async def get_book_metadata_from_image(
-        self, image_path: Path, image_data: bytes | list[bytes]
+        self,
+        image_path: Path,
+        image_data: bytes | list[bytes],
+        allowed_categories: dict[str, list] | None = None,
     ) -> BookMetadata | None:
         """Extract book metadata via vision using modular prompts."""
         if not self.client.api_key:
@@ -170,24 +195,32 @@ class LLMEngine:
             else:
                 image_base64 = base64.b64encode(image_data).decode("utf-8")
 
-            system_role = self._get_system_role("book_extractor", BookMetadata)
+            system_role = self._get_system_role(
+                "book_extractor", BookMetadata, categories=allowed_categories
+            )
 
             initial_model = await self._call_vision_llm(
                 image_base64=image_base64,
                 system_role=system_role,
                 file_name=image_path.name,
                 model_class=BookMetadata,
+                allowed_categories=allowed_categories,
             )
 
             if not initial_model:
                 return None
 
-            return await self._refine_metadata(initial_model)
+            return await self._refine_metadata(initial_model, allowed_categories)
         except Exception as e:
             logging.error(f"Vision book extraction failed for {image_path.name}: {e}")
             return None
 
-    async def get_image_metadata(self, image_path: Path, image_data: bytes) -> ImageMetadata | None:
+    async def get_image_metadata(
+        self,
+        image_path: Path,
+        image_data: bytes,
+        image_categories: dict[str, list] | None = None,
+    ) -> ImageMetadata | None:
         """Extract image metadata for renaming using image analyzer SSoT."""
         if not self.client.api_key:
             logging.error(f"API Key for {self.provider} not found.")
@@ -195,13 +228,19 @@ class LLMEngine:
 
         try:
             image_base64 = base64.b64encode(image_data).decode("utf-8")
-            system_role = self._get_system_role("image_analyzer", ImageMetadata, is_image_mode=True)
+            system_role = self._get_system_role(
+                "image_analyzer",
+                ImageMetadata,
+                is_image_mode=True,
+                categories=image_categories,
+            )
 
             return await self._call_vision_llm(
                 image_base64=image_base64,
                 system_role=system_role,
                 file_name=image_path.name,
                 model_class=ImageMetadata,
+                allowed_categories=image_categories,
             )
         except Exception as e:
             logging.error(f"Vision image extraction failed for {image_path.name}: {e}")
@@ -213,6 +252,7 @@ class LLMEngine:
         system_role: str,
         file_name: str,
         model_class: type[T],
+        allowed_categories: dict[str, list] | None = None,
     ) -> T | None:
         """Helper for vision calls with type-safe model validation."""
         image_format = Path(file_name).suffix.lower().replace(".", "") or "jpeg"
@@ -246,15 +286,25 @@ class LLMEngine:
                 },
             ],
         )
-        return await self._generate_json_completion(messages, model_class, file_name)
+        return await self._generate_json_completion(
+            messages, model_class, file_name, allowed_categories=allowed_categories
+        )
 
-    async def _call_llm(self, prompt: str, system_role: str, model_class: type[T]) -> T | None:
+    async def _call_llm(
+        self,
+        prompt: str,
+        system_role: str,
+        model_class: type[T],
+        allowed_categories: dict[str, list] | None = None,
+    ) -> T | None:
         """Helper for text calls with type-safe model validation."""
         messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": system_role},
             {"role": "user", "content": prompt},
         ]
-        return await self._generate_json_completion(messages, model_class)
+        return await self._generate_json_completion(
+            messages, model_class, allowed_categories=allowed_categories
+        )
 
     def _prepare_completion_headers(self) -> dict[str, str] | None:
         """Prepare extra headers for the API request if necessary."""
@@ -296,6 +346,7 @@ class LLMEngine:
         raw_data: dict[str, Any],
         model_class: type[T],
         context_name: str,
+        categories_override: dict[str, list] | None = None,
     ) -> tuple[T | None, list[str] | None]:
         """Validate parsed data against Pydantic model and check category constraints."""
         try:
@@ -309,10 +360,11 @@ class LLMEngine:
         # Category & Language SSoT Alignment
         lang = validated_model.language.lower()
         is_image = isinstance(validated_model, ImageMetadata)
-        allowed_dict = get_image_categories() if is_image else self.allowed_categories
+        allowed_dict = categories_override or (
+            get_image_categories() if is_image else self.allowed_categories
+        )
 
-        target_lang = lang if lang in allowed_dict else "en"
-        allowed = allowed_dict.get(target_lang, allowed_dict.get("en", []))
+        allowed = resolve_allowed_bucket(allowed_dict, lang)
 
         if validated_model.category in allowed:
             return validated_model, None
@@ -323,15 +375,25 @@ class LLMEngine:
         self,
         last_parsed_data: dict[str, Any] | None,
         model_class: type[T],
+        categories_override: dict[str, list] | None = None,
     ) -> T | None:
-        """Fall back to forced 'Other' category if validation initially failed."""
+        """Fall back to a forced category if validation initially failed.
+
+        With a per-folder restriction, the fallback category is resolved from
+        the restricted list (preferring "Other"/"Diğer", else the first entry).
+        """
         if not last_parsed_data:
             return None
         try:
             model_fields = model_class.model_fields.keys()
             filtered_data = {k: v for k, v in last_parsed_data.items() if k in model_fields}
-            lang = filtered_data.get("language", "en").lower()
-            filtered_data["category"] = "Diğer" if lang == "tr" else "Other"
+            if categories_override:
+                filtered_data["category"] = resolve_fallback_category(
+                    filtered_data.get("language", "en"), categories_override
+                )
+            else:
+                lang = filtered_data.get("language", "en").lower()
+                filtered_data["category"] = "Diğer" if lang == "tr" else "Other"
             return model_class(**filtered_data)
         except Exception:
             return None
@@ -389,6 +451,7 @@ class LLMEngine:
         messages: list[ChatCompletionMessageParam],
         model_class: type[T],
         context_name: str = "document",
+        allowed_categories: dict[str, list] | None = None,
     ) -> T | None:
         """Unified LLM caller returning typed Pydantic models with SSoT enforcement."""
         headers = self._prepare_completion_headers()
@@ -417,7 +480,7 @@ class LLMEngine:
                 last_parsed_data = raw_data
 
                 validated_model, allowed = self._validate_and_align_metadata(
-                    raw_data, model_class, context_name
+                    raw_data, model_class, context_name, categories_override=allowed_categories
                 )
                 if validated_model:
                     return validated_model
@@ -439,5 +502,7 @@ class LLMEngine:
             except Exception as e:
                 logging.error(f"Failed to generate JSON completion for {context_name}: {e}")
 
-        # Final Fallback to "Other" if JSON exists
-        return self._attempt_final_fallback(last_parsed_data, model_class)
+        # Final Fallback to a forced category if JSON exists
+        return self._attempt_final_fallback(
+            last_parsed_data, model_class, categories_override=allowed_categories
+        )

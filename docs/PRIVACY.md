@@ -38,6 +38,8 @@ When using cloud LLM providers (DeepInfra, OpenRouter, OpenAI), the following da
 | **File Content** | Full document binary/source | ❌ No |
 | **Category List** | Your custom categories from `categories.toml` | ✅ Yes (in prompt) |
 
+> **Note on `folder_rules.toml`:** Rule definitions (including local folder paths) are stored only in your local config file and are **never** transmitted. Only the category list from a matching rule reaches the LLM prompt, same as `categories.toml`.
+
 ### What is NOT Sent
 
 - Original document binary files (except when sampled for Vision)

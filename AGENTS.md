@@ -70,8 +70,9 @@ src/renai/                  # Main package
     settings.py             # AppSettings, ProviderSettings (pydantic-settings + TOML)
     constants.py            # App dirs, categories, helper functions
     providers.py            # Provider config loading, category/model helpers
+    folder_rules.py         # FolderRule model, layered rule loading, path-prefix matching
     directories.py          # Directory initialization
-    *.toml                  # Default config files (settings, categories, eval_models)
+    *.toml                  # Default config files (settings, categories, eval_models, folder_rules)
   engines/                  # Core processing engines
     llm.py                  # LLMEngine (OpenAI-compatible async client + prompt templates)
     ocr.py                  # OCREngine (Tesseract + OpenCV preprocessing)
@@ -188,6 +189,7 @@ python -m build
 - **Vision Fallback Pages**: Configurable `vision_max_pages` (default: 3, range 1-10) to limit sampled pages for PDF vision extraction.
 - **Lazy loading**: Heavy attributes (`PROVIDERS`, `EVAL_MODELS`) use PEP 562 `__getattr__`
 - **Backward compat**: `renai.settings` re-exports from `renai.config` -- new code should import from `renai.config`
+- **Folder Rules**: `folder_rules.toml` (user) / `folder_rules.default.toml` (package) define per-folder rules loaded by `config/folder_rules.py` (first-found-wins, lru_cache + `cache_clear()` in tests). Rules match by path prefix (subfolders inherit; deepest path wins). A rule's `categories`/`image_categories` fully replace the global list for that folder (threaded per-call through `LLMEngine`), and `doc_template`/`vision_template`/`image_template` override the built-in filename patterns via `render_filename_template` in `filename/builder.py`. `BookProcessor` clamps cache-hit metadata categories to the rule list.
 
 ### SSoT (Single Source of Truth)
 
@@ -238,6 +240,7 @@ python -m build
 | `src/renai/messages/`                  | Centralized user-facing messages (cli, orchestrator, setup, errors)                                            |
 | `src/renai/config/settings.py`         | `AppSettings`, `ProviderSettings` (pydantic-settings)                                                          |
 | `src/renai/config/constants.py`        | App directories, categories, helper functions                                                                  |
+| `src/renai/config/folder_rules.py`     | `FolderRule` model + per-folder rule loading/matching (folder_rules.toml)                                       |
 | `src/renai/filename/builder.py`        | Filename generation from metadata                                                                              |
 | `src/renai/cache/manager.py`           | Two-layer cache (text + metadata)                                                                              |
 | `src/renai/exceptions.py`              | Exception hierarchy                                                                                            |
