@@ -633,6 +633,8 @@ Behavior notes:
 - File types without a template in the rule keep the built-in pattern.
 - Templates with unknown tokens are ignored at load time (a warning is logged).
 - Rule categories fully replace the global list for that folder; if the model still returns an out-of-list category, it is remapped to `Other`/`Diğer` when allowed, otherwise to the first category in the rule.
+- Metadata caches are keyed per file/provider/model, not per rule: a category cached while a rule was active keeps its restricted value after the rule is removed or relaxed. Re-process the affected files with `--update-metadata` (or run `renai clear-cache`) to refresh them.
+- Rule loading is layered: the first config file that *exists* wins (user → default → package). A user file that exists but defines no valid rules disables packaged defaults; only a missing file lets the next layer be consulted.
 
 ### Command Options
 

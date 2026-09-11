@@ -11,6 +11,7 @@ Layered loading (first one found wins, no merging):
 """
 
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -153,7 +154,13 @@ def _parse_rule(raw: Any, source: str, index: int) -> FolderRule | None:
 
 
 def _try_load_rules(path: Path, label: str) -> tuple[FolderRule, ...] | None:
-    """Try loading rules from a single TOML file; None means "not usable"."""
+    """Load rules from one TOML layer.
+
+    ``None`` means the file does not exist (the next layer is consulted). An
+    existing file always wins its layer: parse errors, a missing ``rules``
+    table, or zero valid rules all yield ``()``, so an empty or broken user
+    config disables packaged defaults instead of falling through to them.
+    """
     if not path.exists():
         return None
     try:
@@ -161,17 +168,16 @@ def _try_load_rules(path: Path, label: str) -> tuple[FolderRule, ...] | None:
             data = tomllib.load(f)
     except Exception as e:
         logging.warning("Could not load %s folder rules from %s: %s", label, path, e)
-        return None
+        return ()
 
     raw_rules = data.get("rules")
     if not isinstance(raw_rules, list):
-        return None
-    parsed = tuple(
+        return ()
+    return tuple(
         rule
         for index, raw in enumerate(raw_rules)
         if (rule := _parse_rule(raw, label, index)) is not None
     )
-    return parsed or None
 
 
 @lru_cache(maxsize=1)
@@ -182,6 +188,9 @@ def load_folder_rules() -> tuple[FolderRule, ...]:
     1. User config (FOLDER_RULES_USER_FILE)
     2. Physical default (FOLDER_RULES_DEFAULT_FILE)
     3. Package-internal default
+
+    A file that exists but defines no valid rules wins its layer with no rules;
+    only a missing file lets the next layer be consulted.
     """
     for path, label in (
         (FOLDER_RULES_USER_FILE, "user"),
@@ -194,6 +203,18 @@ def load_folder_rules() -> tuple[FolderRule, ...]:
     return ()
 
 
+def _is_path_prefix(child: Path, parent: Path) -> bool:
+    """Prefix containment between paths, folding case where the platform does.
+
+    Uses ``os.path.normcase`` so rule paths written with different letter case
+    still match on case-insensitive filesystems (Windows) while POSIX matching
+    stays exact.
+    """
+    child_norm = os.path.normcase(str(child))
+    parent_norm = os.path.normcase(str(parent))
+    return child_norm == parent_norm or child_norm.startswith(parent_norm.rstrip(os.sep) + os.sep)
+
+
 def get_folder_rule_for(file_path: Path) -> FolderRule | None:
     """Resolve the most specific rule whose path is a prefix of the file's folder."""
     rules = load_folder_rules()
@@ -203,7 +224,7 @@ def get_folder_rule_for(file_path: Path) -> FolderRule | None:
     folder = file_path.parent.resolve()
     best: FolderRule | None = None
     for rule in rules:
-        if folder.is_relative_to(rule.path) and (
+        if _is_path_prefix(folder, rule.path) and (
             best is None or rule.specificity > best.specificity
         ):
             best = rule

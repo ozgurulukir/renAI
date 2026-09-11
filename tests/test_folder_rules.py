@@ -10,6 +10,7 @@ Covers:
 """
 
 import logging
+import os
 from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -73,7 +74,8 @@ class TestLoadFolderRules:
         with _patched_layers(tmp_path / "folder_rules.toml"):
             assert load_folder_rules() == ()
 
-    def test_invalid_toml_falls_through_to_package(self, tmp_path, caplog):
+    def test_invalid_toml_user_layer_wins_with_no_rules(self, tmp_path, caplog):
+        """A broken user file wins its layer with zero rules; defaults are not consulted."""
         user = tmp_path / "folder_rules.toml"
         user.write_text("not [valid toml", encoding="utf-8")
         pkg_dir = tmp_path / "pkg"
@@ -82,10 +84,17 @@ class TestLoadFolderRules:
             '[[rules]]\npath = "/data/pkg"\ncategories = ["Pkg"]\n', encoding="utf-8"
         )
         with _patched_layers(user, package=pkg_dir), caplog.at_level(logging.WARNING):
-            rules = load_folder_rules()
-        assert len(rules) == 1
-        assert rules[0].path == Path("/data/pkg")
+            assert load_folder_rules() == ()
         assert any("folder rules" in record.message.lower() for record in caplog.records)
+
+    def test_empty_user_file_disables_package_rules(self, tmp_path):
+        """An existing user file with no [[rules]] entries wins with zero rules."""
+        user = _write_rules_file(tmp_path, "# deliberately empty\n")
+        pkg = _write_rules_file(
+            tmp_path, '[[rules]]\npath = "/data/pkg"\ncategories = ["Pkg"]\n', "default.toml"
+        )
+        with _patched_layers(user, package=pkg):
+            assert load_folder_rules() == ()
 
     def test_rule_without_path_is_skipped(self, tmp_path, caplog):
         user = _write_rules_file(tmp_path, '[[rules]]\ncategories = ["Orphan"]\n')
@@ -227,6 +236,38 @@ categories = ["Deep"]
         with _patched_layers(user):
             assert get_folder_rule_for(tmp_path / "book.pdf") is None
 
+    def test_differing_case_matches_on_folding_platforms(self, tmp_path):
+        """Different-case rule paths match only where os.path.normcase folds case."""
+        base = tmp_path / "Base"
+        user = _write_rules_file(tmp_path, f'[[rules]]\npath = "{base}"\ncategories = ["Folded"]\n')
+        with _patched_layers(user):
+            rule = get_folder_rule_for(tmp_path / "base" / "x.pdf")
+        folds = os.path.normcase("A") == os.path.normcase("a")
+        if folds:
+            assert rule is not None
+            assert "Folded" in rule.categories["en"]
+        else:
+            assert rule is None
+
+
+class TestIsPathPrefix:
+    def test_exact_self_match(self):
+        assert fr._is_path_prefix(Path("/data/x"), Path("/data/x")) is True
+
+    def test_nested_prefix(self):
+        assert fr._is_path_prefix(Path("/data/x/y"), Path("/data/x")) is True
+
+    def test_sibling_is_not_prefix(self):
+        assert fr._is_path_prefix(Path("/data/xy"), Path("/data/x")) is False
+        assert fr._is_path_prefix(Path("/other/x/y"), Path("/data/x")) is False
+
+    def test_root_prefix_matches_all(self):
+        assert fr._is_path_prefix(Path("/data/x"), Path("/")) is True
+
+    def test_case_folding_follows_normcase(self):
+        folds = os.path.normcase("A") == os.path.normcase("a")
+        assert fr._is_path_prefix(Path("/Data/X/y"), Path("/data/x")) is folds
+
 
 # ---------------------------------------------------------------------------
 # Template rendering
@@ -278,6 +319,19 @@ class TestRenderFilenameTemplate:
     def test_image_without_template_keeps_builtin_suffix(self):
         md = ImageMetadata(language="tr", category="Fotoğraf", description="Kedi")
         assert build_image_filename(md, ".jpg", 200) == "Kedi -- (tr).jpg"
+
+    def test_exif_date_token_renders_and_collapses(self):
+        dated = ImageMetadata(
+            language="en", category="Screenshot", description="Sunset", exif_date="2024-07-15"
+        )
+        result = build_image_filename(dated, ".jpg", 200, template="{description} -- [{exif_date}]")
+        assert result == "Sunset -- [2024-07-15].jpg"
+
+        undated = ImageMetadata(language="en", category="Screenshot", description="Sunset")
+        result = build_image_filename(
+            undated, ".jpg", 200, template="{description} -- [{exif_date}]"
+        )
+        assert result == "Sunset.jpg"
 
     def test_result_sanitized_against_long_values(self):
         md = BookMetadata(language="en", category="Fiction", title="A" * 500)
