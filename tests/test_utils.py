@@ -75,7 +75,7 @@ def test_get_file_hash_mocked():
         assert result == "mocked_hash_value"
         mock_path.open.assert_called_once_with("rb")
         mock_file_digest.assert_called_once_with(mock_file, "sha256")
-        mock_digest_obj.hexdigest.assert_called_once()
+        mock_digest_obj.hexdigest.assert_called_once_with()
 
 
 def test_generate_cache_key():
@@ -180,9 +180,9 @@ def test_head_tail_trim_edge_cases():
     assert head_tail_trim("abcdef", 100) == "abcdef"
     assert head_tail_trim("abc", 2, head_ratio=0.7) == "ab"
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="head_ratio must be between 0 and 1"):
         head_tail_trim("abc", 10, head_ratio=0.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="head_ratio must be between 0 and 1"):
         head_tail_trim("abc", 10, head_ratio=1.0)
 
 
@@ -240,7 +240,7 @@ def test_read_text_limited_error_logging(mock_open, mock_logging_error, tmp_path
     assert result == ""
 
     # Verify logging.error was called
-    mock_logging_error.assert_called_once()
+    assert mock_logging_error.call_count == 1
     assert "Error reading" in mock_logging_error.call_args[0][0]
     assert "Permission denied" in mock_logging_error.call_args[0][0]
 
@@ -313,10 +313,10 @@ def test_ensure_secure_dir_windows_exception_extended(
     assert test_dir.exists()
 
     # Assert subprocess.run was called
-    mock_subprocess.run.assert_called_once()
+    assert mock_subprocess.run.call_count == 1
 
     # Assert the exception was logged
-    mock_debug.assert_called_once()
+    assert mock_debug.call_count == 1
     log_msg = mock_debug.call_args[0][0]
     assert "Failed to set secure permissions" in log_msg
     assert "Mock icacls failure" in log_msg
@@ -349,7 +349,7 @@ def test_ensure_secure_dir_unix_exception(mock_debug, mock_sys, tmp_path):
         ensure_secure_dir(target_dir)
 
         # Exception should be caught and logged
-        mock_debug.assert_called_once()
+        assert mock_debug.call_count == 1
         # Adjusted to match the log message in src/renai/utils.py if needed,
         # but I'll stick to what was in main for now.
         assert "Failed to set secure permissions" in mock_debug.call_args[0][0]
@@ -378,7 +378,7 @@ def test_ensure_secure_dir_windows_valid_user(mock_subprocess, mock_os, mock_sys
     assert target_dir.exists()
 
     # icacls should be called
-    mock_subprocess.run.assert_called_once()
+    assert mock_subprocess.run.call_count == 1
     args = mock_subprocess.run.call_args[0][0]
     assert args[0] == "icacls"
     assert args[1] == str(target_dir)
@@ -404,7 +404,7 @@ def test_ensure_secure_dir_windows_invalid_user(
     ensure_secure_dir(target_dir)
 
     # Warning should be logged
-    mock_warning.assert_called_once()
+    assert mock_warning.call_count == 1
     assert "Invalid username" in mock_warning.call_args[0][0]
 
     # icacls should NOT be called
@@ -450,5 +450,5 @@ def test_ensure_secure_dir_windows_exception(
     ensure_secure_dir(target_dir)
 
     # Exception should be caught and logged as debug
-    mock_debug.assert_called_once()
+    assert mock_debug.call_count == 1
     assert "Failed to set secure permissions" in mock_debug.call_args[0][0]
