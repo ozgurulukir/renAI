@@ -14,7 +14,7 @@ def test_version_callback():
     with patch("renai.cli.console.print") as mock_print:
         with pytest.raises(typer.Exit):
             version_callback(True)
-        mock_print.assert_called_once()
+        assert mock_print.call_count == 1
 
 
 def test_version_callback_false():
@@ -54,7 +54,7 @@ def test_list_providers():
     with patch("renai.cli.console.print") as mock_print:
         result = runner.invoke(app, ["providers"])
         assert result.exit_code == 0
-        mock_print.assert_called_once()
+        assert mock_print.call_count == 1
 
 
 def test_init_cmd():
@@ -62,7 +62,7 @@ def test_init_cmd():
     with patch("renai.cli.run_init_wizard") as mock_init:
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
-        mock_init.assert_called_once()
+        mock_init.assert_called_once_with()
 
 
 def test_undo_cmd_success():
@@ -87,7 +87,7 @@ def test_main():
     """Test main entrypoint execution."""
     with patch("renai.cli.app") as mock_app:
         main()
-        mock_app.assert_called_once()
+        assert mock_app.call_count == 1
 
 
 def test_evaluate_command():
@@ -98,7 +98,7 @@ def test_evaluate_command():
         with patch("renai.cli.Path.is_dir", return_value=True):
             result = runner.invoke(app, ["evaluate", "."])
             assert result.exit_code == 0
-            mock_pipeline.assert_called_once()
+            assert mock_pipeline.call_count == 1
 
 
 def test_evaluate_command_invalid_dir():

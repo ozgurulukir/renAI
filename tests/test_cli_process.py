@@ -35,7 +35,7 @@ def test_handle_process_command_nonexistent_directory():
                 vision_max_pages=3,
             )
         assert exc_info.value.exit_code == 1
-        mock_console.print.assert_called_once()
+        assert mock_console.print.call_count == 1
         assert "Error: Directory not found" in str(mock_console.print.call_args[0][0])
 
 
@@ -72,11 +72,11 @@ def test_handle_process_command_success(tmp_path):
             vision_max_pages=4,
         )
 
-        mock_header.assert_called_once()
+        assert mock_header.call_count == 1
         mock_warnings.assert_called_once_with(
             "rename", True, "openai", "gpt-4", FallbackMode.OCR, True
         )
-        mock_run_pipeline.assert_called_once()
+        assert mock_run_pipeline.call_count == 1
 
         # Verify passed arguments
         kwargs = mock_run_pipeline.call_args[1]
@@ -145,7 +145,7 @@ def test_check_vision_model_guard_missing_model_aborts():
                 rename_images=False,
             )
         assert exc_info.value.exit_code == 1
-        mock_print.assert_called_once()
+        assert mock_print.call_count == 1
 
 
 def test_check_vision_model_guard_non_vision_model_aborts():
@@ -163,4 +163,4 @@ def test_check_vision_model_guard_non_vision_model_aborts():
                 vision_model="llama3-text",
             )
         assert exc_info.value.exit_code == 1
-        mock_print.assert_called_once()
+        assert mock_print.call_count == 1

@@ -19,7 +19,7 @@ class TestOCREngineSecurity:
         # Use Path for platform-agnostic comparison
         expected = str(Path("/usr/bin/mutool").resolve().absolute())
         assert result == expected
-        mock_run.assert_called_once()
+        assert mock_run.call_count == 1
         assert mock_run.call_args[0][0] == [expected, "-v"]
 
     @patch("shutil.which")
@@ -123,4 +123,4 @@ class TestOCREngineSecurity:
         # Normalize both paths to ensure comparison is robust across OSes
         assert result is not None
         assert Path(result) == Path(safe_path)
-        mock_run.assert_called_once()
+        assert mock_run.call_count == 1

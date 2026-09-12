@@ -26,13 +26,15 @@ class TestCliHelpers:
 
     def test_validate_cli_flags_valid_dir(self, tmp_path):
         """Test _validate_cli_flags passes for valid directory."""
-        _validate_cli_flags(tmp_path)
+        result = _validate_cli_flags(tmp_path)
+        assert result is None
 
     def test_validate_cli_flags_invalid_dir(self, tmp_path):
         """Test _validate_cli_flags exits for non-existent directory."""
         invalid_path = tmp_path / "non_existent_folder"
-        with pytest.raises((typer.Exit, SystemExit)):
+        with pytest.raises((typer.Exit, SystemExit)) as exc_info:
             _validate_cli_flags(invalid_path)
+        assert getattr(exc_info.value, "code", getattr(exc_info.value, "exit_code", 1)) == 1
 
     def test_build_processing_config(self):
         """Test _build_processing_config constructs a valid ProcessingConfig instance."""
