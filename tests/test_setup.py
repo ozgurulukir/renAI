@@ -23,7 +23,7 @@ def test_run_init_wizard_cancel_overwrite(tmp_path):
     ):
         run_init_wizard()
 
-        mock_confirm_prompt.assert_called_once()
+        assert mock_confirm_prompt.call_count == 1
         mock_print.assert_any_call("[info]Setup cancelled.[/info]")
 
 

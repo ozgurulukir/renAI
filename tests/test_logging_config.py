@@ -111,7 +111,7 @@ def test_configure_logging_defaults():
         configure_logging()
 
         # Should call structlog.configure
-        mock_structlog_configure.assert_called_once()
+        assert mock_structlog_configure.call_count == 1
         _, _kwargs = mock_structlog_configure.call_args
 
         # Verify basic config is called
@@ -136,7 +136,7 @@ def test_configure_logging_explicit_args():
     ):
         configure_logging(log_level=logging.DEBUG, json_output=True)
 
-        mock_structlog_configure.assert_called_once()
+        assert mock_structlog_configure.call_count == 1
         _, kwargs = mock_structlog_configure.call_args
 
         # JSONRenderer should be in processors
@@ -160,7 +160,7 @@ def test_configure_logging_development_mode():
         # json_output is None so it uses `not is_development()`
         configure_logging(log_level=logging.INFO)
 
-        mock_structlog_configure.assert_called_once()
+        assert mock_structlog_configure.call_count == 1
         _, kwargs = mock_structlog_configure.call_args
 
         processors = kwargs["processors"]
@@ -181,7 +181,7 @@ def test_configure_logging_production_mode():
         # json_output is None so it uses `not is_development()`
         configure_logging(log_level=logging.INFO)
 
-        mock_structlog_configure.assert_called_once()
+        assert mock_structlog_configure.call_count == 1
         _, kwargs = mock_structlog_configure.call_args
 
         processors = kwargs["processors"]

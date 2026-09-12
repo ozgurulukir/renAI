@@ -38,7 +38,9 @@ def test_run_evaluation_pipeline_success(tmp_path):
         asyncio.run(run_evaluation_pipeline(tmp_path, "openai"))
 
         # Verify that run_pipeline was called
-        mock_run_pipeline.assert_called_once()
+        assert mock_run_pipeline.call_count == 1
+        call_kwargs = mock_run_pipeline.call_args[1]
+        assert call_kwargs['root_dir'] == tmp_path
         # Verify provider and model arguments
         assert mock_run_pipeline.call_args[1]["provider"] == "openai"
         assert mock_run_pipeline.call_args[1]["model"] == "gpt-4"

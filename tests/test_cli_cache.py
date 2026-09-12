@@ -58,7 +58,7 @@ def test_clear_cache_command_confirm():
         # Test 'cache' command with confirmation
         cli_module.clear_cache_cmd(confirm=False)
 
-        mock_handle.assert_called_once()
+        assert mock_handle.call_count == 1
 
 
 def test_clear_cache_command_cancel():
@@ -91,4 +91,4 @@ def test_clear_cache_command_yes_flag():
         # Test 'cache --yes' command
         cli_module.clear_cache_cmd(confirm=True)
 
-        mock_handle.assert_called_once()
+        assert mock_handle.call_count == 1

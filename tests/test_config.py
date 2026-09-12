@@ -106,7 +106,7 @@ class TestLoadCategories:
             with patch("logging.warning") as mock_warn:
                 result = load_categories_from_file()
                 assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
-                mock_warn.assert_called_once()
+                assert len(mock_warn.call_args_list) == 1
                 assert "Could not load user categories" in mock_warn.call_args[0][0]
 
     def test_user_read_error(self, tmp_path):
@@ -139,7 +139,7 @@ class TestLoadCategories:
                     result = load_categories_from_file()
 
                     assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
-                    mock_warn.assert_called_once()
+                    assert len(mock_warn.call_args_list) == 1
                     assert "Could not load user categories" in mock_warn.call_args[0][0]
 
     def test_user_missing_keys(self, tmp_path):
@@ -184,7 +184,7 @@ class TestLoadCategories:
                 result = load_categories_from_file()
 
                 assert result == {"categories": {}, "image_categories": {}}
-                mock_warn.assert_called_once()
+                assert len(mock_warn.call_args_list) == 1
                 assert "Could not load package categories" in mock_warn.call_args[0][0]
 
     def test_package_read_error(self, tmp_path):
@@ -216,7 +216,7 @@ class TestLoadCategories:
                     result = load_categories_from_file()
 
                     assert result == {"categories": {}, "image_categories": {}}
-                    mock_warn.assert_called_once()
+                    assert len(mock_warn.call_args_list) == 1
                     assert "Could not load package categories" in mock_warn.call_args[0][0]
 
     def test_empty(self, tmp_path):
@@ -492,7 +492,7 @@ class TestLoadEvalModels:
         with patch("logging.warning") as mock_warn:
             result = load_eval_models("test_provider")
             assert result == ["pkg_model_1"]
-            mock_warn.assert_called_once()
+            assert len(mock_warn.call_args_list) == 1
             assert "Could not load user eval models" in mock_warn.call_args[0][0]
 
     def test_load_user_missing_models_key(self, mock_dirs):
@@ -567,7 +567,7 @@ class TestLoadEvalModels:
         ):
             result = load_eval_models("test_provider")
             assert result == ["pkg_model_1"]
-            mock_warn.assert_called_once()
+            assert len(mock_warn.call_args_list) == 1
             args = mock_warn.call_args[0][0]
             assert "Could not load user eval models" in args
             assert "Permission denied" in args
@@ -592,7 +592,7 @@ class TestLoadEvalModels:
         ):
             result = load_eval_models("test_provider")
             assert result == []
-            mock_warn.assert_called_once()
+            assert len(mock_warn.call_args_list) == 1
             args = mock_warn.call_args[0][0]
             assert "Could not load package eval models" in args
             assert "Permission denied" in args
@@ -609,7 +609,7 @@ class TestLoadEvalModels:
         with patch("logging.warning") as mock_warn:
             result = load_eval_models("test_provider")
             assert result == []
-            mock_warn.assert_called_once()
+            assert len(mock_warn.call_args_list) == 1
             assert "Could not load package eval models" in mock_warn.call_args[0][0]
 
     def test_load_package_file_open_error(self, mock_dirs):
@@ -626,7 +626,7 @@ class TestLoadEvalModels:
             with patch("logging.warning") as mock_warn:
                 result = load_eval_models("test_provider")
                 assert result == []
-                mock_warn.assert_called_once()
+                assert len(mock_warn.call_args_list) == 1
                 assert "Could not load package eval models" in mock_warn.call_args[0][0]
 
 
