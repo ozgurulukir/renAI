@@ -41,7 +41,6 @@ def test_run_evaluation_pipeline_success(tmp_path):
         assert mock_run_pipeline.call_count == 1
         call_kwargs = mock_run_pipeline.call_args[1]
         assert call_kwargs['root_dir'] == tmp_path
-        assert call_kwargs['provider'] == 'openai'
         # Verify provider and model arguments
         assert mock_run_pipeline.call_args[1]["provider"] == "openai"
         assert mock_run_pipeline.call_args[1]["model"] == "gpt-4"
