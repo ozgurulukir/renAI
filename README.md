@@ -117,6 +117,26 @@ uv sync --all-extras
 uv run renai init
 ```
 
+#### Global Install (run `renai` from any folder)
+
+`uv run renai` only works from inside the project directory. To run `renai` from anywhere in your terminal, install it as a global tool (editable, so source changes apply immediately):
+
+```bash
+# From the project root
+# "[pdf-extra]" installs the optional backends (pdfplumber, pypdf, pypdfium2),
+# matching `uv sync --all-extras`; omit it to install only the base dependencies.
+uv tool install -e ".[pdf-extra]"
+```
+
+After this, `renai` is available globally:
+
+```bash
+renai process "path/to/files" --mode rename
+renai init
+```
+
+> To update after pulling new changes, re-run `uv tool install -e ".[pdf-extra]"` from the project root.
+
 ### Setup & API Keys
 
 renAI uses an interactive wizard for first-time setup. Run the following command:
