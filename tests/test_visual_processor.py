@@ -169,7 +169,10 @@ class TestVisualProcessor:
 
                 result = visual_processor._convert_page(mock_doc, 0, 72)
                 assert result == b"large image bytes"
-                mock_img.thumbnail.assert_called_once()
+
+                # Genuine verification: thumbnail should be called with correct size and resampling
+                from PIL import Image
+                mock_img.thumbnail.assert_called_once_with((1024, 1024), Image.Resampling.LANCZOS)
 
     @pytest.mark.asyncio
     async def test_extract_metadata_from_pdf_no_pages(self, visual_processor, tmp_path):

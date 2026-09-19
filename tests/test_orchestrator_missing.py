@@ -23,3 +23,24 @@ async def test_setup_engines_missing_api_key():
         with pytest.raises(typer.Exit) as exc_info:
             await setup_engines("openai", "test", config)
         assert exc_info.value.exit_code == 1
+
+
+@pytest.mark.asyncio
+async def test_setup_engines_with_vision_fallback():
+    """Test setup_engines successfully configures vision fallback models."""
+    config = ProcessingConfig(vision_provider="openrouter", vision_model="google/gemini-2.0")
+
+    mock_llm_engine = patch("renai.processors.orchestrator.LLMEngine")
+    mock_get_api_key = patch("renai.processors.orchestrator.get_api_key", return_value="dummy_key")
+
+    with mock_llm_engine as mock_llm, mock_get_api_key:
+        processor = await setup_engines("openai", "gpt-4", config)
+
+        # Should create two LLMEngines: one for text, one for vision
+        assert mock_llm.call_count == 2
+        # Verify kwargs for the vision model instantiation
+        vision_call_kwargs = mock_llm.call_args_list[1].kwargs
+        assert vision_call_kwargs["provider"] == "openrouter"
+        assert vision_call_kwargs["model_name"] == "google/gemini-2.0"
+
+        assert processor is not None
