@@ -43,6 +43,15 @@ def _write_rules_file(tmp_path: Path, content: str, name: str = "folder_rules.to
     return rules_file
 
 
+def _toml_path(path: Path) -> str:
+    """Serialize a filesystem path as a TOML string, portable across platforms.
+
+    Uses forward slashes so Windows paths (which contain backslashes) don't
+    trip up TOML's escape handling, e.g. ``C:\\data`` being read as an escape.
+    """
+    return path.as_posix()
+
+
 def _patched_layers(user: Path, default: Path = MISSING, package: Path = MISSING):
     """Patch the three folder-rules config locations for one test."""
     stack = ExitStack()
@@ -68,7 +77,7 @@ class TestLoadFolderRules:
         with _patched_layers(user, package=pkg):
             rules = load_folder_rules()
         assert len(rules) == 1
-        assert rules[0].path == Path("/data/user")
+        assert rules[0].path == Path("/data/user").resolve()
 
     def test_missing_files_return_empty(self, tmp_path):
         with _patched_layers(tmp_path / "folder_rules.toml"):
@@ -194,7 +203,7 @@ class TestLoadFolderRules:
 class TestGetFolderRuleFor:
     def test_exact_folder_matches(self, tmp_path):
         user = _write_rules_file(
-            tmp_path, f'[[rules]]\npath = "{tmp_path}"\ncategories = ["Exact"]\n'
+            tmp_path, f'[[rules]]\npath = "{_toml_path(tmp_path)}"\ncategories = ["Exact"]\n'
         )
         with _patched_layers(user):
             rule = get_folder_rule_for(tmp_path / "book.pdf")
@@ -203,7 +212,9 @@ class TestGetFolderRuleFor:
 
     def test_subfolder_inherits_parent_rule(self, tmp_path):
         base = tmp_path / "base"
-        user = _write_rules_file(tmp_path, f'[[rules]]\npath = "{base}"\ncategories = ["Base"]\n')
+        user = _write_rules_file(
+            tmp_path, f'[[rules]]\npath = "{_toml_path(base)}"\ncategories = ["Base"]\n'
+        )
         with _patched_layers(user):
             rule = get_folder_rule_for(base / "2024" / "book.pdf")
         assert rule is not None
@@ -217,11 +228,11 @@ class TestGetFolderRuleFor:
             tmp_path,
             f"""
 [[rules]]
-path = "{base}"
+path = "{_toml_path(base)}"
 categories = ["Base"]
 
 [[rules]]
-path = "{deep}"
+path = "{_toml_path(deep)}"
 categories = ["Deep"]
 """,
         )
@@ -239,7 +250,9 @@ categories = ["Deep"]
     def test_differing_case_matches_on_folding_platforms(self, tmp_path):
         """Different-case rule paths match only where os.path.normcase folds case."""
         base = tmp_path / "Base"
-        user = _write_rules_file(tmp_path, f'[[rules]]\npath = "{base}"\ncategories = ["Folded"]\n')
+        user = _write_rules_file(
+            tmp_path, f'[[rules]]\npath = "{_toml_path(base)}"\ncategories = ["Folded"]\n'
+        )
         with _patched_layers(user):
             rule = get_folder_rule_for(tmp_path / "base" / "x.pdf")
         folds = os.path.normcase("A") == os.path.normcase("a")
