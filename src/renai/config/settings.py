@@ -224,7 +224,7 @@ class ProviderSettings(BaseSettings):
 try:
     app_settings = AppSettings()
     provider_settings = ProviderSettings()
-except Exception as exc:  # noqa: BLE001 - defensive fallback on any bad config
+except Exception as exc:
     logger.warning(
         "Failed to load renAI configuration (%s); using factory defaults.",
         exc,

@@ -15,6 +15,7 @@ async def test_setup_engines_invalid_provider():
         await setup_engines("invalid_provider", "test", config)
     assert exc_info.value.exit_code == 1
 
+
 @pytest.mark.asyncio
 async def test_setup_engines_missing_api_key():
     config = ProcessingConfig()

@@ -111,13 +111,17 @@ class FileOrganizer:
                 # Note: the default rename/organize paths still move the file. Only the
                 # explicit "copy" mode duplicates the source without deleting it.
                 if mode == "copy":
-                    final_path = safe_copy_file(
-                        file_path,
-                        target_dest,
-                        operation_type=mode,
-                        source_hash=file_hash,
-                        dry_run=dry_run,
-                    )
+
+                    def _do_copy():
+                        return safe_copy_file(
+                            file_path,
+                            target_dest,
+                            operation_type=mode,
+                            source_hash=file_hash,
+                            dry_run=dry_run,
+                        )
+
+                    final_path = await asyncio.to_thread(_do_copy)
                 else:
 
                     def _do_move():

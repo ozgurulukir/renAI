@@ -665,10 +665,10 @@ def _configure_advanced_settings() -> dict[str, str | int]:
         raise KeyboardInterrupt
     try:
         workers = int(workers_str)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as err:
         raise ConfigurationError(
             f"Invalid workers count: {workers_str!r}. Please enter a whole number."
-        )
+        ) from err
 
     fallback_mode = questionary.select(
         msg.Settings.FALLBACK_PROMPT,

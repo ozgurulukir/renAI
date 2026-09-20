@@ -440,7 +440,10 @@ class LLMEngine:
                         rate_limit_attempts,
                         context_name,
                     )
-                    raise
+                    raise LLMError(
+                        f"Rate limit retries exhausted ({rate_limit_attempts} attempts) "
+                        f"for {context_name}: {rle}"
+                    ) from rle
                 logging.warning(
                     "Rate limit exceeded (HTTP 429) for %s. Retrying in %.1fs... Error: %s",
                     context_name,
@@ -450,19 +453,8 @@ class LLMEngine:
                 await asyncio.sleep(backoff_sec)
                 backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
             except Exception as e:
-                logging.warning(
-                    "Transient LLM call failure for %s (attempt %d): %s",
-                    context_name,
-                    rl_attempt + 1,
-                    e,
-                )
-                if rl_attempt < rate_limit_attempts - 1:
-                    await asyncio.sleep(backoff_sec)
-                    backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
-                    continue
-                raise LLMError(
-                    f"LLM call failed for {context_name} after retries: {e}"
-                ) from e
+                logging.error("LLM call failure for %s: %s", context_name, e)
+                raise LLMError(f"LLM call failed for {context_name}: {e}") from e
         raise LLMError(f"LLM call returned no completion for {context_name}")
 
     async def _generate_json_completion(

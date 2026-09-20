@@ -114,12 +114,12 @@ def with_metadata_cache(
     provider_resolver: Callable[[Any, bool], str] = _fallback_provider,
     model_resolver: Callable[[Any, bool], str] = _fallback_model,
 ) -> Callable[
-    [Callable[[Any, MetadataRequest, Any], Coroutine[Any, Any, tuple[BaseModel | None, bool]]]],
-    Callable[[Any, MetadataRequest, Any], Coroutine[Any, Any, tuple[BaseModel | None, bool]]],
+    [Callable[..., Coroutine[Any, Any, tuple[Any, bool]]]],
+    Callable[..., Coroutine[Any, Any, tuple[Any, bool]]],
 ]:
     """Decorator that wraps an async metadata-resolving method with cache logic.
 
-    The decorated method must accept exactly ``(self, request: MetadataRequest)`` and
+    The decorated method must accept ``(self, request: MetadataRequest, ...)`` and
     return ``tuple[BaseModel | None, bool]`` (metadata plus whether a vision fallback
     was used). The contract is validated at decoration time by
     :func:`_validate_request_contract`.
@@ -132,8 +132,8 @@ def with_metadata_cache(
     """
 
     def decorator(
-        func: Callable[[Any, MetadataRequest], Coroutine[Any, Any, tuple[BaseModel | None, bool]]],
-    ) -> Callable[[Any, MetadataRequest], Coroutine[Any, Any, tuple[BaseModel | None, bool]]]:
+        func: Callable[..., Coroutine[Any, Any, tuple[Any, bool]]],
+    ) -> Callable[..., Coroutine[Any, Any, tuple[Any, bool]]]:
         _validate_request_contract(func)
 
         @functools.wraps(func)
