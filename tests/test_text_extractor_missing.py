@@ -1,7 +1,10 @@
-import pytest
-from unittest.mock import patch, MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from renai.processors.text_extractor import TextExtractor
+
 
 @pytest.mark.asyncio
 async def test_extract_from_office_markitdown_missing(caplog):
