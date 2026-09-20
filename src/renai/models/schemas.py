@@ -82,7 +82,12 @@ class BookMetadata(BaseMetadata):
         None, description="The edition information (e.g., '2nd Edition', 'Revised')."
     )
     author: str | None = Field(None, description="The full name of the author(s) or editor(s).")
-    year: int | None = Field(None, description="The 4-digit publication year.")
+    year: int | None = Field(
+        None,
+        description="The 4-digit publication year.",
+        ge=1500,
+        le=2100,
+    )
     isbn: str | None = Field(
         None,
         description=(

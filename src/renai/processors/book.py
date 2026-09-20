@@ -20,6 +20,7 @@ from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
 from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
+from ..exceptions import ConfigurationError
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata, ProcessingConfig
 from ..settings import CACHE_DIR, get_image_extensions
 from ..utils import get_file_hash
@@ -69,6 +70,11 @@ class BookProcessor:
         llm_engine: LLMEngine | None = None,
         vision_llm_engine: LLMEngine | None = None,
     ):
+        if ocr_engine is None:
+            raise ConfigurationError("An OCR engine is required to instantiate BookProcessor.")
+        if config is None:
+            raise ConfigurationError("A processing configuration is required for BookProcessor.")
+
         self.ocr_engine = ocr_engine
         self.config = config
         self.llm_engine = llm_engine

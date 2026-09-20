@@ -15,6 +15,8 @@ API Keys (provider-specific):
     DEEPINFRA_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, CUSTOM_API_KEY
 """
 
+import logging
+
 from pydantic import BaseModel, Field
 from pydantic_settings import (
     BaseSettings,
@@ -28,13 +30,15 @@ from renai.config.constants import (
     SETTINGS_USER_FILE,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ProviderConfig(BaseModel):
     """Provider configuration model."""
 
-    base_url: str
-    api_key: str | None = None
-    default_model: str
+    base_url: str = Field(min_length=1, description="Base URL for the provider API")
+    api_key: str | None = Field(default=None, description="Provider API key")
+    default_model: str = Field(min_length=1, description="Default model name for the provider")
 
 
 class AppSettings(BaseSettings):
@@ -214,5 +218,21 @@ class ProviderSettings(BaseSettings):
 
 
 # Global settings instances
-app_settings = AppSettings()
-provider_settings = ProviderSettings()
+# Malformed TOML (or any validation failure) must never crash module imports:
+# fall back to factory defaults and warn, so the rest of the application (and
+# the logging subsystem that runs during this import) keeps working.
+try:
+    app_settings = AppSettings()
+    provider_settings = ProviderSettings()
+except Exception as exc:  # noqa: BLE001 - defensive fallback on any bad config
+    logger.warning(
+        "Failed to load renAI configuration (%s); using factory defaults.",
+        exc,
+    )
+    # The custom config sources (env TOML, secrets TOML) drive *every*
+    # `AppSettings()`/`ProviderSettings()` construction, so re-invoking the
+    # constructor would just fail again. `model_construct` builds the instance
+    # directly from pydantic defaults, bypassing all config sources and validation
+    # entirely, guaranteeing a genuinely-factory-default result that cannot raise.
+    app_settings = AppSettings.model_construct()
+    provider_settings = ProviderSettings.model_construct()

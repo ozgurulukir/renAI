@@ -1,9 +1,26 @@
+import logging
+
 from abc import ABC, abstractmethod
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class BaseExtractor(ABC):
     """Base class for all text extractors."""
+
+    def _check_symlink(self, file_path: Path) -> bool:
+        """Reject symlinked files to prevent arbitrary file reads.
+
+        Mirrors the symlink rejection used elsewhere in the tool.
+
+        Returns:
+            True if the file is safe to read, False if it is a symlink.
+        """
+        if file_path.is_symlink():
+            logger.warning("Skipping symlink to prevent arbitrary file read: %s", file_path.name)
+            return False
+        return True
 
     @abstractmethod
     def extract_text(

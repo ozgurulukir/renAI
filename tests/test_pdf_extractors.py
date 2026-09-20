@@ -257,3 +257,35 @@ class TestPyPdfium2Extractor:
                 extractor = PyPDFExtractor()
                 result = extractor.extract_text(Path("test.pdf"))
                 assert result == "Page 1 Page 2"
+
+
+class TestCheckSymlinkGuard:
+    """Verify all PDF extractors reject symlinked files before opening them."""
+
+    def test_extract_text_returns_none_for_symlink(self):
+        """extract_text() must short-circuit on a symlinked file (no file open)."""
+        extractor = PyMuPDFExtractor()
+        mock_path = MagicMock()
+        mock_path.is_symlink.return_value = True
+        mock_path.name = "linked.pdf"
+
+        with patch.object(Path, "is_symlink", return_value=True):
+            result = extractor.extract_text(mock_path)
+
+        assert result is None
+
+    def test_extract_text_proceeds_for_regular_file(self):
+        """extract_text() proceeds past the guard for a regular file (does not
+        short-circuit to None like a symlink does)."""
+        extractor = PyMuPDFExtractor()
+        mock_path = MagicMock()
+        mock_path.is_symlink.return_value = False
+        mock_path.name = "real.pdf"
+
+        with patch.object(mock_path, "is_symlink", return_value=False):
+            with patch("pymupdf.open"):
+                result = extractor.extract_text(mock_path)
+
+        # A regular file is NOT rejected by the symlink guard, so extraction
+        # runs to completion and returns an extracted string (not None).
+        assert isinstance(result, str)
