@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import cast
 
 from renai.config.folder_rules import FolderRule
-from renai.file_ops.operations import resolve_target_destination, safe_move_file
+from renai.file_ops.operations import (
+    resolve_target_destination,
+    safe_copy_file,
+    safe_move_file,
+)
 from renai.filename.builder import (
     build_book_filename,
     build_image_filename,
@@ -96,17 +100,40 @@ class FileOrganizer:
                 )
 
             async with self.file_operation_lock:
+                # Copy vs move distinction:
+                # - "move" transfers the source to the destination and (on success) the
+                #   source is gone, because shutil.move removes the original.
+                # - "copy" duplicates the source bytes and MUST leave the original intact.
+                # Branch on the mode here so a copy is never routed through safe_move_file,
+                # which would silently delete the source (the original data-loss bug).
+                # Both helpers respect `dry_run`, so in a dry run we only log what would
+                # happen and never touch the filesystem.
+                # Note: the default rename/organize paths still move the file. Only the
+                # explicit "copy" mode duplicates the source without deleting it.
+                if mode == "copy":
 
-                def _do_move():
-                    return safe_move_file(
-                        file_path,
-                        target_dest,
-                        operation_type=mode,
-                        source_hash=file_hash,
-                        dry_run=dry_run,
-                    )
+                    def _do_copy():
+                        return safe_copy_file(
+                            file_path,
+                            target_dest,
+                            operation_type=mode,
+                            source_hash=file_hash,
+                            dry_run=dry_run,
+                        )
 
-                final_path = await asyncio.to_thread(_do_move)
+                    final_path = await asyncio.to_thread(_do_copy)
+                else:
+
+                    def _do_move():
+                        return safe_move_file(
+                            file_path,
+                            target_dest,
+                            operation_type=mode,
+                            source_hash=file_hash,
+                            dry_run=dry_run,
+                        )
+
+                    final_path = await asyncio.to_thread(_do_move)
 
             logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
             m_data = (

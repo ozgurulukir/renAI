@@ -12,6 +12,7 @@ from rich.theme import Theme
 
 from renai.messages import setup as msg
 
+from ..exceptions import ConfigurationError
 from ..settings import app_settings
 
 # Custom theme for setup messages
@@ -662,7 +663,12 @@ def _configure_advanced_settings() -> dict[str, str | int]:
     ).ask()
     if workers_str is None:
         raise KeyboardInterrupt
-    workers = int(workers_str)
+    try:
+        workers = int(workers_str)
+    except (TypeError, ValueError) as err:
+        raise ConfigurationError(
+            f"Invalid workers count: {workers_str!r}. Please enter a whole number."
+        ) from err
 
     fallback_mode = questionary.select(
         msg.Settings.FALLBACK_PROMPT,

@@ -40,6 +40,20 @@ class TestBookProcessor:
     def processor(self, mock_ocr, mock_llm):
         return BookProcessor(mock_ocr, ProcessingConfig(), mock_llm)
 
+    def test_init_missing_ocr_engine_raises(self):
+        """Verify that initializing BookProcessor without OCR engine raises ConfigurationError."""
+        from renai.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="OCR engine is required"):
+            BookProcessor(None, ProcessingConfig())
+
+    def test_init_missing_config_raises(self, mock_ocr):
+        """Verify that initializing BookProcessor without config raises ConfigurationError."""
+        from renai.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="processing configuration is required"):
+            BookProcessor(mock_ocr, None)
+
     @pytest.mark.asyncio
     async def test_process_file_with_cache(self, processor, tmp_path):
         """Test that process_file uses cache asynchronously."""

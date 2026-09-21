@@ -10,6 +10,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
 from ..config.folder_rules import resolve_allowed_bucket, resolve_fallback_category
+from ..exceptions import LLMError
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
 from ..settings import app_settings, get_allowed_categories, get_image_categories
 from ..utils.rate_limiter import AsyncRateLimiter
@@ -348,7 +349,12 @@ class LLMEngine:
         context_name: str,
         categories_override: dict[str, list] | None = None,
     ) -> tuple[T | None, list[str] | None]:
-        """Validate parsed data against Pydantic model and check category constraints."""
+        """Validate parsed data against Pydantic model and check category constraints.
+
+        On a schema/validation failure returns ``(None, None)``. Otherwise returns the
+        validated model; an invalid category is rejected and the allowed list returned
+        as ``retry_list`` so the caller can surface the forbidden value.
+        """
         try:
             model_fields = model_class.model_fields.keys()
             filtered_data = {k: v for k, v in raw_data.items() if k in model_fields}
@@ -369,6 +375,8 @@ class LLMEngine:
         if validated_model.category in allowed:
             return validated_model, None
 
+        # Item 2: invalid category -> reject and return the allowed list so the
+        # caller (or an explicit retry pass) can surface the forbidden value.
         return None, allowed
 
     def _attempt_final_fallback(
@@ -432,7 +440,10 @@ class LLMEngine:
                         rate_limit_attempts,
                         context_name,
                     )
-                    raise
+                    raise LLMError(
+                        f"Rate limit retries exhausted ({rate_limit_attempts} attempts) "
+                        f"for {context_name}: {rle}"
+                    ) from rle
                 logging.warning(
                     "Rate limit exceeded (HTTP 429) for %s. Retrying in %.1fs... Error: %s",
                     context_name,
@@ -442,9 +453,9 @@ class LLMEngine:
                 await asyncio.sleep(backoff_sec)
                 backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
             except Exception as e:
-                logging.error(f"LLM call failure for {context_name}: {e}")
-                return None
-        return None
+                logging.error("LLM call failure for %s: %s", context_name, e)
+                raise LLMError(f"LLM call failed for {context_name}: {e}") from e
+        raise LLMError(f"LLM call returned no completion for {context_name}")
 
     async def _generate_json_completion(
         self,

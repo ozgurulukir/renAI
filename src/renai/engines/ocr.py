@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import uuid
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -60,6 +61,7 @@ class OCREngine:
 
     _process_pool: ProcessPoolExecutor | None = None
     _max_workers: int = 4
+    _process_pool_lock: threading.Lock = threading.Lock()
 
     def __init__(
         self,
@@ -358,6 +360,7 @@ class OCREngine:
     ) -> tuple[Image.Image | None, Path | None]:
         """Handles mutool or pymupdf fallback to extract an image from a page asynchronously."""
         image: Image.Image | None = None
+        succeeded = False
         if pre_extracted_path and pre_extracted_path.exists():
             try:
                 # CPU intensive image loading
@@ -399,6 +402,7 @@ class OCREngine:
                         process.communicate(), timeout=get_subprocess_timeout()
                     )
                     if process.returncode == 0:
+                        succeeded = True
                         image = await asyncio.to_thread(Image.open, temp_img)
                         await asyncio.to_thread(image.load)
                     else:
@@ -408,6 +412,15 @@ class OCREngine:
                     logging.error(f"mutool timed out for page {pno + 1}")
             except Exception as e:
                 logging.error(f"mutool failed for page {pno + 1}: {e}")
+            finally:
+                # Only remove the temp image when we did NOT hand it back to the caller.
+                # On success the caller owns it and performs its own cleanup, so deleting
+                # it here would destroy the very image we return (data-loss regression).
+                if temp_img and temp_img.exists() and not succeeded:
+                    try:
+                        await asyncio.to_thread(temp_img.unlink)
+                    except Exception as e:
+                        logging.debug(f"Cleanup of temp image failed for page {pno + 1}: {e}")
 
         if not image:
 
@@ -423,10 +436,15 @@ class OCREngine:
 
     @classmethod
     def shutdown_process_pool(cls, wait: bool = False) -> None:
-        """Shutdown the shared ProcessPoolExecutor if running."""
-        if cls._process_pool is not None:
-            cls._process_pool.shutdown(wait=wait)
-            cls._process_pool = None
+        """Shutdown the shared ProcessPoolExecutor if running.
+
+        Guarded by a module-level lock so concurrent callers can't race on
+        shutdown before another call has created the pool.
+        """
+        with cls._process_pool_lock:
+            if cls._process_pool is not None:
+                cls._process_pool.shutdown(wait=wait)
+                cls._process_pool = None
 
     def close(self, wait: bool = False) -> None:
         """Shutdown the shared ProcessPoolExecutor."""
@@ -441,10 +459,13 @@ class OCREngine:
         """
         try:
             loop = asyncio.get_running_loop()
-            if OCREngine._process_pool is None:
-                OCREngine._process_pool = ProcessPoolExecutor(
-                    max_workers=getattr(self, "max_workers", OCREngine._max_workers)
-                )
+            # Guard the check-then-act on pool creation so concurrent callers
+            # don't race on startup (two pools / interleaved None checks).
+            with OCREngine._process_pool_lock:
+                if OCREngine._process_pool is None:
+                    OCREngine._process_pool = ProcessPoolExecutor(
+                        max_workers=getattr(self, "max_workers", OCREngine._max_workers)
+                    )
             return await loop.run_in_executor(
                 OCREngine._process_pool, self._sync_preprocess_image, image
             )
@@ -500,6 +521,12 @@ class OCREngine:
 
     async def extract_text(self, file_path: Path, target_chars: int = 10000) -> str:  # noqa: C901, PLR0912, PLR0915
         """Extract text from a document asynchronously using OCR."""
+        if file_path.is_symlink():
+            logging.warning(
+                "Skipping symlink to prevent arbitrary file read (OCR): %s",
+                file_path.name,
+            )
+            return ""
         doc = None
         bulk_images: dict[int, Path] = {}
         try:

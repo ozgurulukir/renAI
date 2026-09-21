@@ -18,6 +18,7 @@ from ..config.folder_rules import (
 )
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
+from ..exceptions import ConfigurationError
 from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata, ProcessingConfig
@@ -69,6 +70,11 @@ class BookProcessor:
         llm_engine: LLMEngine | None = None,
         vision_llm_engine: LLMEngine | None = None,
     ):
+        if ocr_engine is None:
+            raise ConfigurationError("An OCR engine is required to instantiate BookProcessor.")
+        if config is None:
+            raise ConfigurationError("A processing configuration is required for BookProcessor.")
+
         self.ocr_engine = ocr_engine
         self.config = config
         self.llm_engine = llm_engine
@@ -229,8 +235,12 @@ class BookProcessor:
             folder_rule = get_folder_rule_for(file_path)
             file_hash = await asyncio.to_thread(get_file_hash, file_path)
             request = self._build_metadata_request(
-                file_path, file_hash, fallback_mode, rename_images,
-                update_metadata=update_metadata, add_exif_date=add_exif_date,
+                file_path,
+                file_hash,
+                fallback_mode,
+                rename_images,
+                update_metadata=update_metadata,
+                add_exif_date=add_exif_date,
             )
 
             metadata, is_vision_doc = await self._resolve_metadata(
