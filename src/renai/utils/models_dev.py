@@ -20,7 +20,7 @@ HTTP_STATUS_OK = 200
 def _fetch_remote_json(endpoint: str) -> dict | None:
     """Fetch remote JSON from models.dev endpoint."""
     headers = {
-        "User-Agent": "renAI/2.2.0 (https://github.com/ozgurulukir/renAI)",
+        "User-Agent": "renAI/2.2.1 (https://github.com/ozgurulukir/renAI)",
         "Accept": "application/json",
     }
     url = f"https://models.dev/{endpoint}"

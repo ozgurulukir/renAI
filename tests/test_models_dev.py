@@ -56,7 +56,7 @@ def test_get_models_catalog_fetch_remote(tmp_path):
         mock_get.assert_called_once_with(
             "https://models.dev/catalog.json",
             headers={
-                "User-Agent": "renAI/2.2.0 (https://github.com/ozgurulukir/renAI)",
+                "User-Agent": "renAI/2.2.1 (https://github.com/ozgurulukir/renAI)",
                 "Accept": "application/json",
             },
             timeout=6.0,
