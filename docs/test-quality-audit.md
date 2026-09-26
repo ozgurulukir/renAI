@@ -22,7 +22,7 @@
 ```
 FAKE TEST ID: FT-01
 Test Name: tests.test_orchestrator.test_print_final_summary_organize
-File & Line: tests/test_orchestrator.py:73
+File & Line: tests/test_orchestrator.py (test_print_final_summary_organize)
 Fake Category: The Method Called Trap / Truthy Trash
 Deceptive Code: `assert mock_print.call_count > 0`
 Why It Lies: It merely verifies that *something* was printed to the console, without verifying if the Table contents, headers, or styles match the expected summary.
@@ -34,7 +34,7 @@ Priority: HIGH
 ```
 FAKE TEST ID: FT-02
 Test Name: tests.test_orchestrator.test_run_evaluation_pipeline_success
-File & Line: tests/test_orchestrator.py:69
+File & Line: tests/test_orchestrator.py (test_run_evaluation_pipeline_success)
 Fake Category: The Method Called Trap
 Deceptive Code: `mock_run.assert_called_once()` and `mock_summary.assert_called_once()`
 Why It Lies: It does not verify the parameters passed to `run_pipeline`, failing to check if it properly applies the correct test mode config, providers, models, or root directories.
@@ -46,7 +46,7 @@ Priority: HIGH
 ```
 FAKE TEST ID: FT-03
 Test Name: tests.test_ocr_engine.test_extract_page_image_mutool_success
-File & Line: tests/test_ocr_engine.py:129
+File & Line: tests/test_ocr_engine.py (test_extract_page_image_mutool_success)
 Fake Category: The Method Called Trap
 Deceptive Code: `mock_exec.assert_called_once()`
 Why It Lies: It confirms that a subprocess was launched, but doesn't verify if the actual `mutool` path or arguments (like DPI and file paths) were correctly constructed.
@@ -57,8 +57,8 @@ Priority: HIGH
 
 ```
 FAKE TEST ID: FT-04
-Test Name: tests.test_visual_processor.test_visual_processor
-File & Line: tests/test_visual_processor.py:172
+Test Name: tests.test_visual_processor.test_convert_page_large_image
+File & Line: tests/test_visual_processor.py (test_convert_page_large_image)
 Fake Category: The Method Called Trap
 Deceptive Code: `mock_img.thumbnail.assert_called_once()`
 Why It Lies: Fails to verify what dimensions the image was resized to.
@@ -188,4 +188,4 @@ After resolving "The Method Called Trap" fake assertions across `test_orchestrat
 
 Furthermore, missing paths in `src/renai/processors/text_extractor.py` and `src/renai/processors/orchestrator.py` have been fortified via `test_text_extractor_missing.py` and `test_orchestrator_missing.py`.
 
-The total test suite runs seamlessly (440 passing tests) with total module coverage persisting at 93%, replacing empty coverage decoy cycles with genuine validation walls.
+The total test suite runs seamlessly (454 passing tests) with total module coverage at 87% (measured via `pytest --cov=src/renai`), replacing empty coverage decoy cycles with genuine validation walls.

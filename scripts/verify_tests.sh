@@ -10,7 +10,6 @@ echo "2. Running New Genuine Tests..."
 uv run pytest tests/test_text_extractor_missing.py tests/test_orchestrator_missing.py
 
 echo "3. Running Full Test Suite & Coverage Check..."
-uv run coverage run -m pytest tests/
-uv run coverage report -m
+uv run pytest tests/ --cov=src/renai --cov-report=term-missing
 
 echo "=== All checks passed. The tests are no longer lying. ==="

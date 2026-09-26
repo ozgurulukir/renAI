@@ -134,6 +134,12 @@ class TestVisualProcessor:
 
                     result = await visual_processor.extract_metadata_from_pdf(test_file)
                     assert result is None
+                    # All sampled pages must be converted and passed together in a single
+                    # consolidated vision call -- a regression that silently drops pages
+                    # (or skips the page loop) must not pass.
+                    call = visual_processor.llm_engine.get_book_metadata_from_image.await_args
+                    assert call is not None
+                    assert len(call.args[1]) == 3
 
     @pytest.mark.asyncio
     async def test_convert_page_out_of_bounds(self, visual_processor):
@@ -172,6 +178,7 @@ class TestVisualProcessor:
 
                 # Genuine verification: thumbnail should be called with correct size and resampling
                 from PIL import Image
+
                 mock_img.thumbnail.assert_called_once_with((1024, 1024), Image.Resampling.LANCZOS)
 
     @pytest.mark.asyncio

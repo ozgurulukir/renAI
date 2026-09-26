@@ -81,32 +81,34 @@ async def test_run_evaluation_pipeline_success():
 
 @pytest.mark.asyncio
 async def test_print_final_summary_organize():
-    """Test final summary prints correct organize headers and valid data."""
+    """Test final summary renders a grid whose counts match the results exactly."""
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from renai.messages import orchestrator as orch_msg
     from renai.models import ProcessingResult
     from renai.processors.orchestrator import _print_final_summary
 
+    # Asymmetric counts (2 success / 1 failure) so a swapped or miscounted
+    # tally cannot satisfy both assertions at once.
     results = [
-        ProcessingResult(success=True, name="test.pdf", category="Science"),
+        ProcessingResult(success=True, name="a.pdf", category="Science"),
+        ProcessingResult(success=True, name="b.pdf", category="History"),
         ProcessingResult(success=False, name="fail.pdf", error="error"),
     ]
     with patch("renai.processors.orchestrator.console.print") as mock_print:
         _print_final_summary(results, is_dry_run=False)
 
-        # Verify it genuinely renders a table with correct data
         printed_panel = mock_print.call_args[0][0]
-
-        from rich.panel import Panel
-        from rich.table import Table
         assert isinstance(printed_panel, Panel)
         assert isinstance(printed_panel.renderable, Table)
 
-        # We need to extract the renderable strings from the rich Table cells
-        # The summary table renders a grid with 2 columns: Badge and Count
-        # It's an overarching summary table, let's verify rows
         cells = []
         for col in printed_panel.renderable.columns:
             cells.extend(list(col.cells))
+        rendered = [str(c) for c in cells]
 
-        # Verify successes and errors are counted correctly
-        # Usually formatted like '1' inside the rendered string
-        assert any("1" in str(c) for c in cells)
+        assert orch_msg.Summary.SUCCESS_BADGE in rendered
+        assert orch_msg.Summary.SUCCESS_COUNT.format(2) in rendered
+        assert orch_msg.Summary.FAILED_BADGE in rendered
+        assert orch_msg.Summary.FAILED_COUNT.format(1) in rendered
