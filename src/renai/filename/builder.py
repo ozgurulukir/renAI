@@ -63,6 +63,17 @@ def _series_volume_label(series: str, volume: str) -> str:
     return ""
 
 
+def _lang_suffix(language: str, original_extension: str) -> str:
+    """Single convention for the language suffix appended by image/vision builders.
+
+    All builders that annotate the language use this helper rather than
+    re-implementing the `` -- ({lang}){ext}`` separator, so the separator and
+    suffix contract live in exactly one place.
+    """
+    lang_indicator = "tr" if str(language).lower() == "tr" else "en"
+    return f" -- ({lang_indicator}){original_extension}"
+
+
 def _normalize_string(value: Any, default: str = "") -> Any:
     """Normalize a string field value.
 
@@ -231,14 +242,13 @@ def build_image_filename(
     if add_exif_date and final_exif:
         name_parts.append(f"[{final_exif}]")
 
-    lang_indicator = "tr" if language.lower() == "tr" else "en"
     new_name_base = " -- ".join(name_parts)
 
     if not new_name_base:
         new_name_base = "Image"
 
     sanitized = sanitize_filename(new_name_base, max_filename_length)
-    return f"{sanitized} -- ({lang_indicator}){original_extension}"
+    return f"{sanitized}{_lang_suffix(language, original_extension)}"
 
 
 def extract_category_from_metadata(
@@ -297,11 +307,9 @@ def build_vision_filename(
     if year and year.isdigit():
         name_parts.append(f"({year})")
 
-    lang_indicator = "tr" if language.lower() == "tr" else "en"
     new_name_base = " -- ".join(name_parts)
-
     if not new_name_base:
         new_name_base = "Document"
 
     sanitized = sanitize_filename(new_name_base, max_filename_length)
-    return f"{sanitized} -- ({lang_indicator}){original_extension}"
+    return f"{sanitized}{_lang_suffix(language, original_extension)}"

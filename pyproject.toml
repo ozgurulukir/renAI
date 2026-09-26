@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "renai"
-version = "2.2.0"
-description = "AI-Powered Book Renamer and Organizer"
+version = "2.2.1"
+description = "AI-powered digital file renamer and organizer using LLMs and OCR"
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}

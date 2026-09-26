@@ -101,6 +101,48 @@ class TestSafeCopyFile:
             with pytest.raises(OSError, match="Mocked OSError"):
                 safe_copy_file(source, dest)
 
+    def test_safe_copy_file_duplicate_content_skips(self, tmp_path):
+        """Test that copying file to existing destination with same content skips copy."""
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("identical content")
+        dest.write_text("identical content")
+
+        result = safe_copy_file(source, dest)
+
+        assert result == dest
+        assert source.exists()
+        assert dest.exists()
+
+    def test_safe_copy_file_diff_content_unique_path(self, tmp_path):
+        """Test that copying file to existing destination with different content uses unique name."""
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("source content")
+        dest.write_text("different existing content")
+
+        result = safe_copy_file(source, dest)
+
+        assert result != dest
+        assert result.parent == dest.parent
+        assert source.exists()
+        assert dest.exists()
+        assert result.exists()
+        assert result.read_text() == "source content"
+        assert dest.read_text() == "different existing content"
+
+    def test_safe_copy_file_dry_run(self, tmp_path):
+        """Test that dry_run simulates copy without creating destination."""
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("content")
+
+        result = safe_copy_file(source, dest, dry_run=True)
+
+        assert result == dest
+        assert source.exists()
+        assert not dest.exists()
+
 
 class TestSafeMoveFile:
     """Test safe_move_file function."""
@@ -258,3 +300,39 @@ class TestSafeMoveFile:
         assert reverted >= 1
         assert source.exists()
         assert not dest.exists()
+
+
+class TestFileOrganizerCopyMode:
+    """Test FileOrganizer with mode='copy'."""
+
+    @pytest.mark.asyncio
+    async def test_organizer_copy_mode_preserves_source(self, tmp_path):
+        """Verify that mode='copy' duplicates file and preserves original source."""
+        from renai.file_ops.organizer import FileOrganizer
+        from renai.models.schemas import BookMetadata
+
+        source = tmp_path / "original_book.pdf"
+        source.write_text("dummy book bytes")
+
+        organizer = FileOrganizer(root_dir=tmp_path, max_filename_length=200)
+        metadata = BookMetadata(
+            title="Copied Book",
+            author="Author Name",
+            year=2024,
+            category="Non-Fiction",
+            language="en",
+        )
+
+        result = await organizer.organize_file(
+            file_path=source,
+            metadata=metadata,
+            mode="copy",
+        )
+
+        assert result.success is True
+        assert source.exists()
+        assert result.file_path is not None
+        assert result.file_path.exists()
+        assert result.file_path != source
+        assert result.file_path.read_text() == "dummy book bytes"
+        assert "Copied Book" in result.file_path.name

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import cast
 
 from ..cache.manager import get_metadata_cache_path
-from ..cache.middleware import with_metadata_cache
+from ..cache.middleware import MetadataRequest, with_metadata_cache
 from ..config.folder_rules import (
     FolderRule,
     get_folder_rule_for,
@@ -18,6 +18,7 @@ from ..config.folder_rules import (
 )
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
+from ..exceptions import ConfigurationError
 from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata, ProcessingConfig
@@ -69,6 +70,11 @@ class BookProcessor:
         llm_engine: LLMEngine | None = None,
         vision_llm_engine: LLMEngine | None = None,
     ):
+        if ocr_engine is None:
+            raise ConfigurationError("An OCR engine is required to instantiate BookProcessor.")
+        if config is None:
+            raise ConfigurationError("A processing configuration is required for BookProcessor.")
+
         self.ocr_engine = ocr_engine
         self.config = config
         self.llm_engine = llm_engine
@@ -133,14 +139,22 @@ class BookProcessor:
             self.text_extractor.setup_move_folders, root_dir, skip_ocr_checks, move_scan_failures
         )
 
-    def _get_cache_parameters(
+    def _build_metadata_request(
         self,
         file_path: Path,
         file_hash: str,
         fallback_mode: FallbackMode,
         rename_images: bool,
-    ) -> tuple[Path, type[BookMetadata] | type[ImageMetadata], bool]:
-        """Determine cache path, model class, and whether vision cache is used."""
+        *,
+        update_metadata: bool = False,
+        add_exif_date: bool = False,
+    ) -> MetadataRequest:
+        """Build the explicit ``MetadataRequest`` contract for the cache middleware.
+
+        Determines cache path, model class, and vision-cache selection from the
+        caller's inputs and returns them as a single type-safe value the decorator
+        relies on instead of a set of bare keyword arguments.
+        """
         is_image = file_path.suffix.lower() in get_image_extensions()
         cache_mode = "img" if (is_image and rename_images) else "doc"
         use_vision_cache = (is_image and rename_images) or (
@@ -157,34 +171,43 @@ class BookProcessor:
             cache_dir=CACHE_DIR,
             use_vision=use_vision_cache,
         )
-        model_class = ImageMetadata if (is_image and rename_images) else BookMetadata
-        return cache_path, model_class, use_vision_cache
+        model_class: type[BookMetadata] | type[ImageMetadata] = (
+            ImageMetadata if (is_image and rename_images) else BookMetadata
+        )
+        return MetadataRequest(
+            file_path=file_path,
+            cache_path=cache_path,
+            model_class=model_class,
+            use_vision_cache=use_vision_cache,
+            fallback_mode=fallback_mode,
+            rename_images=rename_images,
+            update_metadata=update_metadata,
+            add_exif_date=add_exif_date,
+            file_hash=file_hash,
+        )
 
     @with_metadata_cache()
     async def _resolve_metadata(
         self,
-        file_path: Path,
-        cache_path: Path,  # noqa: ARG002  forwarded to with_metadata_cache
-        model_class: type[BookMetadata] | type[ImageMetadata],  # noqa: ARG002
-        use_vision_cache: bool,  # noqa: ARG002
-        fallback_mode: FallbackMode,
-        rename_images: bool,
-        update_metadata: bool,  # noqa: ARG002
-        add_exif_date: bool,
-        file_hash: str | None = None,
+        request: MetadataRequest,
         doc_categories: dict[str, list] | None = None,
         image_categories: dict[str, list] | None = None,
     ) -> tuple[BookMetadata | ImageMetadata | None, bool]:
-        """Resolve metadata by executing extraction engines (caching handled by middleware)."""
+        """Resolve metadata by executing extraction engines (caching handled by middleware).
+
+        All cache-middleware inputs arrive through the explicit ``request`` contract;
+        the body consumes only the fields it actually needs.
+        """
+        file_path = request.file_path
         is_image = file_path.suffix.lower() in get_image_extensions()
-        if is_image and rename_images:
+        if is_image and request.rename_images:
             metadata = await self.visual_processor.extract_metadata_from_image(
-                file_path, add_exif_date=add_exif_date, image_categories=image_categories
+                file_path, add_exif_date=request.add_exif_date, image_categories=image_categories
             )
             return metadata, False
 
         metadata, is_vision_doc = await self._extract_document_metadata(
-            file_path, fallback_mode, file_hash, doc_categories=doc_categories
+            file_path, request.fallback_mode, request.file_hash, doc_categories=doc_categories
         )
         return metadata, is_vision_doc
 
@@ -211,20 +234,17 @@ class BookProcessor:
 
             folder_rule = get_folder_rule_for(file_path)
             file_hash = await asyncio.to_thread(get_file_hash, file_path)
-            cache_path, model_class, use_vision = self._get_cache_parameters(
-                file_path, file_hash, fallback_mode, rename_images
+            request = self._build_metadata_request(
+                file_path,
+                file_hash,
+                fallback_mode,
+                rename_images,
+                update_metadata=update_metadata,
+                add_exif_date=add_exif_date,
             )
 
             metadata, is_vision_doc = await self._resolve_metadata(
-                file_path=file_path,
-                cache_path=cache_path,
-                model_class=model_class,
-                use_vision_cache=use_vision,
-                fallback_mode=fallback_mode,
-                rename_images=rename_images,
-                update_metadata=update_metadata,
-                add_exif_date=add_exif_date,
-                file_hash=file_hash,
+                request=request,
                 doc_categories=folder_rule.categories if folder_rule else None,
                 image_categories=folder_rule.image_categories if folder_rule else None,
             )

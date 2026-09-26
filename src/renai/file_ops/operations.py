@@ -149,24 +149,39 @@ def safe_copy_file(
     dest_path: Path,
     operation_type: str = "copy",
     ensure_dirs: bool = True,
+    source_hash: str | None = None,
     dry_run: bool = False,
 ) -> Path:
-    """Safely copy a file with dry-run support and error handling."""
+    """Safely copy a file with duplicate detection, dry-run support, and error handling."""
     if not source_path.exists():
         raise FileNotFoundError(f"Source file {source_path} does not exist")
 
+    final_dest_path = dest_path
+    if dest_path.exists():
+        existing_hash = get_file_hash(dest_path)
+        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
+
+        if existing_hash == new_hash:
+            logging.debug(
+                f"File {dest_path.name} already exists with same content, skipping {operation_type}"
+            )
+            return dest_path
+        final_dest_path = ensure_unique_path(dest_path, source_hash)
+
     if dry_run:
-        logging.info(f"[DRY-RUN] Would {operation_type} {source_path.name} -> {dest_path.name}")
-        return dest_path
+        logging.info(
+            f"[DRY-RUN] Would {operation_type} {source_path.name} -> {final_dest_path.name}"
+        )
+        return final_dest_path
 
     try:
         if ensure_dirs:
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(source_path), str(dest_path))
+            final_dest_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(source_path), str(final_dest_path))
         logging.debug(
-            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {dest_path.name}"
+            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
         )
-        return dest_path
+        return final_dest_path
     except Exception as e:
         logging.error(f"ERROR: Failed to {operation_type} {source_path.name}: {e}")
         raise

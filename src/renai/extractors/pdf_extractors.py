@@ -94,6 +94,8 @@ class PyMuPDFExtractor(BaseExtractor):
         head_ratio: float = 0.7,
         max_pages_per_side: int = 10,
     ) -> str | None:
+        if not self._check_symlink(file_path):
+            return None
         try:
             with pymupdf.open(str(file_path)) as doc:
                 total_pages = len(doc)
@@ -122,6 +124,8 @@ class PDFPlumberExtractor(BaseExtractor):
         head_ratio: float = 0.7,
         max_pages_per_side: int = 10,
     ) -> str | None:
+        if not self._check_symlink(file_path):
+            return None
         try:
             import pdfplumber  # type: ignore[import-untyped]
 
@@ -155,6 +159,8 @@ class PyPDFExtractor(BaseExtractor):
         head_ratio: float = 0.7,
         max_pages_per_side: int = 10,
     ) -> str | None:
+        if not self._check_symlink(file_path):
+            return None
         try:
             from pypdf import PdfReader  # type: ignore[import-untyped]
 
@@ -189,6 +195,8 @@ class PyPdfium2Extractor(BaseExtractor):
         head_ratio: float = 0.7,
         max_pages_per_side: int = 10,
     ) -> str | None:
+        if not self._check_symlink(file_path):
+            return None
         try:
             import pypdfium2 as pdfium  # type: ignore[import-untyped]
 

@@ -7,9 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-21
+
+### Added
+
+- **Copy Mode Support**: Added `--mode copy` alongside `--mode rename` allowing non-destructive file organization.
+- **Vision Fallback Page Cap**: Added `vision_max_pages` configuration (default: 3, range: 1-10) to control sampled pages during PDF vision extraction.
+- **Per-Folder Rules**: Added `folder_rules.toml` support for folder-specific category restrictions and custom filename templates (`doc_template`, `vision_template`, `image_template`).
+- **SQLite WAL Cache**: Persistent thread-safe SQLite WAL caching for extracted text and metadata with dry-run and undo support.
+- **Dedicated Text & Vision Model Selection**: Separated configuration and auto-selection for text vs vision-capable models.
+
 ### Changed
 
-- Consolidate `BookProcessor` configuration into `ProcessingConfig`, reducing the constructor from 13 parameters to 4 and removing primitive obsession.
+- **Architecture Decoupling**: Consolidated `BookProcessor` configuration into `ProcessingConfig`, reducing constructor parameters and extracting file organization logic into `FileOrganizer`.
+- **Explicit Metadata Request Contract**: Cleaned up caching middleware with explicit `MetadataRequest` dataclass.
+
+### Fixed
+
+- **Symlink Data Loss Prevention**: Prohibited extraction and OCR processing on symlinks to eliminate path manipulation and data loss risks.
+- **`safe_copy_file` Robustness**: Handled pre-computed source hashes, duplicate file content skipping, collision evasion, and async execution offload.
+- **LLM Rate Limit Backoff**: Restored exponential backoff retries exclusively to `RateLimitError`, preventing execution stall on general exceptions.
+- **Exception Chaining**: Enforced explicit exception chaining (`from e`) across engines and setup steps.
+- **Linter & Type Annotations**: Resolved Pyright typing in cache middleware and cleaned up Ruff lints across the codebase.
 
 ## [2.2.0] - 2026-06-10
 
