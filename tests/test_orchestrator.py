@@ -66,21 +66,49 @@ async def test_run_evaluation_pipeline_success():
                     "renai.processors.orchestrator._print_evaluation_summary"
                 ) as mock_summary:
                     await run_evaluation_pipeline(Path.cwd(), provider_filter=None, workers=2)
-                    mock_run.assert_called_once()
-                    mock_summary.assert_called_once()
+
+                    # Verify run_pipeline is called with specific and correct config boundaries
+                    assert mock_run.call_count == 1
+                    kwargs = mock_run.call_args.kwargs
+                    assert kwargs["root_dir"] == Path.cwd()
+                    assert kwargs["provider"] == "openai"
+                    assert kwargs["model"] == "gpt-4"
+                    assert kwargs["config"].mode == "evaluate"
+                    assert kwargs["config"].workers == 2
+
+                    mock_summary.assert_called_once_with({"openai/gpt-4": []})
 
 
 @pytest.mark.asyncio
 async def test_print_final_summary_organize():
-    """Test final summary prints correct organize headers."""
+    """Test final summary renders a grid whose counts match the results exactly."""
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from renai.messages import orchestrator as orch_msg
     from renai.models import ProcessingResult
     from renai.processors.orchestrator import _print_final_summary
 
+    # Asymmetric counts (2 success / 1 failure) so a swapped or miscounted
+    # tally cannot satisfy both assertions at once.
     results = [
-        ProcessingResult(success=True, name="test.pdf", category="Science"),
+        ProcessingResult(success=True, name="a.pdf", category="Science"),
+        ProcessingResult(success=True, name="b.pdf", category="History"),
         ProcessingResult(success=False, name="fail.pdf", error="error"),
     ]
     with patch("renai.processors.orchestrator.console.print") as mock_print:
         _print_final_summary(results, is_dry_run=False)
-        # Verify it renders without crashing
-        assert mock_print.call_count > 0
+
+        printed_panel = mock_print.call_args[0][0]
+        assert isinstance(printed_panel, Panel)
+        assert isinstance(printed_panel.renderable, Table)
+
+        cells = []
+        for col in printed_panel.renderable.columns:
+            cells.extend(list(col.cells))
+        rendered = [str(c) for c in cells]
+
+        assert orch_msg.Summary.SUCCESS_BADGE in rendered
+        assert orch_msg.Summary.SUCCESS_COUNT.format(2) in rendered
+        assert orch_msg.Summary.FAILED_BADGE in rendered
+        assert orch_msg.Summary.FAILED_COUNT.format(1) in rendered

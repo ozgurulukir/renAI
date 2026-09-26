@@ -198,7 +198,9 @@ class TestBookProcessor:
 
         assert result.success is True
         assert result.name == "Vision Title -- Vision Author -- (2026) -- (tr).pdf"
-        mock_build_vision.assert_called_once()
+
+        # Verify it specifically called build_vision_filename with the correct metadata object
+        mock_build_vision.assert_called_once_with(metadata, ".pdf", 200, template=None)
 
     def test_model_resolution_from_engine(self, mock_ocr, mock_llm):
         """Test that processor.model is derived from llm_engine.model_name, not config."""

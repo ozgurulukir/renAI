@@ -126,7 +126,18 @@ async def test_extract_page_image_mutool_success():
         assert img == mock_img
         assert temp_img is not None
         assert "temp_page_0" in str(temp_img)
+
+        # Genuine validation: ensure exactly what is passed to mutool
         mock_exec.assert_called_once()
+        exec_args = mock_exec.call_args[0]
+        assert exec_args[0] == "mutool"
+        assert exec_args[1] == "draw"
+        assert "-r" in exec_args
+        assert str(int(target_dpi)) in exec_args
+        assert str(file_path.absolute()) in exec_args or str(file_path) in exec_args
+        assert "-o" in exec_args
+        assert "-c" in exec_args
+        assert "gray" in exec_args
 
 
 @pytest.mark.asyncio
