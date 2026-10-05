@@ -10,6 +10,7 @@ from pathlib import Path
 
 import requests
 
+from renai import __version__
 from renai.config.constants import APP_DATA_DIR
 
 CACHE_FILE = APP_DATA_DIR / "models_dev_cache.json"
@@ -20,7 +21,7 @@ HTTP_STATUS_OK = 200
 def _fetch_remote_json(endpoint: str) -> dict | None:
     """Fetch remote JSON from models.dev endpoint."""
     headers = {
-        "User-Agent": "renAI/2.2.1 (https://github.com/ozgurulukir/renAI)",
+        "User-Agent": f"renAI/{__version__} (https://github.com/ozgurulukir/renAI)",
         "Accept": "application/json",
     }
     url = f"https://models.dev/{endpoint}"

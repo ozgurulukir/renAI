@@ -1,6 +1,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
+from renai import __version__
 from renai.utils.models_dev import (
     get_full_catalog,
     get_models_catalog,
@@ -56,7 +57,7 @@ def test_get_models_catalog_fetch_remote(tmp_path):
         mock_get.assert_called_once_with(
             "https://models.dev/catalog.json",
             headers={
-                "User-Agent": "renAI/2.2.1 (https://github.com/ozgurulukir/renAI)",
+                "User-Agent": f"renAI/{__version__} (https://github.com/ozgurulukir/renAI)",
                 "Accept": "application/json",
             },
             timeout=6.0,
