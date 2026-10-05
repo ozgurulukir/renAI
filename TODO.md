@@ -1,5 +1,11 @@
 # Head-Tail Sampling Refaktör Planı
 
+> **TAMAMLANDI (v2.2.0).** Bu plandaki head-tail sampling refaktörü shipped
+> edildi: `_extract_head_tail` ve `text_extraction = "head-tail"` varsayılanı
+> artık üretimde (bkz. `CHANGELOG.md` [2.2.0] ve
+> `src/renai/processors/text_extractor.py`). Aşağıdaki plan geçmiş/ referans
+> amaçlıdır; "yapılacak" olarak okunmamalı.
+
 ## Özet
 
 `proportional_chunk_trim` chunking yaklaşımı, metadata çıkarma için suboptimaldir.

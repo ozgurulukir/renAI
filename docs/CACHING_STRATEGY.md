@@ -57,6 +57,12 @@ The metadata cache key is generated using:
 - `img_abc123def456_a1b2c3d4_vision.json` - Vision-based metadata cache for image
 - `doc_abc123def456_e5f6g7h8_vision.json` - Vision-based fallback cache for document
 
+> **Where the key lives:** since v2.2.1 these strings are the `cache_key`
+> primary keys of the `text_cache` / `metadata_cache` tables inside
+> `cache.db` (the primary store). The `.json`/`.txt` names above only appear
+> on disk as **legacy fallback files** (read during migration; see
+> [Cache Storage](#cache-storage)).
+
 ---
 
 ## Provider-Model Awareness

@@ -1,5 +1,12 @@
 # ARCHITECTURE AUTOPSY AND ROADMAP
 
+> **Historical document.** This analysis is a point-in-time snapshot taken
+> before the v2.2.x refactoring cycle. Several findings have since been
+> addressed — e.g. `ProcessingConfig` now carries `head_ratio`,
+> `min_sufficient_text`, and vision settings, and domain processors no longer
+> import the global `app_settings` singleton. See `CHANGELOG.md` for what
+> shipped; do not treat present-tense claims here as current state.
+
 ## Phase 1: Architectural & Vision Autopsy
 
 ### 1.1 Core Purpose vs. Implemented Reality

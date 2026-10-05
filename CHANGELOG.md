@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Copy Mode Support**: Added `--mode copy` alongside `--mode rename` allowing non-destructive file organization.
+- **Copy-Safe File Operations**: Added `safe_copy_file` with source-hash verification and copy-vs-move routing in `FileOrganizer`, preventing data loss on copy-like operations. (Note: a user-facing `--mode copy` CLI selection is not yet exposed; rename/organize paths still move files.)
 - **Vision Fallback Page Cap**: Added `vision_max_pages` configuration (default: 3, range: 1-10) to control sampled pages during PDF vision extraction.
 - **Per-Folder Rules**: Added `folder_rules.toml` support for folder-specific category restrictions and custom filename templates (`doc_template`, `vision_template`, `image_template`).
 - **SQLite WAL Cache**: Persistent thread-safe SQLite WAL caching for extracted text and metadata with dry-run and undo support.

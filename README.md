@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-Last updated: 2026-06-10
+Last updated: 2026-10-05
 
 ---
 
@@ -79,7 +79,7 @@ _Example: `Sunset -- [2024-07-15] -- (en).jpg`_
 - **`--fallback-mode vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs.
 - **`--fallback-mode move`**: Moves files where text extraction fails to `Needs_Scan/` folder.
 - **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + selected fallback.
-- **`--benchmark`**: Compares PDF extraction library performance on the first 3 files.
+- **`--benchmark`**: Compares PDF extraction library performance across all detected files.
 - **`--dry-run`**: Simulate processing without renaming or moving files.
 - **`undo` / `undo-last`**: Revert file operations from the most recent renaming or organizing run.
 
@@ -512,7 +512,7 @@ When using `--mode organize`:
 - **`--fallback-mode move`**: Moves files with insufficient text to `Needs_Scan` folder (skips fallback processing)
 - **`--move-scan-failures`**: Moves files that fail both standard and fallback extraction to `Scan_Failures` folder
 - **`--fallback-mode none`**: No fallback processing; extraction failures are reported but not retried
-- **`--benchmark`**: Run a benchmark comparing PDF extractors on the first 3 files
+- **`--benchmark`**: Run a benchmark comparing PDF extractors across all detected files
 
 ---
 
@@ -653,7 +653,7 @@ Behavior notes:
 - File types without a template in the rule keep the built-in pattern.
 - Templates with unknown tokens are ignored at load time (a warning is logged).
 - Rule categories fully replace the global list for that folder; if the model still returns an out-of-list category, it is remapped to `Other`/`Diğer` when allowed, otherwise to the first category in the rule.
-- Metadata caches are keyed per file/provider/model, not per rule: a category cached while a rule was active keeps its restricted value after the rule is removed or relaxed. Re-process the affected files with `--update-metadata` (or run `renai clear-cache`) to refresh them.
+- Metadata caches are keyed per file/provider/model, not per rule: a category cached while a rule was active keeps its restricted value after the rule is removed or relaxed. Re-process the affected files with `--update-metadata` (or run `renai cache`) to refresh them.
 - Rule loading is layered: the first config file that *exists* wins (user → default → package). A user file that exists but defines no valid rules disables packaged defaults; only a missing file lets the next layer be consulted.
 
 ### Command Options
@@ -666,6 +666,7 @@ Behavior notes:
 | `--workers`            | Concurrent workers (default: 4)                                                                        |
 | `--ocr-enhanced`       | Enable enhanced OCR                                                                                    |
 | `--use-mutool`         | Use mutool for high-quality PDF-to-image conversion during OCR fallback (recommended for scanned PDFs) |
+| `--mutool-path`        | Path to the mutool binary (default from settings)                                                      |
 | `--debug-ocr`          | Save debug images                                                                                      |
 | `--recursive`          | Process subdirectories (default: True)                                                                 |
 | `--no-recursive`       | Process root only                                                                                      |
@@ -676,8 +677,10 @@ Behavior notes:
 | `--update-metadata`    | Force refresh metadata cache                                                                           |
 | `--fallback-mode`      | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`)                                       |
 | `--move-scan-failures` | Move failed files to `Scan_Failures` folder                                                            |
-| `--benchmark`          | Benchmark PDF extractors on the first 3 files                                                          |
+| `--benchmark`          | Benchmark PDF extractors across all detected files                                                     |
 | `--vision-max-pages`   | Max pages to sample for vision PDF extraction (default: 3)                                             |
+| `--vision-provider`    | LLM provider for vision operations (default: from settings)                                            |
+| `--vision-model`       | Vision-capable model for vision operations (default: from settings)                                    |
 | `--dry-run`            | Simulate processing without renaming or moving files                                                   |
 | `undo` / `undo-last`   | Revert file operations from the most recent run                                                         |
 | `cache`                | Command to clear cache                                                                                 |

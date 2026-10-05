@@ -39,12 +39,12 @@ uv run pytest tests/ -v
 To run tests with coverage:
 
 ```bash
-uv run pytest tests/ --cov=renai
+uv run pytest tests/ --cov=src/renai
 ```
 
 ## 🧹 Code Quality
 
-We use `ruff` for linting and formatting, and `mypy` for type checking.
+We use `ruff` for linting and formatting, and `pyright` for type checking.
 
 ```bash
 # Linting & Formatting
@@ -52,7 +52,7 @@ uv run ruff check .
 uv run ruff format .
 
 # Type Checking
-uv run mypy src/renai
+uv run pyright src/renai
 ```
 
 ## 🚀 Pull Request Process

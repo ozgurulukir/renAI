@@ -2,7 +2,7 @@
 
 `renAI`, dijital belge ve görsellerinizi Büyük Dil Modelleri (LLM) ve Optik Karakter Tanıma (OCR) kullanarak otomatik olarak yeniden adlandıran ve düzenleyen bir Python aracıdır. Dosyalarınızdan metin çıkarma veya multimodal yapay zeka görüşü kullanarak anlamlı meta veriler (metadata) çıkarır, tutarlı ve aranabilir dosya isimleri oluşturur.
 
-Son güncelleme: 2026-06-10
+Son güncelleme: 2026-10-05
 
 ---
 
@@ -607,8 +607,10 @@ categories = [
 | `--update-metadata`    | Önbelleği zorla yenile                                                   |
 | `--fallback-mode`      | Çıkarma başarısız olduğundaki strateji (`none`, `ocr`, `vision`, `move`) |
 | `--move-scan-failures` | Başarısız dosyaları `Scan_Failures` klasörüne taşı                       |
-| `--benchmark`          | İlk 3 dosyada PDF çıkarıcılarını karşılaştır                             |
+| `--benchmark`          | Tespit edilen tüm dosyalarda PDF çıkarıcılarını karşılaştır              |
 | `--vision-max-pages`   | Vision PDF çıkarma için örneklenecek maksimum sayfa (varsayılan: 3)       |
+| `--vision-provider`    | Vision işlemleri için LLM sağlayıcısı (varsayılan: ayarlardan)            |
+| `--vision-model`       | Vision işlemleri için vision destekli model (varsayılan: ayarlardan)      |
 | `--dry-run`            | Dosyaları yeniden adlandırmadan veya taşımadan işlemi simüle eder         |
 | `undo` / `undo-last`   | En son yeniden adlandırma veya düzenleme işlemlerini geri alır            |
 | `cache`                | Önbelleği temizleme komutu                                               |

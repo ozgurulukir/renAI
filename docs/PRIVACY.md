@@ -294,8 +294,8 @@ After processing sensitive documents:
 
 ### GDPR (EU)
 
-- **Right to be Forgotten**: Use `--clear-cache` to remove cached data
-- **Data Minimization**: Only 8000 characters sent per file
+- **Right to be Forgotten**: Use `renai cache --yes` to remove cached data
+- **Data Minimization**: At most `text_length` (default: 10000, configurable via `--text-length`) characters of extracted text are sent to the LLM per file
 - **Consent**: Ensure you have rights to process documents
 
 ### HIPAA (Healthcare - US)

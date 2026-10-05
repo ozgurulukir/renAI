@@ -82,7 +82,7 @@ class Help:
     MOVE_SCAN_FAILURES = "Move failed files to Scan_Failures"
     RENAME_IMAGES = "Enable vision-based image renaming"
     EXIF = "Use EXIF date in filenames"
-    BENCHMARK = "Benchmarking on first 3 files"
+    BENCHMARK = "Benchmark PDF extractors across all detected files"
     VISION_MAX_PAGES = "Max pages to sample for vision PDF extraction"
     VISION_PROVIDER = "LLM Provider for vision operations"
     VISION_MODEL = "Model name for vision operations"

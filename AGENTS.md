@@ -5,7 +5,7 @@
 **renAI** is a Python CLI tool that automatically renames and organizes digital files (PDFs, EPUBs, images, Office docs) using LLMs and OCR. It extracts metadata (title, author, year, category, language) via text extraction or vision-capable models, then produces consistent, descriptive filenames.
 
 - **Version**: 2.2.1
-- **Python**: 3.12+ (tested on 3.12 and 3.13)
+- **Python**: 3.12+ (CI matrix: 3.12)
 - **License**: MIT
 - **Entry point**: `renai.cli:app` (Typer)
 
@@ -89,9 +89,11 @@ src/renai/                  # Main package
   filename/                 # Filename generation
     builder.py              # build_book_filename, build_image_filename, build_vision_filename
   cache/                    # Caching layer
-    manager.py              # Text + metadata cache (thread-safe, SHA256-keyed)
+    manager.py              # Text + metadata cache (SQLite WAL primary store, SHA256-keyed)
+    middleware.py           # MetadataRequest cache middleware (typed request contract)
   file_ops/                 # File system operations
     operations.py           # safe_move_file, safe_copy_file, ensure_unique_path
+    organizer.py            # FileOrganizer (move/copy routing, dry-run and undo support)
   prompts/                  # LLM prompt templates (plain text)
     system_base.txt         # Base system prompt
     book_extractor.txt      # Book metadata extraction prompt
@@ -100,6 +102,7 @@ src/renai/                  # Main package
   utils/                    # Shared utilities
     __init__.py             # Hashing, sanitization, secure dirs, text trimming
     rate_limiter.py         # AsyncRateLimiter (token-bucket RPM limiter)
+    models_dev.py           # models.dev provider/model catalog fetcher
 
 tests/                      # Test suite
   conftest.py               # Conditional dependency mocking for CI
@@ -231,7 +234,7 @@ python -m build
 | File                                   | Purpose                                                                                                        |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `pyproject.toml`                       | Build config, dependencies, ruff settings, pytest config, CLI entry point                                      |
-| `src/renai/cli.py`                     | Typer CLI commands (`process`, `evaluate`, `init`, `version`, `clear-cache`)                                   |
+| `src/renai/cli.py`                     | Typer CLI commands (`process`, `evaluate`, `providers`, `cache`, `init`, `undo`/`undo-last`)                    |
 | `src/renai/processors/orchestrator.py` | Pipeline orchestration, progress display, engine setup                                                         |
 | `src/renai/processors/book.py`         | `BookProcessor` -- unified file processing (documents + images)                                                |
 | `src/renai/processors/setup.py`        | `setup.py` and `setup_steps.py` handle the interactive init wizard, credentials setup, and API key validation. |
@@ -246,7 +249,7 @@ python -m build
 | `src/renai/exceptions.py`              | Exception hierarchy                                                                                            |
 | `src/renai/logging_config.py`          | structlog setup with JSON/console output                                                                       |
 | `tests/conftest.py`                    | Conditional dependency mocking for minimal CI environments                                                     |
-| `.github/workflows/ci.yml`             | CI: test (3.12/3.13), lint, build                                                                              |
+| `.github/workflows/ci.yml`             | CI: test (3.12), lint, build                                                                                   |
 
 ## Runtime/Tooling Preferences
 
@@ -293,8 +296,8 @@ pytest tests/ -v --tb=short --cov=src/renai --cov-report=xml --cov-report=term-m
 
 ### CI Pipeline (`.github/workflows/ci.yml`)
 
-- **test** job: Python 3.12 + 3.13 matrix, install deps, run tests with coverage, upload to Codecov
-- **lint** job: `ruff check src/ tests/` + `pyright src/renai --ignoreexternal`
+- **test** job: Python 3.12 matrix, install deps, run tests with coverage, upload to Codecov
+- **lint** job: `ruff check src/ tests/` + `pyright src/renai`
 - **build** job: `python -m build`, verify package install + `renai --help`
 
 ### Test Conventions
