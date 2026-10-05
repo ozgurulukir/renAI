@@ -132,6 +132,50 @@ def test_handle_process_command_keyboard_interrupt(tmp_path):
         mock_console.print.assert_any_call("\n[yellow]Cancelled by user. Exiting...[/yellow]")
 
 
+def test_handle_process_command_configuration_error(tmp_path):
+    """Verify ConfigurationError from the pipeline renders the setup-failed message and exits 1."""
+    from renai.exceptions import ConfigurationError
+    from renai.messages import cli as msg
+
+    with (
+        patch(
+            "renai.cli.run_pipeline",
+            side_effect=ConfigurationError("Unknown provider: 'bogus'."),
+        ),
+        patch("renai.cli.display_warnings"),
+        patch("renai.cli._print_process_header"),
+        patch("renai.cli.console") as mock_console,
+    ):
+        with pytest.raises(typer.Exit) as exc_info:
+            handle_process_command(
+                directory=str(tmp_path),
+                mode="rename",
+                provider="bogus",
+                model="gpt-4",
+                workers=2,
+                ocr_enhanced=False,
+                debug_ocr=False,
+                use_mutool=False,
+                mutool_path="",
+                extractor="pymupdf",
+                text_length=1000,
+                text_extraction="regular",
+                extraction_pages=5,
+                recursive=False,
+                update_metadata=False,
+                fallback_mode=FallbackMode.NONE,
+                move_scan_failures=False,
+                rename_images=False,
+                exif=False,
+                benchmark=False,
+                vision_max_pages=3,
+            )
+        assert exc_info.value.exit_code == 1
+        mock_console.print.assert_any_call(
+            msg.Error.SETUP_FAILED.format("Unknown provider: 'bogus'.")
+        )
+
+
 def test_check_vision_model_guard_missing_model_aborts():
     from renai.cli import check_vision_model_guard
 

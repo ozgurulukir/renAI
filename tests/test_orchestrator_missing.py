@@ -2,23 +2,25 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-import typer
 
-from renai.models.schemas import ProcessingConfig
+from renai.exceptions import ConfigurationError
+from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.orchestrator import setup_engines
 
 
 @pytest.mark.asyncio
 async def test_setup_engines_invalid_provider():
+    """Unknown provider raises ConfigurationError naming the bad provider."""
     config = ProcessingConfig()
 
-    with pytest.raises(typer.Exit) as exc_info:
+    with pytest.raises(ConfigurationError) as exc_info:
         await setup_engines("invalid_provider", "test", config)
-    assert exc_info.value.exit_code == 1
+    assert "invalid_provider" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 async def test_setup_engines_missing_api_key():
+    """Configured provider without an API key raises ConfigurationError."""
     config = ProcessingConfig()
 
     fake_providers = {
@@ -29,9 +31,73 @@ async def test_setup_engines_missing_api_key():
         patch("renai.processors.orchestrator.get_api_key", return_value=None),
         patch("renai.processors.orchestrator.PROVIDERS", fake_providers),
     ):
-        with pytest.raises(typer.Exit) as exc_info:
+        with pytest.raises(ConfigurationError) as exc_info:
             await setup_engines("openai", "test", config)
-        assert exc_info.value.exit_code == 1
+        assert "API key" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_setup_engines_vision_provider_missing_api_key():
+    """A required vision provider without an API key raises ConfigurationError."""
+    config = ProcessingConfig(
+        fallback_mode=FallbackMode.VISION,
+        vision_provider="openrouter",
+        vision_model="google/gemini-2.0",
+    )
+
+    fake_providers = {
+        "openai": SimpleNamespace(api_key="primary_key", base_url="https://api.openai.com/v1"),
+        "openrouter": SimpleNamespace(api_key=None, base_url="https://openrouter.ai/api/v1"),
+    }
+
+    with (
+        patch("renai.processors.orchestrator.get_api_key", return_value=None),
+        patch("renai.processors.orchestrator.PROVIDERS", fake_providers),
+        patch("renai.processors.orchestrator.LLMEngine"),
+    ):
+        with pytest.raises(ConfigurationError) as exc_info:
+            await setup_engines("openai", "gpt-4", config)
+        assert "API key" in str(exc_info.value)
+        assert "openrouter" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_setup_engines_unknown_vision_provider():
+    """An unknown vision provider raises ConfigurationError when vision is required."""
+    config = ProcessingConfig(
+        fallback_mode=FallbackMode.VISION,
+        vision_provider="ghost_provider",
+        vision_model="some-model",
+    )
+
+    fake_providers = {
+        "openai": SimpleNamespace(api_key="primary_key", base_url="https://api.openai.com/v1"),
+    }
+
+    with (
+        patch("renai.processors.orchestrator.PROVIDERS", fake_providers),
+        patch("renai.processors.orchestrator.LLMEngine"),
+    ):
+        with pytest.raises(ConfigurationError) as exc_info:
+            await setup_engines("openai", "gpt-4", config)
+        assert "ghost_provider" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_setup_engines_stale_vision_config_degrades_silently():
+    """Vision misconfiguration must not break text-only runs (vision not required)."""
+    config = ProcessingConfig(vision_provider="ghost_provider", vision_model="some-model")
+
+    fake_providers = {
+        "openai": SimpleNamespace(api_key="primary_key", base_url="https://api.openai.com/v1"),
+    }
+
+    with (
+        patch("renai.processors.orchestrator.PROVIDERS", fake_providers),
+        patch("renai.processors.orchestrator.LLMEngine"),
+    ):
+        processor = await setup_engines("openai", "gpt-4", config)
+        assert processor is not None
 
 
 @pytest.mark.asyncio

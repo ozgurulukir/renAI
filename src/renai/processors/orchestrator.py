@@ -5,7 +5,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import typer
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -35,6 +34,7 @@ from renai.config.constants import (
 )
 from renai.engines.llm import LLMEngine
 from renai.engines.ocr import OCREngine
+from renai.exceptions import ConfigurationError
 from renai.messages import orchestrator as orch_msg
 from renai.models import ProcessingResult
 from renai.models.schemas import FallbackMode, ProcessingConfig
@@ -66,12 +66,14 @@ async def setup_engines(
 
     # Get provider configuration
     if provider not in PROVIDERS:
-        raise typer.Exit(code=1)
+        raise ConfigurationError(
+            orch_msg.Error.UNKNOWN_PROVIDER.format(provider, ", ".join(sorted(PROVIDERS)))
+        )
 
     provider_config = PROVIDERS[provider]
     api_key = provider_config.api_key or get_api_key(provider)
     if not api_key:
-        raise typer.Exit(code=1)
+        raise ConfigurationError(orch_msg.Error.API_KEY_MISSING.format(provider))
 
     # Determine model to use
     model_name = model or get_effective_model(provider)
@@ -94,11 +96,18 @@ async def setup_engines(
     vision_provider = config.vision_provider or get_effective_vision_provider()
     vision_model_name = config.vision_model or get_effective_vision_model(vision_provider)
 
+    # Mirror the CLI's vision guard: only demand a working vision provider when
+    # vision output is actually requested. Stale vision config must not break
+    # text-only runs, so misconfiguration degrades silently in that case.
+    vision_required = config.fallback_mode == FallbackMode.VISION or config.rename_images
+    if vision_required and not (vision_provider and vision_model_name):
+        raise ConfigurationError(orch_msg.Error.VISION_NOT_CONFIGURED)
+
     vision_llm_engine: LLMEngine | None = None
-    if vision_provider and vision_model_name and vision_provider in PROVIDERS:
+    if vision_provider and vision_model_name:
         if vision_provider == provider and vision_model_name == model_name:
             vision_llm_engine = llm_engine
-        else:
+        elif vision_provider in PROVIDERS:
             v_prov_config = PROVIDERS[vision_provider]
             v_api_key = v_prov_config.api_key or get_api_key(vision_provider)
             if v_api_key:
@@ -109,6 +118,14 @@ async def setup_engines(
                     model_name=vision_model_name,
                     rate_limiter=rate_limiter,
                 )
+            elif vision_required:
+                raise ConfigurationError(orch_msg.Error.API_KEY_MISSING.format(vision_provider))
+        elif vision_required:
+            raise ConfigurationError(
+                orch_msg.Error.UNKNOWN_PROVIDER.format(
+                    vision_provider, ", ".join(sorted(PROVIDERS))
+                )
+            )
 
     # Initialize processor
     processor = BookProcessor(
@@ -259,50 +276,44 @@ async def _execute_processing_loop(
     main_task = progress.add_task(orch_msg.Status.PROCESSING, total=len(file_paths))
     status_display = StatusDisplay(progress)
     semaphore = asyncio.Semaphore(config.workers)
-    results = []
 
-    try:
-        with Live(
-            status_display,
-            console=console,
-            refresh_per_second=4,
-            screen=True,
-        ) as live:
-            if config.benchmark:
-                await _run_benchmark_mode(processor, file_paths, status_display, live)
-                return []
+    # KeyboardInterrupt is deliberately NOT caught here: it propagates to the
+    # CLI layer, which owns the cancel message and exit code. Swallowing it
+    # would make `evaluate` continue with the next model after Ctrl+C.
+    with Live(
+        status_display,
+        console=console,
+        refresh_per_second=4,
+        screen=True,
+    ) as live:
+        if config.benchmark:
+            await _run_benchmark_mode(processor, file_paths, status_display, live)
+            return []
 
-            # Standard Mode (Rename, Organize, Evaluate)
-            async def _process_task(f_path: Path) -> ProcessingResult:
-                async with semaphore:
-                    status_display.update(orch_msg.Status.SCANNING.format(f_path.name))
+        # Standard Mode (Rename, Organize, Evaluate)
+        async def _process_task(f_path: Path) -> ProcessingResult:
+            async with semaphore:
+                status_display.update(orch_msg.Status.SCANNING.format(f_path.name))
 
-                    res = await processor.process_file(
-                        f_path,
-                        mode=config.mode,
-                        fallback_mode=config.fallback_mode,
-                        rename_images=config.rename_images,
-                        update_metadata=config.update_metadata,
-                        add_exif_date=config.add_exif_date,
-                        dry_run=config.dry_run,
-                    )
-                    if config.mode == "evaluate" and res.success:
-                        await log_evaluation_result(
-                            f_path, provider, model or "unknown", res.metadata
-                        )
+                res = await processor.process_file(
+                    f_path,
+                    mode=config.mode,
+                    fallback_mode=config.fallback_mode,
+                    rename_images=config.rename_images,
+                    update_metadata=config.update_metadata,
+                    add_exif_date=config.add_exif_date,
+                    dry_run=config.dry_run,
+                )
+                if config.mode == "evaluate" and res.success:
+                    await log_evaluation_result(f_path, provider, model or "unknown", res.metadata)
 
-                    status_display.update(res)
-                    progress.advance(main_task)
+                status_display.update(res)
+                progress.advance(main_task)
 
-                    return res
+                return res
 
-            pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
-            results = await asyncio.gather(*pending_tasks)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Cancelled by user. Exiting...[/yellow]")
-        return []
-
-    return results
+        pending_tasks = [asyncio.ensure_future(_process_task(f)) for f in file_paths]
+        return await asyncio.gather(*pending_tasks)
 
 
 def _print_final_summary(results: list[ProcessingResult], is_dry_run: bool = False) -> None:
@@ -382,12 +393,8 @@ async def run_pipeline(
         dry_run=config.dry_run,
     )
 
-    # 2. Collection
-    try:
-        file_paths = collect_files(root_dir, processor, config.recursive, config.rename_images)
-    except KeyboardInterrupt:
-        console.print(orch_msg.Summary.CANCELLED)
-        raise typer.Exit(code=0) from None
+    # 2. Collection (KeyboardInterrupt propagates to the CLI, which owns exit UX)
+    file_paths = collect_files(root_dir, processor, config.recursive, config.rename_images)
 
     console.print()
 

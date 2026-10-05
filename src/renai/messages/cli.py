@@ -54,6 +54,10 @@ class Info:
     COL_MODEL = "Model Default"
 
 
+class Error:
+    SETUP_FAILED = "[bold red]❌ Setup failed:[/bold red] {}"
+
+
 class Help:
     PROCESS = "Process files in a directory."
     EVALUATE = "Evaluate multiple models and providers."

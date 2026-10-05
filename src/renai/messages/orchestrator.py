@@ -25,7 +25,20 @@ class Summary:
     SUCCESS_COUNT = "[bold green]{}[/bold green]"
     FAILED_BADGE = "[bold red]❌ Failed[/bold red]"
     FAILED_COUNT = "[bold red]{}[/bold red]"
-    CANCELLED = "\n[yellow]Cancelled by user. Exiting...[/yellow]"
+
+
+class Error:
+    # Plain-text strings: these become exception messages carried by
+    # ConfigurationError and rendered by the CLI, so no Rich markup here.
+    UNKNOWN_PROVIDER = "Unknown provider: '{}'. Available providers: {}."
+    API_KEY_MISSING = (
+        "No API key configured for provider '{}'. "
+        "Run 'renai init' or add the API key to your settings file."
+    )
+    VISION_NOT_CONFIGURED = (
+        "Vision processing was requested but no vision provider/model is configured. "
+        "Run 'renai init' or pass --vision-model."
+    )
 
 
 class Benchmark:

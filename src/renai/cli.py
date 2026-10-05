@@ -20,6 +20,7 @@ from renai.config import (
     app_settings,
     initialize_directories,
 )
+from renai.exceptions import ConfigurationError
 from renai.logging_config import configure_logging
 from renai.messages import cli as msg
 from renai.models.schemas import FallbackMode, ProcessingConfig
@@ -334,6 +335,9 @@ def handle_process_command(
                 config=config,
             )
         )
+    except ConfigurationError as exc:
+        console.print(msg.Error.SETUP_FAILED.format(exc))
+        raise typer.Exit(code=1) from None
     except KeyboardInterrupt:
         console.print(msg.Prompt.CANCELLED_EXIT)
         raise typer.Exit(code=0) from None
@@ -578,6 +582,9 @@ def evaluate_cmd(
                 workers=workers,
             )
         )
+    except ConfigurationError as exc:
+        console.print(msg.Error.SETUP_FAILED.format(exc))
+        raise typer.Exit(code=1) from None
     except KeyboardInterrupt:
         console.print(msg.Prompt.EVAL_CANCELLED)
         raise typer.Exit(code=0) from None
