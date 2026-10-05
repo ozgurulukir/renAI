@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Copy Mode Wiring**: `--mode copy` is now selectable from the CLI (`renai process ... --mode copy`). The renamed copy is written next to the original and the source file is left untouched; copy runs are not recorded in undo history (nothing to undo). (The copy-safe file operations shipped in 2.2.1; the CLI selection was missing.)
+
+### Fixed
+
+- **Move-Based Fallback Now Fires**: `--fallback-mode move`, `skip_needs_ocr`, and `--move-scan-failures` were all dead ends — `BookProcessor` never passed the fallback mode into `TextExtractor`, and the `skip_scan_files`/`move_scan_failures` flags had no consumers. Now: `--fallback-mode move` moves insufficient-text files to `Needs_Scan` (created on demand); `skip_needs_ocr = true` quarantines insufficient files to `Needs_Scan` instead of OCR-falling back; `--move-scan-failures` quarantines files where OCR also fails to `Scan_Failures`. Quarantine moves respect `--dry-run` (logged, not performed), are serialized per run to avoid same-name overwrite races, and are not recorded in undo history (the file is relocated, not renamed). Default `rename`/`organize` behavior (`ocr` fallback) is unchanged.
+- **Vision Fallback No Longer Double-Falls-Back**: `--fallback-mode vision` now skips the extractor's OCR fallback (per the documented "text first, no OCR" semantics) instead of OCR-falling back and *then* trying vision; this also prevents a `skip_needs_ocr` quarantine from moving the file before vision could read it.
+- **Benchmark Sampling**: `benchmark_sample_count` (default: 3) now actually limits benchmark runs to the first N files. The setting existed since 2.2.1 but benchmarks silently processed every detected file.
+- Removed the dead `move_ocr_failures` setting (superseded by the now-working `move_scan_failures`; leftover user TOML keys are ignored).
+- Corrected the cache error hint to reference the real `renai cache` command.
+
 ## [2.2.1] - 2026-09-21
 
 ### Added

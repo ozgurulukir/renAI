@@ -17,7 +17,7 @@ class FallbackMode(StrEnum):
 class ProcessingConfig(BaseModel):
     """Configuration for the processing pipeline."""
 
-    mode: Literal["rename", "organize", "evaluate"] = "rename"
+    mode: Literal["rename", "organize", "copy", "evaluate"] = "rename"
     workers: int = 4
     recursive: bool = True
     ocr_enhanced: bool = False

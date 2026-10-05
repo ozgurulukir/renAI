@@ -197,7 +197,7 @@ def _build_processing_config(**kwargs: Any) -> ProcessingConfig:
     """Build ProcessingConfig instance from CLI parameters using kwargs forwarding."""
     if "exif" in kwargs:
         kwargs["add_exif_date"] = kwargs.pop("exif")
-    kwargs.setdefault("skip_ocr_checks", False)
+    kwargs.setdefault("skip_ocr_checks", app_settings.skip_needs_ocr)
 
     # Inject decoupled global heuristics
     kwargs.setdefault("head_ratio", app_settings.head_ratio)
@@ -266,7 +266,7 @@ def _display_vision_missing_error(reason: str) -> None:
 
 def handle_process_command(
     directory: str,
-    mode: Literal["rename", "organize", "evaluate"],
+    mode: Literal["rename", "organize", "copy", "evaluate"],
     provider: str,
     model: str | None,
     workers: int,
@@ -348,7 +348,7 @@ def process_cmd(
         ),
     ] = ".",
     mode: Annotated[
-        Literal["rename", "organize", "evaluate"],
+        Literal["rename", "organize", "copy", "evaluate"],
         typer.Option(
             "--mode",
             "-m",

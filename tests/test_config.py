@@ -907,5 +907,28 @@ class TestGetBaseUrl:
                 assert get_base_url("unknown_provider") == "http://localhost:8000/v1"
 
 
+class TestProcessingConfigModes:
+    """Test that ProcessingConfig accepts every CLI-selectable processing mode."""
+
+    def test_copy_mode_is_accepted(self):
+        from renai.models.schemas import ProcessingConfig
+
+        assert ProcessingConfig(mode="copy").mode == "copy"
+
+    @pytest.mark.parametrize("mode", ["rename", "organize", "evaluate", "copy"])
+    def test_all_cli_modes_are_accepted(self, mode):
+        from renai.models.schemas import ProcessingConfig
+
+        assert ProcessingConfig(mode=mode).mode == mode
+
+    def test_unknown_mode_is_rejected(self):
+        from pydantic import ValidationError
+
+        from renai.models.schemas import ProcessingConfig
+
+        with pytest.raises(ValidationError):
+            ProcessingConfig(mode="bogus")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

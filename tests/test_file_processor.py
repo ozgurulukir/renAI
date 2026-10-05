@@ -1,9 +1,10 @@
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from renai.file_ops.operations import safe_move_file
-from renai.models.schemas import BookMetadata, ProcessingConfig
+from renai.models.schemas import BookMetadata, FallbackMode, ProcessingConfig
 from renai.processors.book import BookProcessor
 
 
@@ -79,6 +80,87 @@ class TestBookProcessor:
         assert result.metadata["title"] == "Cached Title"
         # Verify LLM was NOT called due to cache hit
         processor.llm_engine.get_book_metadata.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_file_copy_mode_preserves_source(self, processor, tmp_path):
+        """Test that copy mode routes to the organizer and never deletes the source."""
+        test_file = tmp_path / "book.pdf"
+        test_file.write_text("content")
+
+        file_hash = "test_hash"
+        cached_metadata = BookMetadata(
+            title="Copied Title",
+            author="Cached Author",
+            category="Fiction",
+            language="en",
+        )
+
+        with (
+            patch("renai.processors.book.get_file_hash", return_value=file_hash),
+            patch("renai.cache.middleware.read_metadata_cache", return_value=cached_metadata),
+            patch(
+                "renai.file_ops.organizer.safe_copy_file",
+                side_effect=lambda s, d, **kwargs: d,
+            ) as mock_copy,
+            patch(
+                "renai.file_ops.organizer.safe_move_file",
+                side_effect=AssertionError("copy mode must not move files"),
+            ),
+        ):
+            result = await processor.process_file(test_file, mode="copy")
+
+        assert result.success is True
+        mock_copy.assert_called_once()
+        assert mock_copy.call_args.kwargs["operation_type"] == "copy"
+        # The renamed copy is reported as the new path and the original is intact
+        assert result.file_path is not None
+        assert result.file_path != test_file
+        assert "Copied Title" in result.file_path.name
+        assert test_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_process_file_passes_move_fallback_to_extractor(self, mock_ocr, mock_llm):
+        """Test that --fallback-mode move reaches the text extractor as MOVE_TO_FOLDER."""
+        processor = BookProcessor(mock_ocr, ProcessingConfig(), mock_llm)
+        test_file = Path("whatever.pdf")
+
+        with (
+            patch("renai.processors.book.get_file_hash", return_value="hash"),
+            patch.object(processor.text_extractor, "extract", AsyncMock(return_value="")) as ex,
+        ):
+            await processor.process_file(test_file, fallback_mode=FallbackMode.MOVE_TO_FOLDER)
+
+        assert ex.await_args.kwargs["fallback"] == FallbackMode.MOVE_TO_FOLDER
+
+    @pytest.mark.asyncio
+    async def test_process_file_passes_vision_fallback_to_extractor(self, mock_ocr, mock_llm):
+        """Test that --fallback-mode vision reaches the extractor as VISION (no OCR, no
+        skip_needs_ocr quarantine that would move the file before vision runs)."""
+        processor = BookProcessor(mock_ocr, ProcessingConfig(), mock_llm)
+        test_file = Path("whatever.pdf")
+
+        with (
+            patch("renai.processors.book.get_file_hash", return_value="hash"),
+            patch.object(processor.text_extractor, "extract", AsyncMock(return_value="")) as ex,
+        ):
+            await processor.process_file(test_file, fallback_mode=FallbackMode.VISION)
+
+        assert ex.await_args.kwargs["fallback"] == FallbackMode.VISION
+
+    @pytest.mark.asyncio
+    async def test_process_file_default_fallback_is_ocr(self, mock_ocr, mock_llm):
+        """Test that none/ocr fallback modes keep the extractor's OCR fallback."""
+        for fallback in (FallbackMode.NONE, FallbackMode.OCR):
+            processor = BookProcessor(mock_ocr, ProcessingConfig(fallback_mode=fallback), mock_llm)
+            test_file = Path("whatever.pdf")
+
+            with (
+                patch("renai.processors.book.get_file_hash", return_value="hash"),
+                patch.object(processor.text_extractor, "extract", AsyncMock(return_value="")) as ex,
+            ):
+                await processor.process_file(test_file, fallback_mode=fallback)
+
+            assert ex.await_args.kwargs["fallback"] == FallbackMode.OCR
 
     @pytest.mark.asyncio
     async def test_process_file_extraction_failure(self, processor, tmp_path):
@@ -157,7 +239,7 @@ class TestBookProcessor:
                 test_file, fallback_mode=FallbackMode.VISION, file_hash="dummyhash"
             )
             processor.text_extractor.extract.assert_awaited_once_with(
-                test_file, file_hash="dummyhash"
+                test_file, file_hash="dummyhash", fallback=FallbackMode.VISION, dry_run=False
             )
 
         assert metadata == mock_metadata

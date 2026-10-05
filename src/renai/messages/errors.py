@@ -21,7 +21,7 @@ OCR_HOW = "Verify your Tesseract installation and ensure the input file is not c
 EXTRACTION_WHY = "Failed to extract text or visual data from the file."
 EXTRACTION_HOW = "Ensure the file format is supported and the file is not corrupted."
 CACHE_WHY = "Failed to read from or write to the cache database."
-CACHE_HOW = "Check cache directory permissions or run the 'renai clear-cache' command."
+CACHE_HOW = "Check cache directory permissions or run the 'renai cache' command."
 FILE_OP_WHY = "Failed to move, copy, or rename the file."
 FILE_OP_HOW = (
     "Ensure the destination directory is writable and no locked file with the same name exists."

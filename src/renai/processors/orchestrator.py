@@ -379,6 +379,7 @@ async def run_pipeline(
         root_dir,
         skip_ocr_checks=config.skip_ocr_checks,
         move_scan_failures=config.move_scan_failures,
+        dry_run=config.dry_run,
     )
 
     # 2. Collection
@@ -411,6 +412,14 @@ async def _run_benchmark_mode(
     """Run PDF extraction benchmark across multiple libraries."""
     extractors_to_test = ["pymupdf", "pdfplumber", "pypdf", "pypdfium2"]
     benchmark_data = []
+    sample_count = app_settings.benchmark_sample_count
+    if sample_count < len(file_paths):
+        logging.info(
+            "Benchmarking on the first %d of %d files (benchmark_sample_count)",
+            sample_count,
+            len(file_paths),
+        )
+        file_paths = file_paths[:sample_count]
 
     for ext_name in extractors_to_test:
         bench_msg = orch_msg.Benchmark.TESTING.format(ext_name)

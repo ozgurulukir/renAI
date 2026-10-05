@@ -38,7 +38,6 @@ fallback_mode = "none"
 move_scan_failures = false
 ocr_enhanced = false
 skip_needs_ocr = false
-move_ocr_failures = false
 
 # Tool settings
 use_mutool = false

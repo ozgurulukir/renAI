@@ -130,13 +130,21 @@ class BookProcessor:
         }
 
     async def setup_move_folders(
-        self, root_dir: Path, skip_ocr_checks: bool = False, move_scan_failures: bool = False
+        self,
+        root_dir: Path,
+        skip_ocr_checks: bool = False,
+        move_scan_failures: bool = False,
+        dry_run: bool = False,
     ) -> None:
         """Delegate to text_extractor and store root_dir for organization."""
         self.root_dir = root_dir
         self.file_organizer.root_dir = root_dir
         await asyncio.to_thread(
-            self.text_extractor.setup_move_folders, root_dir, skip_ocr_checks, move_scan_failures
+            self.text_extractor.setup_move_folders,
+            root_dir,
+            skip_ocr_checks,
+            move_scan_failures,
+            dry_run,
         )
 
     def _build_metadata_request(
@@ -192,6 +200,7 @@ class BookProcessor:
         request: MetadataRequest,
         doc_categories: dict[str, list] | None = None,
         image_categories: dict[str, list] | None = None,
+        dry_run: bool = False,
     ) -> tuple[BookMetadata | ImageMetadata | None, bool]:
         """Resolve metadata by executing extraction engines (caching handled by middleware).
 
@@ -207,7 +216,11 @@ class BookProcessor:
             return metadata, False
 
         metadata, is_vision_doc = await self._extract_document_metadata(
-            file_path, request.fallback_mode, request.file_hash, doc_categories=doc_categories
+            file_path,
+            request.fallback_mode,
+            request.file_hash,
+            doc_categories=doc_categories,
+            dry_run=dry_run,
         )
         return metadata, is_vision_doc
 
@@ -247,6 +260,7 @@ class BookProcessor:
                 request=request,
                 doc_categories=folder_rule.categories if folder_rule else None,
                 image_categories=folder_rule.image_categories if folder_rule else None,
+                dry_run=dry_run,
             )
 
             if not metadata:
@@ -261,7 +275,7 @@ class BookProcessor:
             # rule is enforced on the resolved metadata unconditionally.
             _clamp_category_to_rule(cast("BaseMetadata", metadata), folder_rule)
 
-            if mode in ("rename", "organize"):
+            if mode in ("rename", "organize", "copy"):
                 if not isinstance(metadata, (BookMetadata, ImageMetadata)):
                     return ProcessingResult(
                         success=False,
@@ -311,9 +325,20 @@ class BookProcessor:
         fallback_mode: FallbackMode,
         file_hash: str | None = None,
         doc_categories: dict[str, list] | None = None,
+        dry_run: bool = False,
     ) -> tuple[BookMetadata | None, bool]:
         """Internal helper to extract document metadata using text first, then vision."""
-        text = await self.text_extractor.extract(file_path, file_hash=file_hash)
+        # The move-fallback lives inside TextExtractor. VISION must be passed through so
+        # skip_needs_ocr quarantine cannot fire before the vision fallback runs on the
+        # original path; every other mode (none/ocr) keeps the extractor's OCR fallback.
+        fallback = (
+            fallback_mode
+            if fallback_mode in (FallbackMode.MOVE_TO_FOLDER, FallbackMode.VISION)
+            else FallbackMode.OCR
+        )
+        text = await self.text_extractor.extract(
+            file_path, file_hash=file_hash, fallback=fallback, dry_run=dry_run
+        )
 
         if self.llm_engine and text and text.strip():
             metadata = await self.llm_engine.get_book_metadata(

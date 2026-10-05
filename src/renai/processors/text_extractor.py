@@ -85,6 +85,10 @@ class TextExtractor:
         self.skip_scan_files = False
         self.scan_failures_dir = None
         self.move_scan_failures = False
+        self.fallback_base_dir: Path | None = None
+        # Serializes fallback moves so same-basename files from different subfolders
+        # cannot interleave the collision check and the move (TOCTOU overwrite).
+        self._move_lock = asyncio.Lock()
 
     async def extract(
         self,
@@ -92,6 +96,7 @@ class TextExtractor:
         target_length: int | None = None,
         fallback: FallbackMode = FallbackMode.OCR,
         file_hash: str | None = None,
+        dry_run: bool = False,
     ) -> str:
         """
         Extract text from a file with caching asynchronously.
@@ -101,6 +106,7 @@ class TextExtractor:
             target_length: Target text length (defaults to self.target_length)
             fallback: Fallback strategy for insufficient text
             file_hash: Pre-computed SHA256 hash of the file (optional)
+            dry_run: When True, move-based fallbacks only log what they would do
 
         Returns:
             Extracted text or empty string on failure
@@ -140,7 +146,9 @@ class TextExtractor:
             extracted_text = await self._extract_from_plain_text(file_path, target_length)
         else:
             # PDF/EPUB/MOBI
-            extracted_text = await self._extract_from_document(file_path, target_length, fallback)
+            extracted_text = await self._extract_from_document(
+                file_path, target_length, fallback, dry_run
+            )
 
         # Cache result if we got meaningful text
         if extracted_text.strip():
@@ -160,25 +168,29 @@ class TextExtractor:
         full_text: str,
         target_length: int,
         fallback: FallbackMode,
+        dry_run: bool = False,
     ) -> str:
         """Route and execute fallback strategy when text extraction is insufficient."""
-        match fallback:
-            case FallbackMode.MOVE_TO_FOLDER:
-                logging.debug(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
-                await asyncio.to_thread(self._move_to_needs_scan, file_path)
-                return ""
+        if fallback == FallbackMode.MOVE_TO_FOLDER:
+            logging.debug(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
+            return await self._quarantine(file_path, "Needs_Scan", dry_run)
 
-            case FallbackMode.OCR:
+        if fallback == FallbackMode.OCR:
+            if self.skip_scan_files:
+                # skip_needs_ocr: never OCR these files -- quarantine them instead
                 logging.debug(
-                    f"Primary text insufficient for {file_path.name}, falling back to OCR"
+                    f"Primary text insufficient for {file_path.name}, "
+                    "moving to Needs_Scan (OCR skipped)"
                 )
-                return await self._fallback_to_ocr(file_path, target_length)
+                return await self._quarantine(file_path, "Needs_Scan", dry_run)
+            logging.debug(f"Primary text insufficient for {file_path.name}, falling back to OCR")
+            return await self._fallback_to_ocr(file_path, target_length, dry_run)
 
-            case FallbackMode.VISION:
-                logging.debug(
-                    f"Primary text insufficient for {file_path.name}, marking for Vision fallback"
-                )
-                return ""
+        if fallback == FallbackMode.VISION:
+            logging.debug(
+                f"Primary text insufficient for {file_path.name}, marking for Vision fallback"
+            )
+            return ""
 
         return full_text[:target_length]
 
@@ -234,6 +246,7 @@ class TextExtractor:
         file_path: Path,
         target_length: int,
         fallback: FallbackMode,
+        dry_run: bool = False,
     ) -> str:
         """
         Extract text from documents (PDF/EPUB/MOBI) asynchronously.
@@ -260,49 +273,91 @@ class TextExtractor:
             return self._apply_extraction_mode(full_text, target_length)
 
         # Insufficient text - Apply fallback strategy
-        return await self._handle_extraction_fallback(file_path, full_text, target_length, fallback)
+        return await self._handle_extraction_fallback(
+            file_path, full_text, target_length, fallback, dry_run
+        )
 
-    async def _fallback_to_ocr(self, file_path: Path, target_length: int) -> str:
+    async def _fallback_to_ocr(
+        self, file_path: Path, target_length: int, dry_run: bool = False
+    ) -> str:
         """Attempt to extract text via OCR asynchronously."""
         try:
             ocr_text = await self.ocr_engine.extract_text(file_path)
             if ocr_text.strip():
                 return self._apply_extraction_mode(ocr_text, target_length)
-            return ""
         except Exception as e:
             logging.error(f"OCR fallback failed for {file_path.name}: {e}")
+
+        if self.move_scan_failures:
+            # --move-scan-failures: quarantine files where OCR also failed
+            return await self._quarantine(file_path, "Scan_Failures", dry_run)
+        return ""
+
+    def _quarantine_dir_path(self, folder_name: str, create: bool) -> Path | None:
+        """Resolve (and optionally create) a quarantine folder under the run root."""
+        cached = self.needs_scan_dir if folder_name == "Needs_Scan" else self.scan_failures_dir
+        if cached:
+            return cached
+        if not self.fallback_base_dir:
+            return None
+        dest = self.fallback_base_dir / folder_name
+        if create:
+            dest.mkdir(parents=True, exist_ok=True)
+            if folder_name == "Needs_Scan":
+                self.needs_scan_dir = dest
+            else:
+                self.scan_failures_dir = dest
+        return dest
+
+    async def _quarantine(self, file_path: Path, folder_name: str, dry_run: bool = False) -> str:
+        """Move a file into a quarantine subfolder of the run root (log-only in dry-run)."""
+        dest_dir = self._quarantine_dir_path(folder_name, create=not dry_run)
+        if dest_dir is None:
+            logging.warning(
+                "Cannot move %s: no %s directory configured", file_path.name, folder_name
+            )
             return ""
+        if dry_run:
+            logging.info(f"[DRY-RUN] Would move {file_path.name} to {folder_name}")
+            return ""
+        # Serialize moves so same-basename files from concurrent workers cannot
+        # interleave the collision check and the move (silent overwrite).
+        async with self._move_lock:
+            await asyncio.to_thread(self._move_to_quarantine, file_path, dest_dir)
+        return ""
 
-    def _move_to_needs_scan(self, file_path: Path) -> None:
-        """Moves a document to the Needs_Scan folder."""
-        if not self.needs_scan_dir:
-            return
-
+    def _move_to_quarantine(self, file_path: Path, dest_dir: Path) -> None:
+        """Move a document into a quarantine folder, avoiding name collisions."""
         try:
-            target_path = self.needs_scan_dir / file_path.name
+            target_path = dest_dir / file_path.name
             if target_path.exists():
                 # Avoid collision
                 suffix = f"_{uuid.uuid4().hex[:4]}{file_path.suffix}"
-                target_path = self.needs_scan_dir / f"{file_path.stem}{suffix}"
+                target_path = dest_dir / f"{file_path.stem}{suffix}"
 
             shutil.move(str(file_path), str(target_path))
-            logging.debug(f"Moved {file_path.name} to Needs_Scan directory")
+            logging.debug(f"Moved {file_path.name} to {dest_dir.name} directory")
         except Exception as e:
-            logging.error(f"Failed to move {file_path.name} to {self.needs_scan_dir}: {e}")
+            logging.error(f"Failed to move {file_path.name} to {dest_dir}: {e}")
 
     def setup_move_folders(
         self,
         base_dir: Path,
         skip_ocr_checks: bool = False,
         move_scan_failures: bool = False,
+        dry_run: bool = False,
     ) -> None:
         """Initialize folder paths for move-based fallback (called once, sync is fine)."""
+        self.fallback_base_dir = base_dir
+
         if skip_ocr_checks:
             self.needs_scan_dir = base_dir / "Needs_Scan"
-            self.needs_scan_dir.mkdir(parents=True, exist_ok=True)
+            if not dry_run:
+                self.needs_scan_dir.mkdir(parents=True, exist_ok=True)
             self.skip_scan_files = True
 
         if move_scan_failures:
             self.scan_failures_dir = base_dir / "Scan_Failures"
-            self.scan_failures_dir.mkdir(parents=True, exist_ok=True)
+            if not dry_run:
+                self.scan_failures_dir.mkdir(parents=True, exist_ok=True)
             self.move_scan_failures = True

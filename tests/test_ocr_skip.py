@@ -175,3 +175,156 @@ async def test_ocr_skip_disabled():
             result = await processor.text_extractor.extract(test_file, fallback=FallbackMode.OCR)
 
         assert result == "OCR extracted text"
+
+
+@pytest.mark.asyncio
+async def test_move_fallback_moves_insufficient_file_to_needs_scan():
+    """Test that --fallback-mode move actually moves insufficient files to Needs_Scan."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+
+        test_file = tmp_path / "scan_me.pdf"
+        test_file.write_bytes(b"fake pdf content")
+
+        mock_ocr_engine = MagicMock()
+        mock_ocr_engine.extract_text = AsyncMock(return_value="OCR text")
+
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_extractor = MagicMock()
+            mock_extractor.name = "pymupdf"
+            mock_extractor.extract_text = MagicMock(return_value="short")
+            mock_get_extractor.return_value = mock_extractor
+
+            with (
+                patch("renai.processors.text_extractor.read_text_cache", return_value=None),
+                patch("renai.processors.text_extractor.write_text_cache"),
+            ):
+                extractor = TextExtractor(
+                    ocr_engine=mock_ocr_engine,
+                    extractor_name="pymupdf",
+                    text_extraction="regular",
+                    min_sufficient_text=100,
+                )
+                extractor.setup_move_folders(tmp_path)
+
+                result = await extractor.extract(test_file, fallback=FallbackMode.MOVE_TO_FOLDER)
+
+        assert result == ""
+        assert not test_file.exists()
+        assert (tmp_path / "Needs_Scan" / "scan_me.pdf").exists()
+        # The move fallback must not OCR the file
+        mock_ocr_engine.extract_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_skip_scan_files_moves_insufficient_file_without_ocr():
+    """Test that skip_needs_ocr quarantines insufficient files instead of OCR-falling back."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+
+        test_file = tmp_path / "skipped.pdf"
+        test_file.write_bytes(b"fake pdf content")
+
+        mock_ocr_engine = MagicMock()
+        mock_ocr_engine.extract_text = AsyncMock(return_value="OCR text")
+
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_extractor = MagicMock()
+            mock_extractor.name = "pymupdf"
+            mock_extractor.extract_text = MagicMock(return_value="short")
+            mock_get_extractor.return_value = mock_extractor
+
+            with (
+                patch("renai.processors.text_extractor.read_text_cache", return_value=None),
+                patch("renai.processors.text_extractor.write_text_cache"),
+            ):
+                extractor = TextExtractor(
+                    ocr_engine=mock_ocr_engine,
+                    extractor_name="pymupdf",
+                    text_extraction="regular",
+                    min_sufficient_text=100,
+                )
+                extractor.setup_move_folders(tmp_path, skip_ocr_checks=True)
+
+                result = await extractor.extract(test_file, fallback=FallbackMode.OCR)
+
+        assert result == ""
+        mock_ocr_engine.extract_text.assert_not_called()
+        assert not test_file.exists()
+        assert (tmp_path / "Needs_Scan" / "skipped.pdf").exists()
+
+
+@pytest.mark.asyncio
+async def test_move_scan_failures_moves_files_when_ocr_fails():
+    """Test that --move-scan-failures quarantines files where OCR also fails."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+
+        test_file = tmp_path / "broken.pdf"
+        test_file.write_bytes(b"fake pdf content")
+
+        mock_ocr_engine = MagicMock()
+        mock_ocr_engine.extract_text = AsyncMock(return_value="")  # OCR yields nothing
+
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_extractor = MagicMock()
+            mock_extractor.name = "pymupdf"
+            mock_extractor.extract_text = MagicMock(return_value="short")
+            mock_get_extractor.return_value = mock_extractor
+
+            with (
+                patch("renai.processors.text_extractor.read_text_cache", return_value=None),
+                patch("renai.processors.text_extractor.write_text_cache"),
+            ):
+                extractor = TextExtractor(
+                    ocr_engine=mock_ocr_engine,
+                    extractor_name="pymupdf",
+                    text_extraction="regular",
+                    min_sufficient_text=100,
+                )
+                extractor.setup_move_folders(tmp_path, move_scan_failures=True)
+
+                result = await extractor.extract(test_file, fallback=FallbackMode.OCR)
+
+        assert result == ""
+        assert not test_file.exists()
+        assert (tmp_path / "Scan_Failures" / "broken.pdf").exists()
+
+
+@pytest.mark.asyncio
+async def test_dry_run_move_fallback_does_not_touch_filesystem():
+    """Test that dry-run only logs the move-fallback and never moves files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+
+        test_file = tmp_path / "keepme.pdf"
+        test_file.write_bytes(b"fake pdf content")
+
+        mock_ocr_engine = MagicMock()
+
+        with patch("renai.processors.text_extractor.get_extractor") as mock_get_extractor:
+            mock_extractor = MagicMock()
+            mock_extractor.name = "pymupdf"
+            mock_extractor.extract_text = MagicMock(return_value="short")
+            mock_get_extractor.return_value = mock_extractor
+
+            with (
+                patch("renai.processors.text_extractor.read_text_cache", return_value=None),
+                patch("renai.processors.text_extractor.write_text_cache"),
+            ):
+                extractor = TextExtractor(
+                    ocr_engine=mock_ocr_engine,
+                    extractor_name="pymupdf",
+                    text_extraction="regular",
+                    min_sufficient_text=100,
+                )
+                extractor.setup_move_folders(tmp_path, skip_ocr_checks=True, dry_run=True)
+
+                result = await extractor.extract(
+                    test_file, fallback=FallbackMode.MOVE_TO_FOLDER, dry_run=True
+                )
+
+        assert result == ""
+        # Dry run must not move the file nor even create the quarantine folder
+        assert test_file.exists()
+        assert not (tmp_path / "Needs_Scan").exists()

@@ -62,8 +62,9 @@ class Help:
     INIT = "Initialize renAI setup wizard."
     DIRECTORY = "Directory to process"
     MODE = (
-        "Action: 'rename' (renames files), 'organize' (moves to category) "
-        "or 'evaluate' (no changes, just extraction test)"
+        "Action: 'rename' (renames files), 'organize' (moves to category), "
+        "'copy' (renamed copy, original kept) or 'evaluate' (no changes, "
+        "just extraction test)"
     )
     PROVIDER = "LLM Provider (deepinfra, openrouter, openai, custom)"
     MODEL = "Specific model name override"
@@ -82,7 +83,7 @@ class Help:
     MOVE_SCAN_FAILURES = "Move failed files to Scan_Failures"
     RENAME_IMAGES = "Enable vision-based image renaming"
     EXIF = "Use EXIF date in filenames"
-    BENCHMARK = "Benchmark PDF extractors across all detected files"
+    BENCHMARK = "Benchmark PDF extractors on a sample of files (benchmark_sample_count)"
     VISION_MAX_PAGES = "Max pages to sample for vision PDF extraction"
     VISION_PROVIDER = "LLM Provider for vision operations"
     VISION_MODEL = "Model name for vision operations"

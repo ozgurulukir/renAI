@@ -132,7 +132,6 @@ class AppSettings(BaseSettings):
     # OCR settings
     ocr_enhanced: bool = Field(default=False, description="Enable high-quality OCR")
     skip_needs_ocr: bool = Field(default=False, description="Skip OCR for files needing fallback")
-    move_ocr_failures: bool = Field(default=False, description="Move OCR failures to folder")
 
     # Tool settings
     use_mutool: bool = Field(default=False, description="Use mutool for PDF-to-image")

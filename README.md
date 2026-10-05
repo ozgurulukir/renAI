@@ -73,13 +73,14 @@ _Example: `Sunset -- [2024-07-15] -- (en).jpg`_
 
 - **`rename`**: Renames files based on extracted metadata
 - **`organize`**: Moves renamed files into category folders
+- **`copy`**: Writes the renamed copy next to the original and keeps the source file untouched (non-destructive)
 - **`evaluate`**: Tests multiple providers and models for accuracy
 - **`--fallback-mode none`**: No fallback; returns empty string on extraction failure.
 - **`--fallback-mode ocr`**: Tries text extraction first. If it fails, falls back to Tesseract OCR.
 - **`--fallback-mode vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs.
 - **`--fallback-mode move`**: Moves files where text extraction fails to `Needs_Scan/` folder.
 - **`--rename-images`**: Renames image files using vision-capable LLM. Also processes non-image files with text extraction + selected fallback.
-- **`--benchmark`**: Compares PDF extraction library performance across all detected files.
+- **`--benchmark`**: Compares PDF extraction library performance on a sample of files (default: first 3, via the `benchmark_sample_count` setting).
 - **`--dry-run`**: Simulate processing without renaming or moving files.
 - **`undo` / `undo-last`**: Revert file operations from the most recent renaming or organizing run.
 
@@ -483,6 +484,7 @@ renAI supports vision-capable LLMs that can process PDFs and images as visual co
 > **⚠️ Always backup your files before running renAI in `rename` or `organize` mode.**
 
 - The tool renames and moves files
+- Use `--mode copy` to preview the pipeline non-destructively: the renamed copy is written next to the original, which is left untouched (copy runs are not recorded in undo history — there is nothing to undo)
 - Safety checks are included, but unexpected issues can occur
 - Review the naming convention before applying to your entire collection
 - Test with a small directory first
@@ -512,7 +514,7 @@ When using `--mode organize`:
 - **`--fallback-mode move`**: Moves files with insufficient text to `Needs_Scan` folder (skips fallback processing)
 - **`--move-scan-failures`**: Moves files that fail both standard and fallback extraction to `Scan_Failures` folder
 - **`--fallback-mode none`**: No fallback processing; extraction failures are reported but not retried
-- **`--benchmark`**: Run a benchmark comparing PDF extractors across all detected files
+- **`--benchmark`**: Run a benchmark comparing PDF extractors on a sample of files (default: first 3)
 
 ---
 
@@ -677,7 +679,7 @@ Behavior notes:
 | `--update-metadata`    | Force refresh metadata cache                                                                           |
 | `--fallback-mode`      | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`)                                       |
 | `--move-scan-failures` | Move failed files to `Scan_Failures` folder                                                            |
-| `--benchmark`          | Benchmark PDF extractors across all detected files                                                     |
+| `--benchmark`          | Benchmark PDF extractors on a sample of files (default: first 3)                                       |
 | `--vision-max-pages`   | Max pages to sample for vision PDF extraction (default: 3)                                             |
 | `--vision-provider`    | LLM provider for vision operations (default: from settings)                                            |
 | `--vision-model`       | Vision-capable model for vision operations (default: from settings)                                    |

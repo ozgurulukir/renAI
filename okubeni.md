@@ -72,7 +72,8 @@ _Örnek: `Sunset -- [2024-07-15] -- (en).jpg`_
 
 - **`rename`**: Çıkarılan meta verilere göre dosyaları yeniden adlandırır
 - **`organize`**: Yeniden adlandırılmış dosyaları kategori klasörlerine taşır
-- **`benchmark`**: PDF çıkarma kütüphanesi performansını karşılaştırır
+- **`copy`**: Yeniden adlandırılmış kopyayı orijinalin yanına yazar; kaynak dosyaya dokunmaz (tahribatsız)
+- **`benchmark`**: PDF çıkarma kütüphanesi performansını örnek dosyalar üzerinde karşılaştırır (varsayılan: ilk 3)
 - **`evaluate`**: Farklı LLM modellerini ve sağlayıcılarını doğruluk açısından test eder
 - **`--fallback-mode ocr`**: Önce metin çıkarmayı dener. Başarısız olursa Tesseract OCR kullanarak metin çıkarmaya çalışır (varsayılan davranış).
 - **`--fallback-mode vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Önce metin çıkarmayı dener (OCR kullanmaz). Başarısız olursa, vision modele fallback yapar.
