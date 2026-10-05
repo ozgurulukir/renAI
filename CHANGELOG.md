@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-10-05
+
+### Changed
+
+- **Config Import Decoupling**: Removed the `renai.settings` backward-compat shim; all modules and tests now import settings from `renai.config`, making it the single import path for configuration.
+- **CLI Framework Removed from Core**: `setup_engines` no longer imports or raises `typer.Exit` — it raises `ConfigurationError` instead, so the processing pipeline is usable as a library without the CLI framework. `cli.py` remains the single place that renders errors and exit codes.
+
+### Fixed
+
+- **Silent Setup Failures Now Loud**: An invalid `--provider` or a missing API key previously exited with code 1 and no message. Now a descriptive "Setup failed" panel names the provider, lists the available ones, and suggests `renai init`; the exit code is unchanged.
+- **Ctrl+C Stops Evaluation Runs**: A KeyboardInterrupt during the processing loop is no longer swallowed — `renai evaluate` stops immediately instead of continuing with the next provider/model after cancellation. Process-mode cancel UX is unchanged (same message, exit 0).
+- **Vision Misconfiguration Fails Fast**: When vision output is requested (`--fallback-mode vision` or `--rename-images`), an unknown vision provider, a missing vision API key, or no vision provider/model at all now fails at startup with a clear error instead of silently degrading to the text engine. Text-only runs with stale vision config still work.
+
+### Security
+
+- **Root-Boundary Enforcement Consolidated**: Path-traversal prevention moved out of `FileOrganizer` into `file_ops` as `ensure_within_root`. `safe_move_file` and `safe_copy_file` now validate destinations against an optional `root_dir` before any filesystem work (including dry runs), so every caller gets the same protection. Previously untested behavior is now covered by a dedicated test suite.
+
 ## [2.3.0] - 2026-10-05
 
 ### Added

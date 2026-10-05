@@ -4,7 +4,7 @@
 
 **renAI** is a Python CLI tool that automatically renames and organizes digital files (PDFs, EPUBs, images, Office docs) using LLMs and OCR. It extracts metadata (title, author, year, category, language) via text extraction or vision-capable models, then produces consistent, descriptive filenames.
 
-- **Version**: 2.3.0
+- **Version**: 2.3.1
 - **Python**: 3.12+ (CI matrix: 3.12)
 - **License**: MIT
 - **Entry point**: `renai.cli:app` (Typer)
