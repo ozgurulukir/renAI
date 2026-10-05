@@ -9,7 +9,22 @@ import shutil
 import uuid
 from pathlib import Path
 
+from ..exceptions import FileOperationError
 from ..utils import get_file_hash
+
+
+def ensure_within_root(dest_path: Path, root_dir: Path) -> None:
+    """Ensure dest_path resolves inside root_dir, blocking path-traversal escapes.
+
+    Single source of truth for root-boundary enforcement in file operations:
+    both safe_move_file and safe_copy_file consult it whenever a caller passes
+    a root_dir, so every destination is validated no matter which code path
+    computed it.
+    """
+    if not dest_path.resolve().is_relative_to(root_dir.resolve()):
+        raise FileOperationError(
+            f"Target path {dest_path} escapes the allowed root {root_dir}. Path traversal blocked."
+        )
 
 
 def ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path:
@@ -103,10 +118,18 @@ def safe_move_file(
     source_hash: str | None = None,
     dry_run: bool = False,
     cache_dir: Path | None = None,
+    root_dir: Path | None = None,
 ) -> Path:
-    """Safely move a file with duplicate detection, dry-run support, and undo recording."""
+    """Safely move a file with duplicate detection, dry-run support, and undo recording.
+
+    When root_dir is given, the destination is validated against it before any
+    filesystem work, so a traversal destination fails even in dry-run mode.
+    """
     if not source_path.exists():
         raise FileNotFoundError(f"Source file {source_path} does not exist")
+
+    if root_dir is not None:
+        ensure_within_root(dest_path, root_dir)
 
     final_dest_path = dest_path
     if dest_path.exists():
@@ -151,10 +174,18 @@ def safe_copy_file(
     ensure_dirs: bool = True,
     source_hash: str | None = None,
     dry_run: bool = False,
+    root_dir: Path | None = None,
 ) -> Path:
-    """Safely copy a file with duplicate detection, dry-run support, and error handling."""
+    """Safely copy a file with duplicate detection, dry-run support, and error handling.
+
+    When root_dir is given, the destination is validated against it before any
+    filesystem work, so a traversal destination fails even in dry-run mode.
+    """
     if not source_path.exists():
         raise FileNotFoundError(f"Source file {source_path} does not exist")
+
+    if root_dir is not None:
+        ensure_within_root(dest_path, root_dir)
 
     final_dest_path = dest_path
     if dest_path.exists():

@@ -1,9 +1,11 @@
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from renai.exceptions import FileOperationError
 from renai.file_ops import safe_copy_file, safe_move_file
-from renai.file_ops.operations import ensure_unique_path
+from renai.file_ops.operations import ensure_unique_path, ensure_within_root
 
 
 class TestEnsureUniquePath:
@@ -336,3 +338,138 @@ class TestFileOrganizerCopyMode:
         assert result.file_path != source
         assert result.file_path.read_text() == "dummy book bytes"
         assert "Copied Book" in result.file_path.name
+
+
+class TestEnsureWithinRoot:
+    """Test the shared root-boundary security control in file_ops."""
+
+    def test_allows_destination_inside_root(self, tmp_path):
+        """A destination that resolves inside root_dir passes."""
+        root = tmp_path / "library"
+        root.mkdir()
+        dest = root / "sub" / "book.pdf"
+
+        ensure_within_root(dest, root)  # must not raise
+
+    def test_blocks_destination_outside_root(self, tmp_path):
+        """A destination that resolves outside root_dir raises FileOperationError."""
+        root = tmp_path / "library"
+        root.mkdir()
+        dest = tmp_path / "elsewhere" / "book.pdf"
+
+        with pytest.raises(FileOperationError) as exc_info:
+            ensure_within_root(dest, root)
+        assert "Path traversal blocked" in str(exc_info.value)
+
+    def test_blocks_symlink_escape(self):
+        """A destination resolving outside root_dir through a symlink is rejected."""
+        root = MagicMock(spec=Path)
+        root.resolve.return_value = Path("/library")
+        dest = MagicMock(spec=Path)
+        dest.resolve.return_value = Path("/elsewhere/book.pdf")
+
+        with pytest.raises(FileOperationError):
+            ensure_within_root(dest, root)
+
+
+class TestRootBoundaryEnforcement:
+    """Root-boundary enforcement through safe_move_file, safe_copy_file, and FileOrganizer."""
+
+    def test_safe_move_file_blocks_escape(self, tmp_path):
+        """safe_move_file refuses destinations outside the given root_dir."""
+        source = tmp_path / "source.pdf"
+        source.write_text("x")
+        root = tmp_path / "library"
+        root.mkdir()
+
+        with pytest.raises(FileOperationError):
+            safe_move_file(source, tmp_path / "outside" / "book.pdf", root_dir=root)
+
+        assert source.exists()
+
+    def test_safe_move_file_allows_inside_root(self, tmp_path):
+        """safe_move_file completes normally when the destination stays inside root_dir."""
+        root = tmp_path / "library"
+        root.mkdir()
+        source = root / "source.pdf"
+        source.write_text("x")
+
+        result = safe_move_file(source, root / "book.pdf", root_dir=root)
+
+        assert result == root / "book.pdf"
+        assert result.exists()
+        assert not source.exists()
+
+    def test_safe_move_file_blocks_escape_in_dry_run(self, tmp_path):
+        """Traversal destinations fail even when dry-run never touches the filesystem."""
+        source = tmp_path / "source.pdf"
+        source.write_text("x")
+        root = tmp_path / "library"
+        root.mkdir()
+
+        with pytest.raises(FileOperationError):
+            safe_move_file(source, tmp_path / "outside" / "book.pdf", dry_run=True, root_dir=root)
+
+    def test_safe_copy_file_blocks_escape(self, tmp_path):
+        """safe_copy_file refuses destinations outside the given root_dir."""
+        source = tmp_path / "source.pdf"
+        source.write_text("x")
+        root = tmp_path / "library"
+        root.mkdir()
+
+        with pytest.raises(FileOperationError):
+            safe_copy_file(source, tmp_path / "outside" / "book.pdf", root_dir=root)
+
+        assert source.exists()
+
+    @pytest.mark.asyncio
+    async def test_organizer_blocks_destination_outside_root(self, tmp_path):
+        """organize_file reports a failed result when the target escapes root_dir."""
+        from renai.file_ops.organizer import FileOrganizer
+        from renai.models.schemas import BookMetadata
+
+        root = tmp_path / "library"
+        root.mkdir()
+        outside = tmp_path / "elsewhere"
+        outside.mkdir()
+        source = outside / "book.pdf"
+        source.write_text("dummy book bytes")
+
+        organizer = FileOrganizer(root_dir=root, max_filename_length=200)
+        metadata = BookMetadata(
+            title="Escaping Book",
+            author="Author Name",
+            year=2024,
+            category="Non-Fiction",
+            language="en",
+        )
+
+        result = await organizer.organize_file(file_path=source, metadata=metadata, mode="rename")
+
+        assert result.success is False
+        assert "Path traversal blocked" in (result.error or "")
+        assert source.exists()
+
+    @pytest.mark.asyncio
+    async def test_organizer_allows_destination_inside_root(self, tmp_path):
+        """organize_file succeeds when the target stays inside root_dir."""
+        from renai.file_ops.organizer import FileOrganizer
+        from renai.models.schemas import BookMetadata
+
+        source = tmp_path / "book.pdf"
+        source.write_text("dummy book bytes")
+
+        organizer = FileOrganizer(root_dir=tmp_path, max_filename_length=200)
+        metadata = BookMetadata(
+            title="Inside Book",
+            author="Author Name",
+            year=2024,
+            category="Non-Fiction",
+            language="en",
+        )
+
+        result = await organizer.organize_file(file_path=source, metadata=metadata, mode="rename")
+
+        assert result.success is True
+        assert result.file_path is not None
+        assert result.file_path.exists()

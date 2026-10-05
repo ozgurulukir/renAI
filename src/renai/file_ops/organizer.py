@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import cast
 
 from renai.config.folder_rules import FolderRule
+from renai.exceptions import FileOperationError
 from renai.file_ops.operations import (
     resolve_target_destination,
     safe_copy_file,
@@ -71,18 +72,6 @@ class FileOrganizer:
                 file_path, new_name, category=category, mode=mode, root_dir=self.root_dir
             )
 
-            if self.root_dir:
-                resolved_root = self.root_dir.resolve()
-                resolved_dest = target_dest.resolve()
-                if not resolved_dest.is_relative_to(resolved_root):
-                    logging.error("Target path %s escapes root %s", target_dest, self.root_dir)
-                    return ProcessingResult(
-                        success=False,
-                        name=file_path.name,
-                        original_name=file_path.name,
-                        error="Security: Path traversal blocked",
-                    )
-
             if file_path.resolve() == target_dest.resolve():
                 logging.debug(f"Skipping (Already organized/renamed): {file_path.name}")
                 m_data = (
@@ -119,6 +108,7 @@ class FileOrganizer:
                             operation_type=mode,
                             source_hash=file_hash,
                             dry_run=dry_run,
+                            root_dir=self.root_dir,
                         )
 
                     final_path = await asyncio.to_thread(_do_copy)
@@ -131,6 +121,7 @@ class FileOrganizer:
                             operation_type=mode,
                             source_hash=file_hash,
                             dry_run=dry_run,
+                            root_dir=self.root_dir,
                         )
 
                     final_path = await asyncio.to_thread(_do_move)
@@ -146,6 +137,18 @@ class FileOrganizer:
                 name=final_path.name,
                 original_name=file_path.name,
                 category=category,
+            )
+
+        except FileOperationError as e:
+            # Path-traversal and other boundary violations from the file_ops
+            # security controls are reported verbatim so the security reason
+            # stays visible in the processing result.
+            logging.error("Blocked file operation for %s: %s", file_path.name, e)
+            return ProcessingResult(
+                success=False,
+                name=file_path.name,
+                original_name=file_path.name,
+                error=str(e),
             )
 
         except Exception as e:
