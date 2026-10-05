@@ -9,10 +9,10 @@ from typing import Any, TypeVar, cast
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
+from ..config import app_settings, get_allowed_categories, get_image_categories
 from ..config.folder_rules import resolve_allowed_bucket, resolve_fallback_category
 from ..exceptions import LLMError
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
-from ..settings import app_settings, get_allowed_categories, get_image_categories
 from ..utils.rate_limiter import AsyncRateLimiter
 
 T = TypeVar("T", bound=BaseMetadata)

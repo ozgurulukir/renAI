@@ -10,6 +10,7 @@ from typing import cast
 
 from ..cache.manager import get_metadata_cache_path
 from ..cache.middleware import MetadataRequest, with_metadata_cache
+from ..config import CACHE_DIR, get_image_extensions
 from ..config.folder_rules import (
     FolderRule,
     get_folder_rule_for,
@@ -22,7 +23,6 @@ from ..exceptions import ConfigurationError
 from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata, ProcessingConfig
-from ..settings import CACHE_DIR, get_image_extensions
 from ..utils import get_file_hash
 from .text_extractor import FallbackMode, TextExtractor
 from .visual import VisualProcessor

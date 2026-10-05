@@ -25,7 +25,7 @@ import pymupdf
 import pytesseract  # type: ignore[import-untyped]
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-from ..settings import (
+from ..config import (
     CACHE_DIR,
     DEBUG_DIR,
     TESSERACT_PATH,

@@ -54,7 +54,6 @@ File Operations (file_ops/operations.py) -> safe_move_file / safe_copy_file
 ```
 src/renai/                  # Main package
   cli.py                    # CLI entry point (Typer commands)
-  settings.py               # Backward-compat shim -> renai.config
   exceptions.py             # RenAIError hierarchy
   logging_config.py         # structlog configuration (stderr output)
   messages/                  # Centralized user-facing messages
@@ -191,7 +190,7 @@ python -m build
 - **Head-Tail Sampling**: `text_extraction` default is `"head-tail"`; `head_ratio` (default: 0.7, range 0.3-0.9) controls head/tail split; `"mixed"` auto-normalized to `"head-tail"`.
 - **Vision Fallback Pages**: Configurable `vision_max_pages` (default: 3, range 1-10) to limit sampled pages for PDF vision extraction.
 - **Lazy loading**: Heavy attributes (`PROVIDERS`, `EVAL_MODELS`) use PEP 562 `__getattr__`
-- **Backward compat**: `renai.settings` re-exports from `renai.config` -- new code should import from `renai.config`
+- **Config imports**: import settings from `renai.config` (the old `renai.settings` shim was removed)
 - **Folder Rules**: `folder_rules.toml` (user) / `folder_rules.default.toml` (package) define per-folder rules loaded by `config/folder_rules.py` (first-found-wins, lru_cache + `cache_clear()` in tests). Rules match by path prefix (subfolders inherit; deepest path wins). A rule's `categories`/`image_categories` fully replace the global list for that folder (threaded per-call through `LLMEngine`), and `doc_template`/`vision_template`/`image_template` override the built-in filename patterns via `render_filename_template` in `filename/builder.py`. `BookProcessor` clamps cache-hit metadata categories to the rule list.
 
 ### SSoT (Single Source of Truth)

@@ -14,7 +14,7 @@ from rich.theme import Theme
 
 from renai.messages import setup as msg
 
-from ..settings import (
+from ..config import (
     CONFIG_DIR,
     PACKAGE_CONFIG_DIR,
     SECRETS_FILE,

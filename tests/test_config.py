@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from renai.cli import display_warnings
-from renai.settings import (
+from renai.config import (
     DEFAULT_CATEGORIES,
     get_allowed_categories,
     get_tesseract_path,
@@ -29,7 +29,7 @@ class TestLoadCategories:
 
     def test_user_config(self, tmp_path):
         """Should load categories from user config with priority."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "categories.toml"
         user_file.write_text('[en]\ncategories = ["UserEn"]\n[tr]\ncategories = ["UserTr"]\n')
@@ -47,7 +47,7 @@ class TestLoadCategories:
 
     def test_package_default(self, tmp_path):
         """Should fallback to package config if user config missing."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "nonexistent.toml"
         package_file = tmp_path / "categories.default.toml"
@@ -66,7 +66,7 @@ class TestLoadCategories:
 
     def test_user_config_empty_categories_fallback_to_package(self, tmp_path):
         """Should fallback to package config if user config has no categories."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "categories.toml"
         user_file.write_text("[en]\n[tr]\n")
@@ -87,7 +87,7 @@ class TestLoadCategories:
 
     def test_user_invalid(self, tmp_path):
         """Should fallback and log warning if user config is invalid."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "categories.toml"
         user_file.write_text("invalid toml = ")
@@ -111,7 +111,7 @@ class TestLoadCategories:
 
     def test_user_read_error(self, tmp_path):
         """Should fallback and log warning if user config cannot be read."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "categories.toml"
         user_file.touch()
@@ -144,7 +144,7 @@ class TestLoadCategories:
 
     def test_user_missing_keys(self, tmp_path):
         """Should fallback if user config lacks matching categories."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "categories.toml"
         user_file.write_text('[en]\nwrong_key = ["UserEn"]\n')
@@ -165,7 +165,7 @@ class TestLoadCategories:
 
     def test_package_invalid(self, tmp_path):
         """Should return empty and log warning if both configs missing/invalid."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "nonexistent.toml"
 
@@ -189,7 +189,7 @@ class TestLoadCategories:
 
     def test_package_read_error(self, tmp_path):
         """Should return empty and log warning if package config cannot be read."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "nonexistent.toml"
 
@@ -221,7 +221,7 @@ class TestLoadCategories:
 
     def test_empty(self, tmp_path):
         """Should return empty dict if no configs exist."""
-        from renai.settings import load_categories_from_file
+        from renai.config import load_categories_from_file
 
         user_file = tmp_path / "nonexistent1.toml"
         package_dir = tmp_path / "nonexistent_dir"
@@ -274,7 +274,7 @@ class TestEvalModels:
 
     def test_eval_models_structure(self):
         """Eval models should be a dict."""
-        from renai.settings import EVAL_MODELS
+        from renai.config import EVAL_MODELS
 
         assert isinstance(EVAL_MODELS, dict)
         assert "deepinfra" in EVAL_MODELS
@@ -329,7 +329,7 @@ class TestDisplayWarnings:
 
     def test_disabled_by_setting(self):
         """Warnings should be disabled when setting is False."""
-        with patch("renai.settings.app_settings.show_warnings", False):
+        with patch("renai.config.app_settings.show_warnings", False):
             with patch("builtins.input", side_effect=EOFError):
                 with patch("logging.warning") as mock:
                     display_warnings("rename", True)
@@ -414,7 +414,7 @@ class TestDirectories:
 
     def test_directories_created(self):
         """Required directories should be created on init."""
-        from renai.settings import APP_DATA_DIR, CACHE_DIR, DEBUG_DIR
+        from renai.config import APP_DATA_DIR, CACHE_DIR, DEBUG_DIR
 
         with patch("renai.config.directories.ensure_secure_dir") as mock_ensure:
             initialize_directories()
@@ -431,14 +431,14 @@ class TestEnvironmentIntegration:
 
     def test_env_prefix_renai(self):
         """Settings should use RENAI_ prefix."""
-        import renai.settings as settings_module
+        import renai.config as settings_module
 
         # AppSettings should have env_prefix
         assert settings_module.app_settings.model_config.get("env_prefix") == "RENAI_"
 
     def test_provider_settings_no_prefix(self):
         """ProviderSettings should not have prefix."""
-        import renai.settings as settings_module
+        import renai.config as settings_module
 
         # Provider settings should not have prefix
         assert settings_module.provider_settings.model_config.get("env_prefix") == ""
@@ -471,7 +471,7 @@ class TestLoadEvalModels:
         user_file = config_dir / "eval_models.toml"
         user_file.write_text('[test_provider]\nmodels = ["user_model_1", "user_model_2"]')
 
-        from renai.settings import load_eval_models
+        from renai.config import load_eval_models
 
         result = load_eval_models("test_provider")
         assert result == ["user_model_1", "user_model_2"]
@@ -487,7 +487,7 @@ class TestLoadEvalModels:
         pkg_file = pkg_dir / "eval_models.default.toml"
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
 
-        from renai.settings import load_eval_models
+        from renai.config import load_eval_models
 
         with patch("logging.warning") as mock_warn:
             result = load_eval_models("test_provider")
@@ -505,7 +505,7 @@ class TestLoadEvalModels:
         pkg_file = pkg_dir / "eval_models.default.toml"
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
 
-        from renai.settings import load_eval_models
+        from renai.config import load_eval_models
 
         result = load_eval_models("test_provider")
         assert result == ["pkg_model_1"]
@@ -517,7 +517,7 @@ class TestLoadEvalModels:
         pkg_file = pkg_dir / "eval_models.default.toml"
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1", "pkg_model_2"]')
 
-        from renai.settings import load_eval_models
+        from renai.config import load_eval_models
 
         result = load_eval_models("test_provider")
         assert result == ["pkg_model_1", "pkg_model_2"]
@@ -532,14 +532,14 @@ class TestLoadEvalModels:
         pkg_file = pkg_dir / "eval_models.default.toml"
         pkg_file.write_text('[other_provider]\nmodels = ["model_2"]')
 
-        from renai.settings import load_eval_models
+        from renai.config import load_eval_models
 
         result = load_eval_models("test_provider")
         assert result == []
 
     def test_load_no_files_found(self, mock_dirs):
         """Should return empty list if neither config file exists."""
-        from renai.settings import load_eval_models
+        from renai.config import load_eval_models
 
         result = load_eval_models("test_provider")
         assert result == []
@@ -604,7 +604,7 @@ class TestLoadEvalModels:
         pkg_file = pkg_dir / "eval_models.default.toml"
         pkg_file.write_text("invalid toml content")
 
-        from renai.settings import load_eval_models
+        from renai.config import load_eval_models
 
         with patch("logging.warning") as mock_warn:
             result = load_eval_models("test_provider")
@@ -619,7 +619,7 @@ class TestLoadEvalModels:
         pkg_file = pkg_dir / "eval_models.default.toml"
         pkg_file.write_text('[test_provider]\nmodels = ["pkg_model_1"]')
 
-        from renai.settings import load_eval_models
+        from renai.config import load_eval_models
 
         # Mock open to raise an exception
         with patch.object(Path, "open", autospec=True, side_effect=OSError("Permission denied")):
@@ -635,27 +635,27 @@ class TestGetEffectiveModel:
 
     def test_explicit_model_override(self):
         """Should return explicit model if set in app_settings."""
-        from renai.settings import get_effective_model
+        from renai.config import get_effective_model
 
-        with patch("renai.settings.app_settings.model", "explicit-model"):
+        with patch("renai.config.app_settings.model", "explicit-model"):
             result = get_effective_model("deepinfra")
             assert result == "explicit-model"
 
     def test_provider_specific_model(self):
         """Should return provider specific model if app_settings.model is not set."""
-        from renai.settings import get_effective_model
+        from renai.config import get_effective_model
 
-        with patch("renai.settings.app_settings.model", None):
-            with patch("renai.settings.provider_settings.deepinfra_model", "deepinfra-specific"):
+        with patch("renai.config.app_settings.model", None):
+            with patch("renai.config.provider_settings.deepinfra_model", "deepinfra-specific"):
                 result = get_effective_model("deepinfra")
                 assert result == "deepinfra-specific"
 
     def test_fallback_to_default_model(self):
         """Should fallback to default model if no explicit or provider models are set."""
-        from renai.settings import get_effective_model
+        from renai.config import get_effective_model
 
-        with patch("renai.settings.app_settings.model", None):
-            with patch("renai.settings.provider_settings.deepinfra_model", None):
+        with patch("renai.config.app_settings.model", None):
+            with patch("renai.config.provider_settings.deepinfra_model", None):
                 with patch(
                     "renai.config.providers.get_default_model", return_value="default-model"
                 ) as mock_get_default:
@@ -669,7 +669,7 @@ class TestGetDefaultModel:
 
     def test_known_provider(self):
         """Should return default model for known providers."""
-        from renai.settings import ProviderConfig, app_settings, get_default_model
+        from renai.config import ProviderConfig, app_settings, get_default_model
 
         # Ensure they exist in the registry for this test
         app_settings.providers["openai"] = ProviderConfig(
@@ -687,14 +687,14 @@ class TestGetDefaultModel:
 
     def test_unknown_provider_default(self):
         """Should return 'llama3' for unknown provider when CUSTOM_MODEL is not set."""
-        from renai.settings import get_default_model
+        from renai.config import get_default_model
 
         with patch.dict("os.environ", {}, clear=True):
             assert get_default_model("unknown_provider") == "llama3"
 
     def test_unknown_provider_env_override(self):
         """Should return CUSTOM_MODEL env var for unknown provider if set."""
-        from renai.settings import get_default_model
+        from renai.config import get_default_model
 
         with patch.dict("os.environ", {"CUSTOM_MODEL": "custom-llama"}, clear=True):
             assert get_default_model("unknown_provider") == "custom-llama"
@@ -705,25 +705,25 @@ class TestSettingsAccessorFunctions:
 
     def test_get_api_key(self):
         """Should return correct API key for provider."""
-        from renai.settings import get_api_key
+        from renai.config import get_api_key
 
-        with patch("renai.settings.provider_settings.deepinfra_api_key", "fake_key_1"):
+        with patch("renai.config.provider_settings.deepinfra_api_key", "fake_key_1"):
             assert get_api_key("deepinfra") == "fake_key_1"
 
-        with patch("renai.settings.provider_settings.deepinfra_api_key", None):
+        with patch("renai.config.provider_settings.deepinfra_api_key", None):
             with patch.dict("os.environ", {"DEEPINFRA_API_KEY": "fake_key_env"}):
                 assert get_api_key("deepinfra") == "fake_key_env"
 
-        with patch("renai.settings.provider_settings.custom_api_key", "custom_key"):
+        with patch("renai.config.provider_settings.custom_api_key", "custom_key"):
             assert get_api_key("custom") == "custom_key"
 
-        with patch("renai.settings.provider_settings.custom_api_key", None):
+        with patch("renai.config.provider_settings.custom_api_key", None):
             with patch.dict("os.environ", {}, clear=True):
                 assert get_api_key("custom") == "not-required"
 
     def test_get_base_url(self):
         """Should return correct base URL for provider."""
-        from renai.settings import ProviderConfig, app_settings, get_base_url
+        from renai.config import ProviderConfig, app_settings, get_base_url
 
         # Setup registry
         app_settings.providers["deepinfra"] = ProviderConfig(
@@ -736,16 +736,16 @@ class TestSettingsAccessorFunctions:
         assert get_base_url("deepinfra") == "https://api.deepinfra.com/v1"
         assert get_base_url("custom") == "http://localhost:8000/v1"
 
-        with patch("renai.settings.provider_settings.custom_api_base_url", "http://custom/v1"):
+        with patch("renai.config.provider_settings.custom_api_base_url", "http://custom/v1"):
             assert get_base_url("unknown") == "http://custom/v1"
 
-        with patch("renai.settings.provider_settings.custom_api_base_url", None):
+        with patch("renai.config.provider_settings.custom_api_base_url", None):
             with patch.dict("os.environ", {"CUSTOM_API_BASE_URL": "http://env/v1"}):
                 assert get_base_url("unknown") == "http://env/v1"
 
     def test_get_default_model(self):
         """Should return correct default model for provider."""
-        from renai.settings import ProviderConfig, app_settings, get_default_model
+        from renai.config import ProviderConfig, app_settings, get_default_model
 
         app_settings.providers["deepinfra"] = ProviderConfig(
             default_model="llama3", base_url="https://api.deepinfra.com/v1"
@@ -757,20 +757,20 @@ class TestSettingsAccessorFunctions:
 
     def test_get_effective_model(self):
         """Should return the effective model with proper priority."""
-        from renai.settings import get_effective_model
+        from renai.config import get_effective_model
 
         # 1. Explicit model override
-        with patch("renai.settings.app_settings.model", "explicit_model"):
+        with patch("renai.config.app_settings.model", "explicit_model"):
             assert get_effective_model("deepinfra") == "explicit_model"
 
         # 2. Provider-specific model
-        with patch("renai.settings.app_settings.model", None):
-            with patch("renai.settings.provider_settings.deepinfra_model", "provider_model"):
+        with patch("renai.config.app_settings.model", None):
+            with patch("renai.config.provider_settings.deepinfra_model", "provider_model"):
                 assert get_effective_model("deepinfra") == "provider_model"
 
         # 3. Default model
-        with patch("renai.settings.app_settings.model", None):
-            with patch("renai.settings.provider_settings.deepinfra_model", None):
+        with patch("renai.config.app_settings.model", None):
+            with patch("renai.config.provider_settings.deepinfra_model", None):
                 with patch(
                     "renai.config.providers.get_default_model", return_value="default_model"
                 ):
@@ -782,29 +782,29 @@ class TestGetApiKey:
 
     def test_get_api_key_from_provider_settings(self):
         """Should return API key from provider_settings."""
-        from renai.settings import get_api_key
+        from renai.config import get_api_key
 
-        with patch("renai.settings.provider_settings.deepinfra_api_key", "test_di_key"):
+        with patch("renai.config.provider_settings.deepinfra_api_key", "test_di_key"):
             with patch.dict("os.environ", {}, clear=True):
                 assert get_api_key("deepinfra") == "test_di_key"
 
     def test_get_api_key_from_os_environ_fallback(self):
         """Should fallback to OS environ if provider_settings is None."""
-        from renai.settings import get_api_key
+        from renai.config import get_api_key
 
-        with patch("renai.settings.provider_settings.openrouter_api_key", None):
+        with patch("renai.config.provider_settings.openrouter_api_key", None):
             with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test_or_key"}, clear=True):
                 assert get_api_key("openrouter") == "test_or_key"
 
     def test_get_api_key_all_providers(self):
         """Should retrieve keys for all standard providers."""
-        from renai.settings import get_api_key
+        from renai.config import get_api_key
 
         with (
-            patch("renai.settings.provider_settings.deepinfra_api_key", "key1"),
-            patch("renai.settings.provider_settings.openrouter_api_key", "key2"),
-            patch("renai.settings.provider_settings.openai_api_key", "key3"),
-            patch("renai.settings.provider_settings.custom_api_key", "key4"),
+            patch("renai.config.provider_settings.deepinfra_api_key", "key1"),
+            patch("renai.config.provider_settings.openrouter_api_key", "key2"),
+            patch("renai.config.provider_settings.openai_api_key", "key3"),
+            patch("renai.config.provider_settings.custom_api_key", "key4"),
         ):
             with patch.dict("os.environ", {}, clear=True):
                 assert get_api_key("deepinfra") == "key1"
@@ -814,15 +814,15 @@ class TestGetApiKey:
 
     def test_get_api_key_custom_default(self):
         """Should return 'not-required' for custom if not set anywhere."""
-        from renai.settings import get_api_key
+        from renai.config import get_api_key
 
-        with patch("renai.settings.provider_settings.custom_api_key", None):
+        with patch("renai.config.provider_settings.custom_api_key", None):
             with patch.dict("os.environ", {}, clear=True):
                 assert get_api_key("custom") == "not-required"
 
     def test_get_api_key_invalid_provider(self):
         """Should return None for an unknown provider."""
-        from renai.settings import get_api_key
+        from renai.config import get_api_key
 
         assert get_api_key("invalid_provider") is None
 
@@ -832,27 +832,27 @@ class TestEffectiveModel:
 
     def test_explicit_override(self):
         """Should return explicit model if set in app_settings."""
-        from renai.settings import get_effective_model
+        from renai.config import get_effective_model
 
-        with patch("renai.settings.app_settings.model", "explicit-model"):
+        with patch("renai.config.app_settings.model", "explicit-model"):
             result = get_effective_model("deepinfra")
             assert result == "explicit-model"
 
     def test_provider_specific_model(self):
         """Should return provider-specific model if explicitly set in provider_settings."""
-        from renai.settings import get_effective_model
+        from renai.config import get_effective_model
 
-        with patch("renai.settings.app_settings.model", None):
-            with patch("renai.settings.provider_settings.deepinfra_model", "provider-model"):
+        with patch("renai.config.app_settings.model", None):
+            with patch("renai.config.provider_settings.deepinfra_model", "provider-model"):
                 result = get_effective_model("deepinfra")
                 assert result == "provider-model"
 
     def test_default_fallback(self):
         """Should fallback to default model if neither explicit nor provider model is set."""
-        from renai.settings import get_effective_model
+        from renai.config import get_effective_model
 
-        with patch("renai.settings.app_settings.model", None):
-            with patch("renai.settings.provider_settings.deepinfra_model", None):
+        with patch("renai.config.app_settings.model", None):
+            with patch("renai.config.provider_settings.deepinfra_model", None):
                 with patch(
                     "renai.config.providers.get_default_model", return_value="default-model"
                 ):
@@ -861,9 +861,9 @@ class TestEffectiveModel:
 
     def test_invalid_provider_fallback(self):
         """Should fallback to default model if provider is unknown."""
-        from renai.settings import get_effective_model
+        from renai.config import get_effective_model
 
-        with patch("renai.settings.app_settings.model", None):
+        with patch("renai.config.app_settings.model", None):
             with patch("renai.config.providers.get_default_model", return_value="default-model"):
                 result = get_effective_model("unknown_provider")
                 assert result == "default-model"
@@ -874,7 +874,7 @@ class TestGetBaseUrl:
 
     def test_get_base_url_known_provider(self):
         """Should return correct base url for known providers."""
-        from renai.settings import ProviderConfig, app_settings, get_base_url
+        from renai.config import ProviderConfig, app_settings, get_base_url
 
         app_settings.providers["openai"] = ProviderConfig(
             default_model="gpt-4", base_url="https://api.openai.com/v1"
@@ -883,26 +883,26 @@ class TestGetBaseUrl:
 
     def test_get_base_url_unknown_provider_with_settings_custom_url(self):
         """Should return provider_settings.custom_api_base_url if provider is unknown."""
-        from renai.settings import get_base_url
+        from renai.config import get_base_url
 
         with patch(
-            "renai.settings.provider_settings.custom_api_base_url", "http://custom-url:9000/v1"
+            "renai.config.provider_settings.custom_api_base_url", "http://custom-url:9000/v1"
         ):
             assert get_base_url("unknown_provider") == "http://custom-url:9000/v1"
 
     def test_get_base_url_unknown_provider_with_env_override(self):
         """Should fallback to CUSTOM_API_BASE_URL env var if provider_settings custom url is empty/None."""
-        from renai.settings import get_base_url
+        from renai.config import get_base_url
 
-        with patch("renai.settings.provider_settings.custom_api_base_url", ""):
+        with patch("renai.config.provider_settings.custom_api_base_url", ""):
             with patch.dict("os.environ", {"CUSTOM_API_BASE_URL": "http://env-url:8080/v1"}):
                 assert get_base_url("unknown_provider") == "http://env-url:8080/v1"
 
     def test_get_base_url_unknown_provider_fallback_default(self):
         """Should fallback to default localhost url if both setting and env var are absent."""
-        from renai.settings import get_base_url
+        from renai.config import get_base_url
 
-        with patch("renai.settings.provider_settings.custom_api_base_url", ""):
+        with patch("renai.config.provider_settings.custom_api_base_url", ""):
             with patch.dict("os.environ", {}, clear=True):
                 assert get_base_url("unknown_provider") == "http://localhost:8000/v1"
 

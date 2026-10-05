@@ -12,8 +12,8 @@ from rich.theme import Theme
 
 from renai.messages import setup as msg
 
+from ..config import app_settings
 from ..exceptions import ConfigurationError
-from ..settings import app_settings
 
 # Custom theme for setup messages
 custom_theme = Theme(
