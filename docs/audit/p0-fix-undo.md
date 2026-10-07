@@ -1,0 +1,1 @@
+artifacts/team-32796bcb-undo_p0_fixer_baoclaw-worktree-team-32796bcb-undo_p0_fixer_2bcb335_20261007T214338Z_p0-fix-undo.md
