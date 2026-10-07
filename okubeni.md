@@ -24,10 +24,10 @@ Araç hem bulut tabanlı LLM'leri (DeepInfra, OpenRouter, OpenAI) hem de yerel �
 **Belgeler (Metin Çıkarma Modu):**
 
 ```text
-Başlık -- Alt Başlık -- Baskı -- Yazar -- (Yıl).uzantı
+Başlık -- Alt Başlık -- Seri #Cilt -- 'Baskı' -- Yazar -- (Yıl).uzantı
 ```
 
-_Örnek: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`_
+_Örnek: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`_ (eksik parçalar atlanır; seri/cilt `Seri #3`, yalnız cilt ise `Vol. 3` olarak yazılır)_
 
 **Belgeler (Multimodal Görüş Modu):**
 
@@ -75,7 +75,7 @@ _Örnek: `Sunset -- [2024-07-15] -- (en).jpg`_
 - **`copy`**: Yeniden adlandırılmış kopyayı orijinalin yanına yazar; kaynak dosyaya dokunmaz (tahribatsız)
 - **`benchmark`**: PDF çıkarma kütüphanesi performansını örnek dosyalar üzerinde karşılaştırır (varsayılan: ilk 3)
 - **`evaluate`**: Farklı LLM modellerini ve sağlayıcılarını doğruluk açısından test eder
-- **`--fallback-mode ocr`**: Önce metin çıkarmayı dener. Başarısız olursa Tesseract OCR kullanarak metin çıkarmaya çalışır (varsayılan davranış).
+- **`--fallback-mode ocr`**: Önce metin çıkarmayı dener. Başarısız olursa Tesseract OCR kullanarak metin çıkarmaya çalışır. (Varsayılan `none`'dır — fallback istemiyorsanız bu bayrağı açıkça vermelisiniz.)
 - **`--fallback-mode vision`**: Görüntü yetenekli LLM ile PDF'leri işler. Önce metin çıkarmayı dener (OCR kullanmaz). Başarısız olursa, vision modele fallback yapar.
 - **`--fallback-mode move`**: Metin çıkarma başarısız olan dosyaları `Needs_Scan/` klasörüne taşır.
 - **`--rename-images`**: Görüntü dosyalarını yeniden adlandırır. Ayrıca görüntü olmayan dosyaları metin çıkarma + fallback ile işler.
@@ -127,7 +127,7 @@ uv run renai init
 Bu komut, işletim sisteminize uygun dizinde yapılandırma dosyalarınızı oluşturacaktır:
 
 - **Windows**: `%LOCALAPPDATA%\renAI`
-- **Linux**: `~/.config/renAI`
+- **Linux**: `~/.local/share/renAI`
 - **macOS**: `~/Library/Application Support/renAI`
 
 Sihirbaz şu konularda size yardımcı olur:
@@ -150,6 +150,7 @@ renAI sağlam ve katmanlı bir yapılandırma sistemi kullanır:
 - `secrets.toml`: Hassas API anahtarları. **Bu dosyayı asla paylaşmayın!**
 - `providers.toml`: Özel LLM sağlayıcılarını kaydedin veya uç noktaları (endpoint) değiştirin.
 - `categories.toml`: Klasörleme düzeni için kendi kategorilerinizi tanımlayın (`--mode organize`).
+- `folder_rules.toml`: Klasöre özel kategori kısıtlamaları ve dosya adı şablonu geçersiz kılmaları tanımlayın.
 - `eval_models.toml`: `evaluate` komutu ile test edilecek modelleri listeleyin.
 
 Anahtarları şuradan alın: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrouter.ai) | [OpenAI](https://platform.openai.com/api-keys)
@@ -254,13 +255,13 @@ Aynı klasördeki PDF ve görüntü dosyalarını işleyin:
 | :--------------------------------------- | :----------------------- | :----------------------------- |
 | `--fallback-mode vision`                 | Normal → Vision fallback | ⏭️ Atlanır                     |
 | `--fallback-mode vision --rename-images` | Normal → Vision fallback | 🔄 Vision ile yeniden adlandır |
-| `--rename-images`                        | Normal → OCR fallback    | 🔄 Vision ile yeniden adlandır |
+| `--rename-images`                        | Normal → fallback yok (varsayılan `none`) | 🔄 Vision ile yeniden adlandır |
 
 ```bash
 # PDF'ler vision ile, görüntüler vision ile yeniden adlandırılır
 renai process "C:/Karışık" --fallback-mode vision --rename-images --provider openai --model gpt-4o
 
-# Sadece görüntüleri yeniden adlandır (PDF'ler OCR ile)
+# Sadece görüntüleri yeniden adlandır (PDF'ler normal işlenir, fallback yapılmaz)
 renai process "C:/Karışık" --rename-images --provider openai --model gpt-4o
 
 # Sadece PDF'leri vision ile işle (görüntüler atlanır)
@@ -289,7 +290,7 @@ renai process "C:/Kitaplar/Yolu" --mode rename --provider openai
 > renAI güvenilir meta veri çıkarma için LLM'den JSON çıktısı gerektirir. 7B'den daha az parametreye sahip modeller yapılandırılmış çıktı formatlamada zorlanabilir.
 
 ```bash
-# Ortam değişkenlerini ayarla (Windows PowerShell veya .env dosyası)
+# Ortam değişkenlerini ayarla (ör. Windows PowerShell; .env dosyası desteklenmez)
 $env:CUSTOM_API_BASE_URL = "http://localhost:11434/v1"  # Ollama varsayılanı
 $env:CUSTOM_MODEL = "llama3"  # Model adınız
 
@@ -466,7 +467,7 @@ renAI, PDF'leri ve görüntüleri doğrudan işleyebilen görüntü yetenekli LL
 
 ### Vision Modu vs OCR
 
-| Özellik               | Vision Modu (`--fallback-mode vision`)       | OCR Modu (varsayılan)                     |
+| Özellik               | Vision Modu (`--fallback-mode vision`)       | OCR Modu (`--fallback-mode ocr`)          |
 | :-------------------- | :------------------------------------------- | :---------------------------------------- |
 | **Metin Çıkarma**     | Önce dener, başarısız olursa vision fallback | Önce dener, başarısız olursa OCR fallback |
 | **Hız**               | Metin PDF'leri için daha hızlı               | OCR daha yavaş                            |
@@ -534,7 +535,7 @@ uv run renai process "C:/Kitaplar" --provider deepinfra
 uv run renai process "C:/Kitaplar" --provider deepinfra --update-metadata
 ```
 
-**Önbellek Konumu:** `platformdirs` kullanılarak işletim sistemi tarafından otomatik yönetilir (ör. Linux'ta `~/.cache/renAI`, macOS'te `~/Library/Caches/renAI`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`). İçerde SQLite WAL modu ile eşzamanlı güvenli, yüksek performanslı önbellekleme kullanılır.
+**Önbellek Konumu:** `platformdirs` kullanıcı veri dizini altında yönetilir (Linux'ta `~/.local/share/renAI/Cache`, macOS'te `~/Library/Application Support/renAI/Cache`, Windows'ta `%LOCALAPPDATA%\renAI\Cache`). İçerde SQLite WAL modu ile eşzamanlı güvenli, yüksek performanslı önbellekleme kullanılır.
 
 ---
 
@@ -567,13 +568,13 @@ Gerçek maliyetler sağlayıcı ve modele göre değişir.
 
 renAI artık `platformdirs` kütüphanesi aracılığıyla modern ve işletim sisteminden bağımsız (OS-agnostic) bir yol yönetimi kullanmaktadır.
 
-- **Önbellek Verileri**: Windows'ta `%LOCALAPPDATA%\renAI\Cache` veya Linux'ta `~/.cache/renAI` dizininde yönetilir.
+- **Önbellek Verileri**: Windows'ta `%LOCALAPPDATA%\renAI\Cache` veya Linux'ta `~/.local/share/renAI/Cache` dizininde yönetilir.
 - **Log ve Hata Ayıklama Verileri**: İşletim sisteminin kullanıcı veri dizininde yönetilir.
-- **Yapılandırma**: Düz işletim sistemi yapılandırma dizinindeki (iç içe klasörler olmadan) `settings.toml`, `secrets.toml` ve `categories.toml` dosyaları aracılığıyla yönetilir.
+- **Yapılandırma**: Düz işletim sistemi yapılandırma dizinindeki (iç içe klasörler olmadan) `settings.toml`, `secrets.toml`, `providers.toml`, `categories.toml`, `folder_rules.toml` ve `eval_models.toml` dosyaları aracılığıyla yönetilir.
 
 ### Özel Kategori Tanımlama
 
-Kendi işletim sisteminizin `renAI` için ayrılmış yapılandırma dizininde (örneğin Linux'ta `~/.config/renAI/categories.toml`, Windows'ta `%APPDATA%\renAI\categories.toml`) bir `categories.toml` dosyası oluşturun:
+Kendi işletim sisteminizin `renAI` için ayrılmış yapılandırma dizininde (örneğin Linux'ta `~/.local/share/renAI/categories.toml`, Windows'ta `%LOCALAPPDATA%\renAI\categories.toml`) bir `categories.toml` dosyası oluşturun:
 
 ```toml
 [en]
