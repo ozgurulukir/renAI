@@ -344,9 +344,7 @@ def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
         for _, target_path, keys_set in targets:
             if target_path.exists() and target_path.is_dir():
                 try:
-                    for f in target_path.glob("*"):
-                        if f.is_file():
-                            keys_set.add(f.name)
+                    keys_set.update(f.name for f in target_path.iterdir() if f.is_file())
                     shutil.rmtree(target_path)
                 except Exception as e:
                     logging.warning(f"Failed to clear cache directory at {target_path}: {e}")
