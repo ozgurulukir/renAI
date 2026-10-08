@@ -151,7 +151,7 @@ def _build_provider_options(
 
         provider_options.append({"name": dev, "desc": desc, "extra": default_model})
 
-    if not any(opt["name"] == "custom" for opt in provider_options):
+    if "custom" not in combined_devs:
         provider_options.append(
             {
                 "name": "custom",
