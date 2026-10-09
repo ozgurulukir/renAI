@@ -96,7 +96,7 @@ CLI (cli.py, Typer)
 - Priority: CLI flags > env vars (`RENAI_*`) > user TOML > default TOML > factory defaults.
 - Head-tail sampling: `text_extraction` default `"head-tail"`, `head_ratio` default 0.7.
 - Vision fallback pages: `vision_max_pages` default 3.
-- New code imports from `renai.config` (not the `renai.settings` shim).
+- New code imports from `renai.config` (the legacy `renai.settings` shim was removed).
 
 ## Commands
 
