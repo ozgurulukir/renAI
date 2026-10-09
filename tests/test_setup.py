@@ -364,3 +364,11 @@ def test_run_init_wizard_separate_vision_provider_and_model(tmp_path):
         assert data["provider"] == "deepinfra"
         assert data["vision_provider"] == "openrouter"
         assert data["vision_model"] == "google/gemini-2.0-flash-exp:free"
+
+
+def test_build_provider_options_no_duplicate_custom():
+    from renai.processors.setup_steps import _build_provider_options
+
+    options = _build_provider_options({}, ["openai", "custom"])
+    names = [o["name"] for o in options]
+    assert names.count("custom") == 1
