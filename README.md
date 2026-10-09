@@ -24,10 +24,10 @@ The tool supports both cloud-based LLMs (DeepInfra, OpenRouter, OpenAI) and loca
 **Documents (Text Extraction Mode):**
 
 ```text
-Title -- Subtitle -- Edition -- Author -- (Year).ext
+Title -- Subtitle -- Series #Vol -- 'Edition' -- Author -- (Year).ext
 ```
 
-_Example: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`_
+_Example: `Introduction to Machine Learning -- 3rd Edition -- Andrew Ng -- (2018).pdf`_ (missing parts are skipped; series/volume renders as `Series #3`, bare volume as `Vol. 3`)_
 
 **Documents (Vision Mode):**
 
@@ -149,7 +149,7 @@ uv run renai init
 This will create your configuration files in the appropriate OS directory:
 
 - **Windows**: `%LOCALAPPDATA%\renAI`
-- **Linux**: `~/.config/renAI`
+- **Linux**: `~/.local/share/renAI`
 - **macOS**: `~/Library/Application Support/renAI`
 
 The wizard helps you configure:
@@ -270,13 +270,13 @@ Process both PDFs and images in the same folder:
 | :--------------------------------------- | :----------------------- | :--------------- |
 | `--fallback-mode vision`                 | Normal → Vision fallback | ⏭️ Skipped       |
 | `--fallback-mode vision --rename-images` | Normal → Vision fallback | 🔄 Vision rename |
-| `--rename-images`                        | Normal → OCR fallback    | 🔄 Vision rename |
+| `--rename-images`                        | Normal (no fallback by default) | 🔄 Vision rename |
 
 ```bash
 # PDFs with vision, images with vision
 renai process "C:/Path/To/Mixed" --fallback-mode vision --rename-images --provider openai --model gpt-4o
 
-# Only rename images (PDFs with OCR)
+# Only rename images (PDFs processed normally, no fallback)
 renai process "C:/Path/To/Mixed" --rename-images --provider openai --model gpt-4o
 
 # Only process PDFs with vision (skip images)
@@ -562,7 +562,7 @@ renai process "C:/Books" --provider deepinfra
 renai process "C:/Books" --provider deepinfra --update-metadata
 ```
 
-**Cache Location:** Managed automatically by the OS via `platformdirs` (e.g., `~/.cache/renAI` on Linux, `~/Library/Caches/renAI` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows). Internally uses SQLite WAL mode for concurrent-safe, high-performance caching.
+**Cache Location:** Managed via `platformdirs` user data directory (e.g., `~/.local/share/renAI/Cache` on Linux, `~/Library/Application Support/renAI/Cache` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows). Internally uses SQLite WAL mode for concurrent-safe, high-performance caching.
 
 ---
 
@@ -595,13 +595,13 @@ Actual costs vary by provider and model. Vision mode may have different pricing 
 
 renAI now utilizes modern OS-agnostic path management via the `platformdirs` library.
 
-- **Cache Data**: Managed in `%LOCALAPPDATA%\renAI\Cache` (Windows) or `~/.cache/renAI` (Linux).
+- **Cache Data**: Managed in `%LOCALAPPDATA%\renAI\Cache` (Windows) or `~/.local/share/renAI/Cache` (Linux).
 - **Log and Debug Data**: Managed in the OS user data directory.
 - **Configuration**: Managed via `settings.toml`, `secrets.toml`, `categories.toml`, and `folder_rules.toml` in the flat OS config directory (no nested folders).
 
 ### Defining Custom Categories
 
-Create `categories.toml` in your OS's respective user config directory for `renAI` (e.g., `~/.config/renAI/categories.toml` on Linux, `%APPDATA%\renAI\categories.toml` on Windows):
+Create `categories.toml` in your OS's respective user config directory for `renAI` (e.g., `~/.local/share/renAI/categories.toml` on Linux, `%LOCALAPPDATA%\renAI\categories.toml` on Windows):
 
 ```toml
 [en]
@@ -621,7 +621,7 @@ categories = [
 
 ### Folder Rules (Per-Folder Categories & Filename Templates)
 
-Create `folder_rules.toml` in your user config directory (e.g., `~/.config/renAI/folder_rules.toml` on Linux) to change how renAI behaves for specific folders. Rules match by path prefix: files processed from the rule folder — or any of its subfolders — use the rule. When several rules match, the most specific (deepest) path wins.
+Create `folder_rules.toml` in your user config directory (e.g., `~/.local/share/renAI/folder_rules.toml` on Linux) to change how renAI behaves for specific folders. Rules match by path prefix: files processed from the rule folder — or any of its subfolders — use the rule. When several rules match, the most specific (deepest) path wins.
 
 Each rule supports:
 
@@ -690,7 +690,7 @@ Behavior notes:
 | `providers`            | Command to list configured providers                                                                   |
 | `--version`            | Show renAI version                                                                                     |
 
-> **Important:** When using `--fallback-mode vision` or `--rename-images`, you must use a vision-capable model. renAI does not validate vision capability - please ensure your model supports multimodal/vision input.
+> **Important:** When using `--fallback-mode vision` or `--rename-images`, you must use a vision-capable model. renAI validates this at startup (via the models.dev catalog) and exits with a clear error if the configured vision provider/model is missing, unknown, or not vision-capable.
 
 ---
 

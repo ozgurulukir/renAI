@@ -33,9 +33,9 @@ The text cache key is generated using:
 
 **Examples:**
 
-- `abc123def456_basic.txt` - Basic extraction
-- `abc123def456_enhanced.txt` - Enhanced OCR
-- `abc123def456_enhanced_mutool.txt` - Enhanced OCR with mutool
+- `abc123def456.txt` - Plain text extraction
+- `abc123def456_ocr.txt` - OCR fallback extraction
+- `abc123def456_ocr_mutool.txt` - OCR fallback with mutool PDF conversion
 
 ### Metadata Cache Key
 
@@ -126,7 +126,7 @@ renai cache --yes
 Use `--update-metadata` to bypass cache and force fresh extraction:
 
 ```bash
-renai "C:/Path/To/Books" --update-metadata
+renai process "C:/Path/To/Books" --update-metadata
 ```
 
 ---
@@ -135,11 +135,11 @@ renai "C:/Path/To/Books" --update-metadata
 
 ### Location
 
-renAI utilizes modern OS-agnostic path management via the `platformdirs` library. Cache files are stored in your operating system's standard cache location:
+renAI utilizes modern OS-agnostic path management via the `platformdirs` library. Cache files are stored in the `Cache` subfolder of the platformdirs user data directory:
 
 - **Windows**: `%LOCALAPPDATA%\renAI\Cache`
-- **macOS**: `~/Library/Caches/renAI`
-- **Linux**: `~/.cache/renAI`
+- **macOS**: `~/Library/Application Support/renAI/Cache`
+- **Linux**: `~/.local/share/renAI/Cache`
 
 The internal structure within the cache directory is organized as follows:
 
@@ -156,14 +156,13 @@ renAI writes to SQLite first and falls back to legacy files only when SQLite is 
 
 | File Type         | Contents                                            | Sensitive? |
 | :---------------- | :-------------------------------------------------- | :--------: |
-| `*_enhanced.txt`  | Extracted text (up to 10000 chars)                  |   ⚠️ Yes   |
-| `*_basic.txt`     | Extracted text (up to 10000 chars)                  |   ⚠️ Yes   |
-| `*_metadata.json` | Title, author, year, category + provider/model info |   ⚠️ Yes   |
+| `*.txt` (text)    | Extracted text (up to 10000 chars)                  |   ⚠️ Yes   |
+| `*.json` (metadata) | Title, author, year, category + provider/model info |   ⚠️ Yes   |
 
 ### Security Recommendations
 
 1. **Add to .gitignore**: Ensure cache directory is not versioned
-2. **Exclude from backups**: Consider excluding `.renamer_cache/` from automated backups
+2. **Exclude from backups**: Consider excluding the renAI cache directory from automated backups
 3. **Regular cleanup**: Clear cache periodically, especially after processing sensitive documents
 4. **Encrypted storage**: Store cache on encrypted drives if possible
 
@@ -175,16 +174,16 @@ renAI writes to SQLite first and falls back to legacy files only when SQLite is 
 
 ```bash
 # First run with DeepInfra - caches metadata
-$ renai "C:/Books" --provider deepinfra
+$ renai process "C:/Books" --provider deepinfra
 [INFO] Cached metadata for book.pdf (provider: deepinfra, model: llama-3.3-70b)
 
 # Same files with OpenRouter - NEW cache entry created
-$ renai "C:/Books" --provider openrouter
+$ renai process "C:/Books" --provider openrouter
 [INFO] Cache invalidated for book.pdf (was deepinfra, now openrouter)
 [INFO] Cached metadata for book.pdf (provider: openrouter, model: gemini-2.0-flash)
 
 # Same provider - uses cached metadata
-$ renai "C:/Books" --provider deepinfra
+$ renai process "C:/Books" --provider deepinfra
 [INFO] Using cached metadata for book.pdf (provider: deepinfra, model: llama-3.3-70b)
 ```
 
@@ -192,11 +191,11 @@ $ renai "C:/Books" --provider deepinfra
 
 ```bash
 # First run with default model
-$ renai "C:/Books" --provider openai
+$ renai process "C:/Books" --provider openai
 [INFO] Cached metadata for book.pdf (provider: openai, model: gpt-4o-mini)
 
 # Same provider, different model - NEW cache entry
-$ renai "C:/Books" --provider openai --model gpt-4o
+$ renai process "C:/Books" --provider openai --model gpt-4o
 [INFO] Cache invalidated for book.pdf (was gpt-4o-mini, now gpt-4o)
 [INFO] Cached metadata for book.pdf (provider: openai, model: gpt-4o)
 ```
@@ -207,15 +206,15 @@ $ renai "C:/Books" --provider openai --model gpt-4o
 # Using local Ollama
 $ export CUSTOM_API_BASE_URL="http://localhost:11434/v1"
 $ export CUSTOM_MODEL="llama3"
-$ renai "C:/Books" --provider custom
+$ renai process "C:/Books" --provider custom
 [INFO] Cached metadata for book.pdf (provider: custom, model: llama3)
 
 # Same local model - uses cache
-$ renai "C:/Books" --provider custom
+$ renai process "C:/Books" --provider custom
 [INFO] Using cached metadata for book.pdf (provider: custom, model: llama3)
 
 # Different local model - NEW cache entry
-$ renai "C:/Books" --provider custom --model mistral
+$ renai process "C:/Books" --provider custom --model mistral
 [INFO] Cache invalidated for book.pdf (was llama3, now mistral)
 ```
 
@@ -230,7 +229,7 @@ $ renai process "C:/Books" --fallback-mode vision --provider openrouter --model 
 [INFO] Cached VISION metadata for book.pdf (abc123_pmhash_vision.json)
 
 # Regular mode with same files - uses standard cache
-$ renai "C:/Books" --provider openrouter --model openai/gpt-4o
+$ renai process "C:/Books" --provider openrouter --model openai/gpt-4o
 [INFO] Using TEXT/OCR mode - extracting text
 [INFO] Cached standard metadata for book.pdf (abc123_pmhash.json)
 ```
@@ -244,12 +243,12 @@ Image files (JPG, PNG, etc.) are processed via the unified `VisualProcessor` and
 
 ```bash
 # Rename images with vision model
-$ renai "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
+$ renai process "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
 [INFO] Processing image photo.jpg with vision model
 [INFO] Cached vision metadata for photo.jpg (img_hash_pmhash_vision.json)
 
 # Same images - uses cached metadata
-$ renai "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
+$ renai process "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
 [INFO] Using cached vision metadata for photo.jpg
 ```
 
@@ -260,9 +259,11 @@ $ renai "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
 ### Utility Functions
 
 ```python
-from utils import (
+from renai.utils import (
     get_file_hash,                    # Get SHA256 hash of a file
     get_provider_model_key,           # Generate provider-model hash
+)
+from renai.cache.manager import (
     get_metadata_cache_path,          # Get metadata cache path
     get_text_cache_path,              # Get text cache path
 )
@@ -339,4 +340,4 @@ renai cache
 
 ## Status
 
-Last updated: 2026-06-10
+Last updated: 2026-10-07

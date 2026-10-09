@@ -96,11 +96,11 @@ When using cloud LLM providers (DeepInfra, OpenRouter, OpenAI), the following da
 
 ### Cache Location
 
-renAI utilizes modern OS-agnostic path management via the `platformdirs` library. Cache files are stored in your operating system's standard cache location:
+renAI utilizes modern OS-agnostic path management via the `platformdirs` library. Cache files are stored in the `Cache` subfolder of the platformdirs user data directory:
 
 - **Windows**: `%LOCALAPPDATA%\renAI\Cache`
-- **macOS**: `~/Library/Caches/renAI`
-- **Linux**: `~/.cache/renAI`
+- **macOS**: `~/Library/Application Support/renAI/Cache`
+- **Linux**: `~/.local/share/renAI/Cache`
 
 The directory structure is organized as follows:
 
@@ -246,7 +246,8 @@ For local inference servers:
 
 ```bash
 # Instead of command-line arguments (which may be logged)
-# Use the .env file in your OS configuration directory
+# Export environment variables in your shell (RENAI_-prefixed settings,
+# provider API keys) or store them in secrets.toml in the config directory
 
 RENAI_PROVIDER=deepinfra
 DEEPINFRA_API_KEY=your-api-key-here
@@ -321,7 +322,7 @@ After processing sensitive documents:
 
 ### Q: Does renAI upload my documents to the cloud?
 
-**A**: Only the extracted text (up to 8000 characters) is sent to the LLM provider. The original document files are never uploaded.
+**A**: Only the extracted text (up to 10000 characters by default, configurable via `text_length`) is sent to the LLM provider. The original document files are never uploaded.
 
 ### Q: How long does the cloud provider keep my data?
 
