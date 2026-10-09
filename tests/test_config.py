@@ -976,10 +976,6 @@ class TestResolveAllowedBucket:
         assert result == expected
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-
-
 class TestConstantHelpers:
     """Test constant helper functions in renai.config.constants."""
 
@@ -1001,7 +997,6 @@ class TestConstantHelpers:
         }
         exts = get_image_extensions()
         assert exts == expected
-        assert all(ext.startswith(".") for ext in exts)
 
         # Mutability/independence check
         exts.add(".svg")
@@ -1042,3 +1037,7 @@ class TestConstantHelpers:
             {"processing": {"subprocess_timeout": 120}},
         ):
             assert get_subprocess_timeout() == 120
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
