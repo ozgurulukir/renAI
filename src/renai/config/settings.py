@@ -16,6 +16,7 @@ API Keys (provider-specific):
 """
 
 import logging
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import (
@@ -100,6 +101,13 @@ class AppSettings(BaseSettings):
         description="Retry temperature for metadata extraction",
     )
     llm_max_retries: int = Field(default=2, ge=0, description="Max retries for metadata extraction")
+    refine_metadata: Literal["auto", "always", "never"] = Field(
+        default="auto",
+        description=(
+            "Refinement pass control: 'auto' refines only when title/author are missing or "
+            "placeholder-like; 'always'/'never' force behavior."
+        ),
+    )
 
     # Vision and Image settings
     rename_images: bool = Field(default=False, description="Rename image files using vision")
