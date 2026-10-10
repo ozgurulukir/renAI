@@ -926,8 +926,18 @@ class TestProcessingConfigModes:
 
         from renai.models.schemas import ProcessingConfig
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="mode"):
             ProcessingConfig(mode="bogus")
+
+
+class TestLegacySettingsShim:
+    """Test that legacy settings import shim is removed."""
+
+    def test_legacy_settings_shim_removed(self):
+        import importlib
+
+        with pytest.raises(ModuleNotFoundError, match="renai.settings"):
+            importlib.import_module("renai.settings")
 
 
 if __name__ == "__main__":
