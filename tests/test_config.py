@@ -976,5 +976,68 @@ class TestResolveAllowedBucket:
         assert result == expected
 
 
+class TestConstantHelpers:
+    """Test constant helper functions in renai.config.constants."""
+
+    def test_get_image_extensions(self):
+        """Should return the exact set of supported image extensions."""
+        from renai.config import get_image_extensions
+
+        expected = {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".bmp",
+            ".webp",
+            ".tiff",
+            ".tif",
+            ".heic",
+            ".heif",
+        }
+        exts = get_image_extensions()
+        assert exts == expected
+
+        # Mutability/independence check
+        exts.add(".svg")
+        assert ".svg" not in get_image_extensions()
+
+    def test_get_ocr_lang_default_and_override(self):
+        """Should return default ocr_lang or value from factory defaults."""
+        from renai.config import get_ocr_lang
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+            assert get_ocr_lang() == "tur+eng"
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": {"ocr_lang": "eng"}}):
+            assert get_ocr_lang() == "eng"
+
+    def test_get_max_text_read_size_default_and_override(self):
+        """Should return default max_text_read_size or value from factory defaults."""
+        from renai.config import get_max_text_read_size
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+            assert get_max_text_read_size() == 1_000_000
+
+        with patch(
+            "renai.config.constants.FACTORY_DEFAULTS",
+            {"processing": {"max_text_read_size": 500_000}},
+        ):
+            assert get_max_text_read_size() == 500_000
+
+    def test_get_subprocess_timeout_default_and_override(self):
+        """Should return default subprocess_timeout or value from factory defaults."""
+        from renai.config import get_subprocess_timeout
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+            assert get_subprocess_timeout() == 60
+
+        with patch(
+            "renai.config.constants.FACTORY_DEFAULTS",
+            {"processing": {"subprocess_timeout": 120}},
+        ):
+            assert get_subprocess_timeout() == 120
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
