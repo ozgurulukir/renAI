@@ -490,19 +490,21 @@ class TestUndoJournal:
         old, new = tmp_path / "a.txt", tmp_path / "b.txt"
         new.write_text("data")
         record_undo_entry(old, new, cache_dir=tmp_path)
-        assert undo_last_operation(cache_dir=tmp_path) >= 1
+        assert undo_last_operation(cache_dir=tmp_path) == 1
         assert old.exists() and not new.exists()
         assert _load_undo_entries(tmp_path) == []
 
     def test_corrupt_trailing_line_tolerated(self, tmp_path):
         from renai.file_ops.operations import _load_undo_entries, undo_last_operation
 
-        good = self._entry(tmp_path / "a.txt", tmp_path / "b.txt")
+        old, new = tmp_path / "a.txt", tmp_path / "b.txt"
+        new.write_text("data")
         with (tmp_path / "undo_journal.jsonl").open("w", encoding="utf-8") as f:
-            f.write(json.dumps(good) + "\n")
+            f.write(json.dumps(self._entry(old, new)) + "\n")
             f.write('{"old_path": "partial", "new_')
         assert len(_load_undo_entries(tmp_path)) == 1
-        assert undo_last_operation(cache_dir=tmp_path) >= 1
+        assert undo_last_operation(cache_dir=tmp_path) == 1
+        assert old.exists() and not new.exists()
 
     def test_legacy_json_array_readable(self, tmp_path):
         from renai.file_ops.operations import _load_undo_entries, undo_last_operation
@@ -511,7 +513,8 @@ class TestUndoJournal:
         new.write_text("data")
         (tmp_path / "undo_history.json").write_text(json.dumps([self._entry(old, new)]))
         assert len(_load_undo_entries(tmp_path)) == 1
-        assert undo_last_operation(cache_dir=tmp_path) >= 1
+        assert undo_last_operation(cache_dir=tmp_path) == 1
+        assert old.exists() and not new.exists()
 
     def test_missing_cache_dir_handled(self, tmp_path):
         from renai.file_ops.operations import _load_undo_entries, record_undo_entry
@@ -532,7 +535,41 @@ class TestUndoJournal:
             raise OSError("disk gone")
 
         monkeypatch.setattr(ops, "_persist_undo_entries", boom)
-        assert ops.undo_last_operation(cache_dir=tmp_path) >= 1
+        assert ops.undo_last_operation(cache_dir=tmp_path) == 1
+        assert old.exists() and not new.exists()
+
+    def test_record_write_failure_is_non_fatal(self, tmp_path, monkeypatch):
+        from renai.file_ops.operations import record_undo_entry
+
+        def boom(*args, **kwargs):
+            raise OSError("disk gone")
+
+        monkeypatch.setattr("pathlib.Path.open", boom)
+        record_undo_entry(tmp_path / "a.txt", tmp_path / "b.txt", cache_dir=tmp_path)
+
+    def test_missing_new_path_is_not_counted(self, tmp_path):
+        from renai.file_ops.operations import (
+            _load_undo_entries,
+            record_undo_entry,
+            undo_last_operation,
+        )
+
+        old, new = tmp_path / "a.txt", tmp_path / "b.txt"
+        record_undo_entry(old, new, cache_dir=tmp_path)
+        assert undo_last_operation(cache_dir=tmp_path) == 0
+        assert _load_undo_entries(tmp_path) == []
+
+    def test_counts_only_actual_reverts(self, tmp_path):
+        from renai.file_ops.operations import record_undo_entry, undo_last_operation
+
+        real_old, real_new = tmp_path / "real_old.txt", tmp_path / "real_new.txt"
+        real_new.write_text("data")
+        record_undo_entry(
+            tmp_path / "missing_old.txt", tmp_path / "missing_new.txt", cache_dir=tmp_path
+        )
+        record_undo_entry(real_old, real_new, cache_dir=tmp_path)
+        assert undo_last_operation(cache_dir=tmp_path) == 1
+        assert real_old.exists() and not real_new.exists()
 
     def test_journal_grows_one_line_per_record(self, tmp_path):
         from renai.file_ops.operations import record_undo_entry

@@ -114,18 +114,21 @@ def record_undo_entry(
 
         cache_dir = CACHE_DIR
 
-    cache_dir.mkdir(parents=True, exist_ok=True)
     entry = {
         "old_path": str(old_path),
         "new_path": str(new_path),
         "operation_type": operation_type,
     }
-    with (cache_dir / UNDO_JOURNAL_NAME).open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        with (cache_dir / UNDO_JOURNAL_NAME).open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logging.warning("Failed to record undo entry: %s", e)
 
 
 def undo_last_operation(cache_dir: Path | None = None) -> int:
-    """Revert file operations recorded during the last batch/run in undo_history.json."""
+    """Revert recorded file operations, newest first, from the undo journal."""
     if cache_dir is None:
         from renai.config import CACHE_DIR
 
@@ -150,7 +153,7 @@ def undo_last_operation(cache_dir: Path | None = None) -> int:
             except Exception as e:
                 logging.error(f"Failed to undo {new_path} -> {old_path}: {e}")
                 continue
-        reverted_count += 1
+            reverted_count += 1
         try:
             _persist_undo_entries(cache_dir, entries)
         except OSError as e:
