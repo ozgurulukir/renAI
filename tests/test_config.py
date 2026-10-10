@@ -1039,5 +1039,105 @@ class TestConstantHelpers:
             assert get_subprocess_timeout() == 120
 
 
+class TestGetEffectiveVisionProvider:
+    """Test get_effective_vision_provider function."""
+
+    def test_returns_explicit_vision_provider_when_set(self):
+        """Should return app.vision_provider when it is explicitly set."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_provider
+
+        with patch.object(app_settings, "vision_provider", "openrouter"):
+            # Act
+            result = get_effective_vision_provider()
+
+            # Assert
+            assert result == "openrouter"
+
+    def test_fallbacks_to_main_provider_when_vision_provider_not_set(self):
+        """Should fallback to app.provider when vision_provider is None or empty."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_provider
+
+        with (
+            patch.object(app_settings, "vision_provider", None),
+            patch.object(app_settings, "provider", "deepinfra"),
+        ):
+            # Act
+            result = get_effective_vision_provider()
+
+            # Assert
+            assert result == "deepinfra"
+
+
+class TestGetEffectiveVisionModel:
+    """Test get_effective_vision_model function."""
+
+    def test_returns_explicit_vision_model_when_set(self):
+        """Should return app.vision_model when explicitly configured."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_model
+
+        with patch.object(app_settings, "vision_model", "gpt-4o"):
+            # Act
+            result = get_effective_vision_model()
+
+            # Assert
+            assert result == "gpt-4o"
+
+    def test_returns_provider_specific_model_when_vision_model_not_set(self):
+        """Should return provider's model setting when vision_model is None."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_model, provider_settings
+
+        with (
+            patch.object(app_settings, "vision_model", None),
+            patch.object(app_settings, "vision_provider", "openrouter"),
+            patch.object(provider_settings, "openrouter_model", "openai/gpt-4-vision"),
+        ):
+            # Act
+            result = get_effective_vision_model()
+
+            # Assert
+            assert result == "openai/gpt-4-vision"
+
+    def test_fallbacks_to_main_app_model_when_provider_matches_and_model_set(self):
+        """Should fallback to app.model when vision_provider equals app.provider and app.model is set."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_model, provider_settings
+
+        with (
+            patch.object(app_settings, "vision_model", None),
+            patch.object(app_settings, "vision_provider", None),
+            patch.object(app_settings, "provider", "openai"),
+            patch.object(app_settings, "model", "gpt-4o-mini"),
+            patch.object(provider_settings, "openai_model", None),
+        ):
+            # Act
+            result = get_effective_vision_model()
+
+            # Assert
+            assert result == "gpt-4o-mini"
+
+    def test_fallbacks_to_default_model_when_no_specific_model_found(self):
+        """Should fallback to get_default_model when no other model is configured."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_model, provider_settings
+
+        with (
+            patch.object(app_settings, "vision_model", None),
+            patch.object(app_settings, "vision_provider", None),
+            patch.object(app_settings, "provider", "deepinfra"),
+            patch.object(app_settings, "model", None),
+            patch.object(provider_settings, "deepinfra_model", None),
+            patch("renai.config.providers.get_default_model", return_value="llama3-default"),
+        ):
+            # Act
+            result = get_effective_vision_model()
+
+            # Assert
+            assert result == "llama3-default"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
