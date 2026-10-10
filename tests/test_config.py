@@ -940,5 +940,41 @@ class TestLegacySettingsShim:
             importlib.import_module("renai.settings")
 
 
+class TestResolveAllowedBucket:
+    """Tests for resolve_allowed_bucket function in renai.config.folder_rules."""
+
+    @pytest.mark.parametrize(
+        "allowed_dict, language, expected",
+        [
+            # Exact language match
+            ({"ja": ["manga"], "en": ["books"]}, "ja", ["manga"]),
+            # Case-insensitive language handling
+            ({"ja": ["manga"], "en": ["books"]}, "JA", ["manga"]),
+            ({"ja": ["manga"], "en": ["books"]}, "En", ["books"]),
+            # Fallback to 'en' bucket when requested language key is absent
+            ({"ja": ["manga"], "en": ["books"]}, "fr", ["books"]),
+            # Fallback to first available bucket when neither language nor 'en' exists
+            ({"zh": ["manhua"], "ja": ["manga"]}, "fr", ["manhua"]),
+            # Fallback behavior when language is None or empty string (defaults to 'en' resolution)
+            ({"ja": ["manga"], "en": ["books"]}, None, ["books"]),
+            ({"ja": ["manga"], "en": ["books"]}, "", ["books"]),
+            # Empty dictionary handling
+            ({}, "en", []),
+            ({}, "ja", []),
+            ({}, None, []),
+            # Fallback when specified language bucket evaluates to empty list []
+            ({"ja": [], "en": ["books"]}, "ja", ["books"]),
+        ],
+    )
+    def test_resolve_allowed_bucket(
+        self, allowed_dict: dict[str, list[str]], language: str | None, expected: list[str]
+    ):
+        """Should correctly resolve category buckets according to language preference and fallbacks."""
+        from renai.config.folder_rules import resolve_allowed_bucket
+
+        result = resolve_allowed_bucket(allowed_dict, language)
+        assert result == expected
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
