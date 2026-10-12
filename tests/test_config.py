@@ -1012,6 +1012,12 @@ class TestConstantHelpers:
         with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": {"ocr_lang": "eng"}}):
             assert get_ocr_lang() == "eng"
 
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": {}}):
+            assert get_ocr_lang() == "tur+eng"
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": None}):
+            assert get_ocr_lang() == "tur+eng"
+
     def test_get_max_text_read_size_default_and_override(self):
         """Should return default max_text_read_size or value from factory defaults."""
         from renai.config import get_max_text_read_size
