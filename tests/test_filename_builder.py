@@ -11,6 +11,47 @@ from renai.models.schemas import BookMetadata, ImageMetadata
 class TestBookMetadataSchemaValidation:
     """Test new BookMetadata field validators."""
 
+    def test_sanitize_year_none_returns_none(self):
+        data = BookMetadata(title="T", year=None, language="en", category="Other")
+        assert data.year is None
+
+    def test_sanitize_year_valid_int_and_float(self):
+        data_int = BookMetadata(title="T", year=2024, language="en", category="Other")
+        assert data_int.year == 2024
+
+        data_float = BookMetadata(title="T", year=2020.0, language="en", category="Other")
+        assert data_float.year == 2020
+
+    def test_sanitize_year_clean_string(self):
+        data = BookMetadata(title="T", year="2024", language="en", category="Other")
+        assert data.year == 2024
+
+    def test_sanitize_year_extracts_year_from_messy_string(self):
+        data1 = BookMetadata(title="T", year="2024 (E-book)", language="en", category="Other")
+        assert data1.year == 2024
+
+        data2 = BookMetadata(
+            title="T", year="Published in 1999 (2nd ed)", language="en", category="Other"
+        )
+        assert data2.year == 1999
+
+    def test_sanitize_year_placeholders_return_none(self):
+        for placeholder in ("", "   ", "unknown", "N/A", "-", "null", "none"):
+            data = BookMetadata(title="T", year=placeholder, language="en", category="Other")
+            assert data.year is None
+
+    def test_sanitize_year_invalid_string_or_type_returns_none(self):
+        data_no_year = BookMetadata(title="T", year="no year here", language="en", category="Other")
+        assert data_no_year.year is None
+
+        data_invalid_range = BookMetadata(
+            title="T", year="In the year 3000", language="en", category="Other"
+        )
+        assert data_invalid_range.year is None
+
+        data_list = BookMetadata(title="T", year=["2024"], language="en", category="Other")
+        assert data_list.year is None
+
     def test_isbn_valid(self):
         data = BookMetadata(title="T", isbn="978-0-13-235088-4", language="en", category="Other")
         assert data.isbn == "978-0-13-235088-4"
