@@ -249,10 +249,10 @@ def _read_validated_cache_data(
         return None
 
 
-def _validate_cached_metadata(
+def _validate_cached_metadata[V: BaseModel](
     cache_data: dict[str, Any],
-    model_class: type[BaseModel],
-) -> BaseModel | None:
+    model_class: type[V],
+) -> V | None:
     """Validate raw cache data against a Pydantic model, degrading to None on failure."""
     try:
         return model_class(**cache_data)
