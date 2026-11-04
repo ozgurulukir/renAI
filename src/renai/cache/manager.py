@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any, TypeVar, overload
+from typing import Any, NamedTuple, TypeVar, overload
 
 from pydantic import BaseModel
 
@@ -261,6 +261,21 @@ def _validate_cached_metadata[V: BaseModel](
         return None
 
 
+class CacheSource(NamedTuple):
+    """Extraction provenance persisted alongside a cached metadata record.
+
+    ``is_vision_doc`` records the engine path that actually produced the
+    metadata (True = vision fallback). ``rule_signature`` is the category
+    universe the record was extracted under (``config.folder_rules.
+    rule_cache_signature``; empty string = global categories). Both are
+    ``None`` for legacy records written before the keys existed; callers own
+    the fallback decision for those.
+    """
+
+    is_vision_doc: bool | None
+    rule_signature: str | None
+
+
 def read_metadata_cache(
     cache_path: Path,
     provider: str,
@@ -275,6 +290,7 @@ def read_metadata_cache(
 
         # Reserved bookkeeping keys never belong to the metadata model itself.
         cache_data.pop("_is_vision_doc", None)
+        cache_data.pop("_rule_sig", None)
 
         if model_class:
             return _validate_cached_metadata(cache_data, model_class)
@@ -286,13 +302,11 @@ def read_metadata_cache_with_source[V: BaseModel](
     provider: str,
     model: str,
     model_class: type[V],
-) -> tuple[V | None, bool | None]:
-    """Read cached metadata together with its persisted extraction source.
+) -> tuple[V | None, CacheSource | None]:
+    """Read cached metadata together with its persisted extraction provenance.
 
-    Returns ``(metadata, is_vision_doc)`` where ``is_vision_doc`` records the
-    engine path that actually produced the metadata (True = vision fallback).
-    It is ``None`` for legacy records written before the marker existed;
-    callers own the fallback decision for those.
+    Returns ``(metadata, source)``; ``source`` is ``None`` on a miss. See
+    :class:`CacheSource` for the meaning of the individual fields.
     """
     with _cache_lock:
         cache_data = _read_validated_cache_data(cache_path, provider, model)
@@ -304,10 +318,17 @@ def read_metadata_cache_with_source[V: BaseModel](
             # Absent (legacy record) or a corrupted non-bool value: let the
             # caller apply its legacy fallback instead of trusting the row.
             is_vision_doc = None
+        rule_signature = cache_data.pop("_rule_sig", None)
+        if rule_signature is not None and not isinstance(rule_signature, str):
+            logging.warning(
+                f"Corrupt rule signature in metadata cache row {cache_path.name}: expected "
+                f"a string, got {type(rule_signature).__name__}; treating as legacy"
+            )
+            rule_signature = None
         validated = _validate_cached_metadata(cache_data, model_class)
         if validated is None:
             return None, None
-        return validated, is_vision_doc
+        return validated, CacheSource(is_vision_doc=is_vision_doc, rule_signature=rule_signature)
 
 
 def write_metadata_cache(
@@ -317,12 +338,16 @@ def write_metadata_cache(
     model: str,
     *,
     is_vision_doc: bool | None = None,
+    rule_signature: str | None = None,
 ) -> bool:
     """Write metadata to SQLite cache atomically.
 
     When ``is_vision_doc`` is not None, the observed extraction source is
     persisted under the reserved ``_is_vision_doc`` key so cache hits can
-    replay the fact instead of reconstructing it from request flags.
+    replay the fact instead of reconstructing it from request flags. The
+    category-universe ``rule_signature`` is always persisted (empty string
+    for global categories) so rule-scoped runs can tell their records apart
+    from global ones.
     """
     with _cache_lock:
         db_dir = _get_db_dir(cache_path=cache_path)
@@ -331,6 +356,7 @@ def write_metadata_cache(
             data = metadata.model_dump() if isinstance(metadata, BaseModel) else dict(metadata)
             if is_vision_doc is not None:
                 data["_is_vision_doc"] = is_vision_doc
+            data["_rule_sig"] = rule_signature or ""
             metadata_json = json.dumps(data, ensure_ascii=False, indent=4)
 
             with _get_db_connection(db_dir) as conn, conn:

@@ -37,6 +37,7 @@ class MetadataRequest:
     file_hash: str | None = None
     doc_categories: dict[str, list] | None = None
     image_categories: dict[str, list] | None = None
+    rule_signature: str | None = None
 
 
 def _fallback_provider(self: Any, use_vision_cache: bool = False) -> str:
@@ -146,7 +147,7 @@ def with_metadata_cache(
             model = model_resolver(self, request.use_vision_cache)
 
             if not request.update_metadata:
-                cached_data, cached_is_vision_doc = await asyncio.to_thread(
+                cached_data, source = await asyncio.to_thread(
                     read_metadata_cache_with_source,
                     request.cache_path,
                     provider,
@@ -154,20 +155,41 @@ def with_metadata_cache(
                     model_class=request.model_class,
                 )
                 if cached_data:
-                    logger.debug(
-                        "Metadata cache hit",
-                        file=request.file_path.name,
-                        provider=provider,
-                        model=model,
-                    )
-                    if cached_is_vision_doc is None:
-                        # Legacy record predating the persisted source marker:
-                        # reconstruct from request flags (previous behavior).
-                        is_image = request.file_path.suffix.lower() in get_image_extensions()
-                        cached_is_vision_doc = request.use_vision_cache and not (
-                            is_image and request.rename_images
+                    expected_sig = request.rule_signature or ""
+                    stored_sig = source.rule_signature if source else None
+                    # Legacy records (no stored signature) are treated as
+                    # global: rule-scoped runs re-extract under their own
+                    # category universe instead of being served global data.
+                    if (stored_sig or "") != expected_sig:
+                        # Info, not debug: a mismatch means a real paid LLM
+                        # re-extraction the user did not ask for (typically a
+                        # changed folder rule), which deserves visibility.
+                        logger.info(
+                            "Metadata cache rule-signature mismatch; re-extracting",
+                            file=request.file_path.name,
+                            expected=expected_sig or "global",
+                            stored=(
+                                stored_sig
+                                if stored_sig
+                                else ("legacy" if stored_sig is None else "global")
+                            ),
                         )
-                    return cached_data, cached_is_vision_doc
+                    else:
+                        logger.debug(
+                            "Metadata cache hit",
+                            file=request.file_path.name,
+                            provider=provider,
+                            model=model,
+                        )
+                        is_vision_doc = source.is_vision_doc if source else None
+                        if is_vision_doc is None:
+                            # Legacy record predating the persisted source marker:
+                            # reconstruct from request flags (previous behavior).
+                            is_image = request.file_path.suffix.lower() in get_image_extensions()
+                            is_vision_doc = request.use_vision_cache and not (
+                                is_image and request.rename_images
+                            )
+                        return cached_data, is_vision_doc
 
             metadata, is_vision_fallback = await func(self, request, **extra)
 
@@ -179,6 +201,7 @@ def with_metadata_cache(
                     provider,
                     model,
                     is_vision_doc=is_vision_fallback,
+                    rule_signature=request.rule_signature,
                 )
 
             return metadata, is_vision_fallback

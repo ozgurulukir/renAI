@@ -98,17 +98,21 @@ def test_metadata_cache_source_marker_roundtrip(tmp_path):
     provider = "p1"
     model = "m1"
 
-    write_metadata_cache(cache_path, metadata, provider, model, is_vision_doc=False)
+    write_metadata_cache(
+        cache_path, metadata, provider, model, is_vision_doc=False, rule_signature="abc123"
+    )
 
-    # The source-aware reader returns the marker alongside the metadata.
-    result, is_vision_doc = read_metadata_cache_with_source(
+    # The source-aware reader returns the provenance alongside the metadata.
+    result, source = read_metadata_cache_with_source(
         cache_path, provider, model, model_class=BookMetadata
     )
     assert isinstance(result, BookMetadata)
     assert result.title == "Marker Book"
-    assert is_vision_doc is False
+    assert source is not None
+    assert source.is_vision_doc is False
+    assert source.rule_signature == "abc123"
 
-    # The plain reader strips the reserved key; validation still succeeds.
+    # The plain reader strips the reserved keys; validation still succeeds.
     plain = read_metadata_cache(cache_path, provider, model, model_class=BookMetadata)
     assert isinstance(plain, BookMetadata)
     assert plain.title == "Marker Book"
@@ -121,11 +125,14 @@ def test_metadata_cache_without_marker_reports_none_source(tmp_path):
 
     write_metadata_cache(cache_path, metadata, "p1", "m1")
 
-    result, is_vision_doc = read_metadata_cache_with_source(
+    result, source = read_metadata_cache_with_source(
         cache_path, "p1", "m1", model_class=BookMetadata
     )
     assert isinstance(result, BookMetadata)
-    assert is_vision_doc is None
+    assert source is not None
+    # No vision marker -> None; rule signature is always explicit ("" = global).
+    assert source.is_vision_doc is None
+    assert source.rule_signature == ""
 
 
 def test_read_metadata_cache_non_object_json_degrades_to_miss(tmp_path, caplog):

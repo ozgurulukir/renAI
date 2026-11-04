@@ -11,50 +11,16 @@ from typing import cast
 from ..cache.manager import get_metadata_cache_path
 from ..cache.middleware import MetadataRequest, with_metadata_cache
 from ..config import CACHE_DIR, get_image_extensions
-from ..config.folder_rules import (
-    FolderRule,
-    get_folder_rule_for,
-    resolve_allowed_bucket,
-    resolve_fallback_category,
-)
+from ..config.folder_rules import FolderRule, get_folder_rule_for, rule_cache_signature
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
 from ..exceptions import ConfigurationError
 from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
-from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata, ProcessingConfig
+from ..models.schemas import BookMetadata, ImageMetadata, ProcessingConfig
 from ..utils import get_file_hash
 from .text_extractor import FallbackMode, TextExtractor
 from .visual import VisualProcessor
-
-
-def _clamp_category_to_rule(metadata: BaseMetadata, folder_rule: FolderRule | None) -> None:
-    """Force metadata.category into a restricted folder-rule category list.
-
-    Mirrors the LLM fallback semantics via the shared resolvers in
-    ``config.folder_rules``. This also covers cache hits, which bypass the
-    per-call category restriction.
-    """
-    if folder_rule is None:
-        return
-    allowed_dict = (
-        folder_rule.image_categories
-        if isinstance(metadata, ImageMetadata)
-        else folder_rule.categories
-    )
-    if not allowed_dict:
-        return
-
-    bucket = resolve_allowed_bucket(allowed_dict, metadata.language)
-    if not bucket or metadata.category in bucket:
-        return
-
-    metadata.category = resolve_fallback_category(metadata.language, allowed_dict)
-    logging.debug(
-        "Folder rule %s: clamped category to '%s'",
-        folder_rule.path,
-        metadata.category,
-    )
 
 
 class BookProcessor:
@@ -154,6 +120,7 @@ class BookProcessor:
         fallback_mode: FallbackMode,
         rename_images: bool,
         *,
+        folder_rule: FolderRule | None = None,
         update_metadata: bool = False,
         add_exif_date: bool = False,
     ) -> MetadataRequest:
@@ -161,7 +128,9 @@ class BookProcessor:
 
         Determines cache path, model class, and vision-cache selection from the
         caller's inputs and returns them as a single type-safe value the decorator
-        relies on instead of a set of bare keyword arguments.
+        relies on instead of a set of bare keyword arguments. The governing
+        folder rule rides the same contract: its category overrides feed the
+        engines and its signature makes the cache rule-scoped.
         """
         is_image = file_path.suffix.lower() in get_image_extensions()
         cache_mode = "img" if (is_image and rename_images) else "doc"
@@ -192,26 +161,31 @@ class BookProcessor:
             update_metadata=update_metadata,
             add_exif_date=add_exif_date,
             file_hash=file_hash,
+            doc_categories=folder_rule.categories if folder_rule else None,
+            image_categories=folder_rule.image_categories if folder_rule else None,
+            rule_signature=rule_cache_signature(folder_rule, mode=cache_mode),
         )
 
     @with_metadata_cache()
     async def _resolve_metadata(
         self,
         request: MetadataRequest,
-        doc_categories: dict[str, list] | None = None,
-        image_categories: dict[str, list] | None = None,
+        *,
         dry_run: bool = False,
     ) -> tuple[BookMetadata | ImageMetadata | None, bool]:
         """Resolve metadata by executing extraction engines (caching handled by middleware).
 
-        All cache-middleware inputs arrive through the explicit ``request`` contract;
-        the body consumes only the fields it actually needs.
+        All cache-middleware inputs — including the folder rule's category
+        overrides — arrive through the explicit ``request`` contract; the body
+        consumes only the fields it actually needs.
         """
         file_path = request.file_path
         is_image = file_path.suffix.lower() in get_image_extensions()
         if is_image and request.rename_images:
             metadata = await self.visual_processor.extract_metadata_from_image(
-                file_path, add_exif_date=request.add_exif_date, image_categories=image_categories
+                file_path,
+                add_exif_date=request.add_exif_date,
+                image_categories=request.image_categories,
             )
             return metadata, False
 
@@ -219,7 +193,7 @@ class BookProcessor:
             file_path,
             request.fallback_mode,
             request.file_hash,
-            doc_categories=doc_categories,
+            doc_categories=request.doc_categories,
             dry_run=dry_run,
         )
         return metadata, is_vision_doc
@@ -252,14 +226,13 @@ class BookProcessor:
                 file_hash,
                 fallback_mode,
                 rename_images,
+                folder_rule=folder_rule,
                 update_metadata=update_metadata,
                 add_exif_date=add_exif_date,
             )
 
             metadata, is_vision_doc = await self._resolve_metadata(
                 request=request,
-                doc_categories=folder_rule.categories if folder_rule else None,
-                image_categories=folder_rule.image_categories if folder_rule else None,
                 dry_run=dry_run,
             )
 
@@ -270,10 +243,6 @@ class BookProcessor:
                     original_name=file_path.name,
                     error="Extraction failed (No metadata generated)",
                 )
-
-            # Cache hits bypass the per-call LLM category restriction, so the
-            # rule is enforced on the resolved metadata unconditionally.
-            _clamp_category_to_rule(cast("BaseMetadata", metadata), folder_rule)
 
             if mode in ("rename", "organize", "copy"):
                 if not isinstance(metadata, (BookMetadata, ImageMetadata)):

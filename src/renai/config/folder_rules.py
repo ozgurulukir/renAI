@@ -10,6 +10,8 @@ Layered loading (first one found wins, no merging):
 3. Package-internal default (``folder_rules.default.toml``)
 """
 
+import hashlib
+import json
 import logging
 import os
 from functools import lru_cache
@@ -63,6 +65,24 @@ class FolderRule(BaseModel):
         return len(self.path.parts)
 
 
+def rule_cache_signature(rule: FolderRule | None, *, mode: str) -> str | None:
+    """Stable signature of the category universe a rule imposes on extraction.
+
+    The metadata cache stores this signature next to each record so a cached
+    extraction is only served to runs whose category universe matches (the
+    same role provider/model play in the cache row). Templates are excluded:
+    they shape filenames, not extracted metadata. Returns ``None`` when the
+    rule does not restrict categories for ``mode`` ("doc"/"img").
+    """
+    if rule is None:
+        return None
+    categories = rule.image_categories if mode == "img" else rule.categories
+    if not categories:
+        return None
+    payload = json.dumps(categories, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def resolve_allowed_bucket(allowed_dict: dict[str, list[str]], language: str) -> list[str]:
     """Resolve the category bucket for a metadata language.
 
@@ -77,8 +97,8 @@ def resolve_fallback_category(language: str, allowed_dict: dict[str, list[str]])
     """Pick the forced category for a restricted rule list.
 
     Prefers ``Diğer``/``Other`` when the matching bucket contains it, otherwise
-    the first category of the bucket. Shared by the LLM fallback path and the
-    cache-hit clamp so both paths agree.
+    the first category of the bucket. Used by the LLM validation fallback so a
+    restricted rule's metadata always lands inside the rule's category list.
     """
     lang = (language or "en").lower()
     bucket = resolve_allowed_bucket(allowed_dict, language)
