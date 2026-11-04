@@ -1,3 +1,4 @@
+import sqlite3
 import sys
 from unittest.mock import MagicMock
 
@@ -362,6 +363,56 @@ def test_read_metadata_cache_sqlite_error(tmp_path, caplog):
         assert result == {"title": "Fallback Book"}
         assert "Failed to read metadata cache" in caplog.text
         assert "DB lock error" in caplog.text
+
+
+def test_read_metadata_cache_corrupt_db_skips_legacy_fallback(tmp_path, caplog):
+    """A corrupt primary store must not be papered over by stale legacy JSON files.
+
+    sqlite3.DatabaseError means the DB file itself is broken: log loud (error
+    level, naming cache.db so the user can act on the right artifact), degrade
+    to a miss, and do NOT serve records from the superseded legacy store.
+    """
+    cache_path = tmp_path / "metadata" / "test.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(
+        '{"title": "Stale Legacy Book", "_provider": "p", "_model": "m"}', encoding="utf-8"
+    )
+
+    with (
+        patch(
+            "renai.cache.manager._get_db_connection",
+            side_effect=sqlite3.DatabaseError("file is not a database"),
+        ),
+        caplog.at_level(logging.ERROR),
+    ):
+        result = read_metadata_cache(cache_path, "p", "m")
+
+    assert result is None
+    assert "corrupt or unreadable" in caplog.text
+    assert "cache.db" in caplog.text
+
+
+def test_write_metadata_cache_corrupt_db_is_loud_but_not_fatal(tmp_path, caplog):
+    """Write failures on a corrupt store log an error naming cache.db, never raise.
+
+    Caching is best-effort: extraction already succeeded, so the run must
+    continue — but the failure must not look like a routine miss.
+    """
+    cache_path = tmp_path / "metadata" / "test.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch(
+            "renai.cache.manager._get_db_connection",
+            side_effect=sqlite3.DatabaseError("file is not a database"),
+        ),
+        caplog.at_level(logging.ERROR),
+    ):
+        result = write_metadata_cache(cache_path, {"title": "Uncached Book"}, "p", "m")
+
+    assert result is False
+    assert "corrupt or unreadable" in caplog.text
+    assert "NOT cached" in caplog.text
 
 
 def test_read_metadata_cache_validation_error(tmp_path, caplog):
