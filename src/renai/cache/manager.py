@@ -239,6 +239,17 @@ def _read_validated_cache_data(
                     logging.debug(msg)
                     with conn:
                         conn.execute("DELETE FROM metadata_cache WHERE cache_key = ?", (cache_key,))
+    except sqlite3.DatabaseError as e:
+        # Corrupt/locked/unreadable primary store. Log loud, name the artifact
+        # the user can act on (the DB file, not the .json cache key), and do NOT
+        # fall back to legacy JSON files: serving records from a superseded
+        # store while the primary is broken hides the failure. Degrade to a
+        # miss so processing continues at full LLM cost.
+        logging.error(
+            f"Metadata cache database {db_dir / 'cache.db'} is corrupt or unreadable ({e}). "
+            "Delete or rename it to rebuild the cache; skipping legacy fallback."
+        )
+        return None
     except Exception as e:
         logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
 
@@ -313,11 +324,16 @@ def read_metadata_cache_with_source[V: BaseModel](
         if cache_data is None:
             return None, None
 
-        is_vision_doc = cache_data.pop("_is_vision_doc", None)
-        if not isinstance(is_vision_doc, bool):
-            # Absent (legacy record) or a corrupted non-bool value: let the
-            # caller apply its legacy fallback instead of trusting the row.
-            is_vision_doc = None
+        raw_vision = cache_data.pop("_is_vision_doc", None)
+        if raw_vision is not None and not isinstance(raw_vision, bool):
+            # Present but corrupt (external tampering; the writer only stores
+            # bools). Warn so the silent template switch is explainable, then
+            # let the caller apply its legacy fallback instead of trusting it.
+            logging.warning(
+                f"Corrupt vision marker in metadata cache row {cache_path.name}: expected "
+                f"a bool, got {type(raw_vision).__name__}; treating as legacy"
+            )
+        is_vision_doc = raw_vision if isinstance(raw_vision, bool) else None
         rule_signature = cache_data.pop("_rule_sig", None)
         if rule_signature is not None and not isinstance(rule_signature, str):
             logging.warning(
@@ -369,6 +385,14 @@ def write_metadata_cache(
                     (cache_key, provider, model, metadata_json),
                 )
             return True
+        except sqlite3.DatabaseError as e:
+            # Caching is best-effort: extraction succeeded, so never fail the
+            # run — but a broken store must not look like a routine miss.
+            logging.error(
+                f"Metadata cache database {db_dir / 'cache.db'} is corrupt or unreadable ({e}); "
+                "metadata was extracted but NOT cached. Delete or rename the file to rebuild."
+            )
+            return False
         except Exception as e:
             logging.warning(f"Failed to write metadata cache {cache_path}: {e}")
             return False
@@ -439,9 +463,7 @@ def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
         for _, target_path, keys_set in targets:
             if target_path.exists() and target_path.is_dir():
                 try:
-                    for f in target_path.glob("*"):
-                        if f.is_file():
-                            keys_set.add(f.name)
+                    keys_set.update(f.name for f in target_path.iterdir() if f.is_file())
                     shutil.rmtree(target_path)
                 except Exception as e:
                     logging.warning(f"Failed to clear cache directory at {target_path}: {e}")

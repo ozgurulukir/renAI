@@ -99,3 +99,8 @@ scratch/
 # =============================================================================
 .code-tandem/
 .soloncode/
+.baoclaw/
+.nova/
+.rubik/
+.zcode/
+cache.db
