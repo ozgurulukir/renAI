@@ -249,13 +249,18 @@ def test_invalidate_cache_for_provider_model_empty(tmp_path):
 
 
 def test_clear_all_cache(tmp_path):
-    """Test clearing all cache types including ocr_debug."""
+    """Test clearing all cache types including ocr_debug, verifying counting semantics for hidden files and subdirectories."""
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
 
     text_dir = cache_dir / "text"
     text_dir.mkdir()
     (text_dir / "t1.txt").write_text("text")
+    (text_dir / ".hidden").write_text("hidden")
+    (text_dir / ".DS_Store").write_text("ds_store")
+    sub_dir = text_dir / "sub"
+    sub_dir.mkdir()
+    (sub_dir / "nested.txt").write_text("nested")
 
     metadata_dir = cache_dir / "metadata"
     metadata_dir.mkdir()
@@ -269,7 +274,7 @@ def test_clear_all_cache(tmp_path):
     with patch("renai.cache.manager.DEBUG_DIR", debug_dir):
         results = clear_all_cache(cache_dir=cache_dir)
 
-        assert results["text"] == 1
+        assert results["text"] == 3  # t1.txt, .hidden, .DS_Store (sub/nested.txt excluded)
         assert results["metadata"] == 1
         assert results["ocr_debug"] == 1
 

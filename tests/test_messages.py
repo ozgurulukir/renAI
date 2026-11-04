@@ -1,4 +1,21 @@
 from renai.messages import errors
+from renai.messages.cli import Warn
+
+
+def test_warn_desc_vision():
+    """Test Warn.desc_vision static method formatting across model inputs."""
+    # Arrange & Act
+    msg_gpt = Warn.desc_vision("gpt-4o")
+    msg_empty = Warn.desc_vision("")
+    msg_special = Warn.desc_vision("org/model-v1.0:latest")
+
+    # Assert
+    assert "[bold yellow]'gpt-4o'[/bold yellow]" in msg_gpt
+    assert "might not support vision inputs on models.dev." in msg_gpt
+    assert "Running in vision fallback mode or renaming images may fail." in msg_gpt
+
+    assert "[bold yellow]''[/bold yellow]" in msg_empty
+    assert "[bold yellow]'org/model-v1.0:latest'[/bold yellow]" in msg_special
 
 
 def test_error_messages():

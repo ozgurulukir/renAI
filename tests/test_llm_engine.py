@@ -275,3 +275,142 @@ async def test_call_llm_rate_limit_backoff(llm_engine):
         assert result.title == "Test Book"
         mock_sleep.assert_awaited_once_with(2.0)
         assert llm_engine.client.chat.completions.create.await_count == 2
+
+
+class TestRefinementCostGate:
+    @staticmethod
+    def _mock_book_response(title="Test Book", author="Test Author"):
+        mock_response = MagicMock()
+        mock_response.choices[
+            0
+        ].message.content = (
+            f'{{"title": "{title}", "category": "Fiction", "language": "en", "author": "{author}"}}'
+        )
+        return mock_response
+
+    @pytest.mark.asyncio
+    async def test_flag_never_makes_exactly_one_call(self, llm_engine):
+        from renai.config.settings import app_settings
+
+        llm_engine.client.chat.completions.create = AsyncMock(
+            return_value=self._mock_book_response()
+        )
+        with patch.object(app_settings, "refine_metadata", "never"):
+            result = await llm_engine.get_book_metadata("text")
+        assert result is not None
+        assert llm_engine.client.chat.completions.create.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_auto_with_complete_metadata_makes_one_call(self, llm_engine):
+        from renai.config.settings import app_settings
+
+        llm_engine.client.chat.completions.create = AsyncMock(
+            return_value=self._mock_book_response()
+        )
+        with patch.object(app_settings, "refine_metadata", "auto"):
+            await llm_engine.get_book_metadata("text")
+        assert llm_engine.client.chat.completions.create.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_auto_with_incomplete_metadata_makes_two_calls(self, llm_engine):
+        from renai.config.settings import app_settings
+
+        llm_engine.client.chat.completions.create = AsyncMock(
+            side_effect=[self._mock_book_response(author="Unknown"), self._mock_book_response()]
+        )
+        with patch.object(app_settings, "refine_metadata", "auto"):
+            result = await llm_engine.get_book_metadata("text")
+        assert result.author == "Test Author"
+        assert llm_engine.client.chat.completions.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_always_makes_two_calls_even_when_complete(self, llm_engine):
+        from renai.config.settings import app_settings
+
+        llm_engine.client.chat.completions.create = AsyncMock(
+            return_value=self._mock_book_response()
+        )
+        with patch.object(app_settings, "refine_metadata", "always"):
+            await llm_engine.get_book_metadata("text")
+        assert llm_engine.client.chat.completions.create.await_count == 2
+
+
+class TestBroadenedBackoff:
+    @staticmethod
+    def _ok_response():
+        mock_response = MagicMock()
+        mock_response.choices[
+            0
+        ].message.content = (
+            '{"title": "Test Book", "category": "Fiction", "language": "en", "author": "A"}'
+        )
+        return mock_response
+
+    def _status_err(self, code):
+        import httpx
+        from openai import APIStatusError
+
+        req = httpx.Request("POST", "https://api.openai.com")
+        return APIStatusError("err", response=httpx.Response(code, request=req), body=None)
+
+    @pytest.mark.asyncio
+    async def test_backoff_retries_on_api_timeout_error(self, llm_engine):
+        import httpx
+        from openai import APITimeoutError
+
+        err = APITimeoutError(httpx.Request("POST", "https://api.openai.com"))
+        llm_engine.client.chat.completions.create = AsyncMock(
+            side_effect=[err, self._ok_response()]
+        )
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+        assert result.title == "Test Book"
+        mock_sleep.assert_awaited_once_with(2.0)
+        assert llm_engine.client.chat.completions.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_backoff_retries_on_api_connection_error(self, llm_engine):
+        import httpx
+        from openai import APIConnectionError
+
+        err = APIConnectionError(request=httpx.Request("POST", "https://api.openai.com"))
+        llm_engine.client.chat.completions.create = AsyncMock(
+            side_effect=[err, self._ok_response()]
+        )
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+        assert result.title == "Test Book"
+        assert llm_engine.client.chat.completions.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_backoff_retries_on_500_status(self, llm_engine):
+        llm_engine.client.chat.completions.create = AsyncMock(
+            side_effect=[self._status_err(500), self._ok_response()]
+        )
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+        assert result.title == "Test Book"
+        mock_sleep.assert_awaited_once_with(2.0)
+        assert llm_engine.client.chat.completions.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_backoff_does_not_retry_400(self, llm_engine):
+        llm_engine.client.chat.completions.create = AsyncMock(side_effect=self._status_err(400))
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+        mock_sleep.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_error_still_retried(self, llm_engine):
+        import httpx
+        from openai import RateLimitError
+
+        req = httpx.Request("POST", "https://api.openai.com")
+        err = RateLimitError("429", response=httpx.Response(429, request=req), body=None)
+        llm_engine.client.chat.completions.create = AsyncMock(
+            side_effect=[err, self._ok_response()]
+        )
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+        assert result.title == "Test Book"
+        assert llm_engine.client.chat.completions.create.await_count == 2
