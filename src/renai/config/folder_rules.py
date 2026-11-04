@@ -73,6 +73,9 @@ def rule_cache_signature(rule: FolderRule | None, *, mode: str) -> str | None:
     same role provider/model play in the cache row). Templates are excluded:
     they shape filenames, not extracted metadata. Returns ``None`` when the
     rule does not restrict categories for ``mode`` ("doc"/"img").
+
+    Note: the global category list itself is not signed — edits to the global categories do
+    not invalidate rows written under the global universe.
     """
     if rule is None:
         return None
