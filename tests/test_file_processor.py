@@ -71,7 +71,10 @@ class TestBookProcessor:
 
         with (
             patch("renai.processors.book.get_file_hash", return_value=file_hash),
-            patch("renai.cache.middleware.read_metadata_cache", return_value=cached_metadata),
+            patch(
+                "renai.cache.middleware.read_metadata_cache_with_source",
+                return_value=(cached_metadata, None),
+            ),
             patch("renai.file_ops.organizer.safe_move_file", side_effect=lambda s, d, **kwargs: d),
         ):
             result = await processor.process_file(test_file, mode="rename")
@@ -97,7 +100,10 @@ class TestBookProcessor:
 
         with (
             patch("renai.processors.book.get_file_hash", return_value=file_hash),
-            patch("renai.cache.middleware.read_metadata_cache", return_value=cached_metadata),
+            patch(
+                "renai.cache.middleware.read_metadata_cache_with_source",
+                return_value=(cached_metadata, None),
+            ),
             patch(
                 "renai.file_ops.organizer.safe_copy_file",
                 side_effect=lambda s, d, **kwargs: d,

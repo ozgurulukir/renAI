@@ -193,6 +193,85 @@ def _read_from_legacy_file(cache_path: Path, provider: str, model: str) -> dict[
     return None
 
 
+def _read_validated_cache_data(
+    cache_path: Path,
+    provider: str,
+    model: str,
+) -> dict[str, Any] | None:
+    """Read raw cache data after provider/model validation.
+
+    Single read path shared by the public read functions: SQLite first, then the
+    legacy file fallback. Stale rows (provider/model mismatch) are deleted. The
+    caller must hold ``_cache_lock``. Reserved keys (e.g. ``_is_vision_doc``)
+    are left in the returned dict for the caller to interpret.
+    """
+    db_dir = _get_db_dir(cache_path=cache_path)
+    cache_key = cache_path.name
+
+    try:
+        with _get_db_connection(db_dir) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT provider, model, metadata_json FROM metadata_cache WHERE cache_key = ?",
+                (cache_key,),
+            )
+            row = cursor.fetchone()
+            if row:
+                cached_provider, cached_model, metadata_json = row
+                if cached_provider == provider and cached_model == model:
+                    data = json.loads(metadata_json)
+                    if isinstance(data, dict):
+                        return data
+                    # Valid JSON but not an object: corrupt row. Degrade to a
+                    # miss (and drop the row) instead of crashing on dict-only
+                    # operations downstream.
+                    logging.warning(
+                        f"Corrupt metadata cache row for {cache_key}: expected a JSON "
+                        f"object, got {type(data).__name__}; treating as a cache miss"
+                    )
+                    with conn:
+                        conn.execute("DELETE FROM metadata_cache WHERE cache_key = ?", (cache_key,))
+                else:
+                    msg = (
+                        f"Cache invalidated (was {cached_provider}/{cached_model}, "
+                        f"now {provider}/{model})"
+                    )
+                    logging.debug(msg)
+                    with conn:
+                        conn.execute("DELETE FROM metadata_cache WHERE cache_key = ?", (cache_key,))
+    except sqlite3.DatabaseError as e:
+        # Corrupt/locked/unreadable primary store. Log loud, name the artifact
+        # the user can act on (the DB file, not the .json cache key), and do NOT
+        # fall back to legacy JSON files: serving records from a superseded
+        # store while the primary is broken hides the failure. Degrade to a
+        # miss so processing continues at full LLM cost.
+        logging.error(
+            f"Metadata cache database {db_dir / 'cache.db'} is corrupt or unreadable ({e}). "
+            "Delete or rename it to rebuild the cache; skipping legacy fallback."
+        )
+        return None
+    except Exception as e:
+        logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
+
+    try:
+        return _read_from_legacy_file(cache_path, provider, model)
+    except Exception as e:
+        logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
+        return None
+
+
+def _validate_cached_metadata[V: BaseModel](
+    cache_data: dict[str, Any],
+    model_class: type[V],
+) -> V | None:
+    """Validate raw cache data against a Pydantic model, degrading to None on failure."""
+    try:
+        return model_class(**cache_data)
+    except Exception as e:
+        logging.warning(f"Failed to validate cached metadata against {model_class.__name__}: {e}")
+        return None
+
+
 def read_metadata_cache(
     cache_path: Path,
     provider: str,
@@ -201,53 +280,50 @@ def read_metadata_cache(
 ) -> Any | None:
     """Read cached metadata from SQLite (with legacy file fallback)."""
     with _cache_lock:
-        db_dir = _get_db_dir(cache_path=cache_path)
-        cache_key = cache_path.name
-        cache_data = None
-
-        try:
-            with _get_db_connection(db_dir) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT provider, model, metadata_json FROM metadata_cache WHERE cache_key = ?",
-                    (cache_key,),
-                )
-                row = cursor.fetchone()
-                if row:
-                    cached_provider, cached_model, metadata_json = row
-                    if cached_provider == provider and cached_model == model:
-                        cache_data = json.loads(metadata_json)
-                    else:
-                        msg = (
-                            f"Cache invalidated (was {cached_provider}/{cached_model}, "
-                            f"now {provider}/{model})"
-                        )
-                        logging.debug(msg)
-                        with conn:
-                            conn.execute(
-                                "DELETE FROM metadata_cache WHERE cache_key = ?", (cache_key,)
-                            )
-        except Exception as e:
-            logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
-
-        if cache_data is None:
-            try:
-                cache_data = _read_from_legacy_file(cache_path, provider, model)
-            except Exception as e:
-                logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
-
+        cache_data = _read_validated_cache_data(cache_path, provider, model)
         if cache_data is None:
             return None
 
+        # Reserved bookkeeping keys never belong to the metadata model itself.
+        cache_data.pop("_is_vision_doc", None)
+
         if model_class:
-            try:
-                return model_class(**cache_data)
-            except Exception as e:
-                logging.warning(
-                    f"Failed to validate cached metadata against {model_class.__name__}: {e}"
-                )
-                return None
+            return _validate_cached_metadata(cache_data, model_class)
         return cache_data
+
+
+def read_metadata_cache_with_source[V: BaseModel](
+    cache_path: Path,
+    provider: str,
+    model: str,
+    model_class: type[V],
+) -> tuple[V | None, bool | None]:
+    """Read cached metadata together with its persisted extraction source.
+
+    Returns ``(metadata, is_vision_doc)`` where ``is_vision_doc`` records the
+    engine path that actually produced the metadata (True = vision fallback).
+    It is ``None`` for legacy records written before the marker existed;
+    callers own the fallback decision for those.
+    """
+    with _cache_lock:
+        cache_data = _read_validated_cache_data(cache_path, provider, model)
+        if cache_data is None:
+            return None, None
+
+        raw_vision = cache_data.pop("_is_vision_doc", None)
+        if raw_vision is not None and not isinstance(raw_vision, bool):
+            # Present but corrupt (external tampering; the writer only stores
+            # bools). Warn so the silent template switch is explainable, then
+            # let the caller apply its legacy fallback instead of trusting it.
+            logging.warning(
+                f"Corrupt vision marker in metadata cache row {cache_path.name}: expected "
+                f"a bool, got {type(raw_vision).__name__}; treating as legacy"
+            )
+        is_vision_doc = raw_vision if isinstance(raw_vision, bool) else None
+        validated = _validate_cached_metadata(cache_data, model_class)
+        if validated is None:
+            return None, None
+        return validated, is_vision_doc
 
 
 def write_metadata_cache(
@@ -255,13 +331,22 @@ def write_metadata_cache(
     metadata: BaseModel | dict[str, Any],
     provider: str,
     model: str,
+    *,
+    is_vision_doc: bool | None = None,
 ) -> bool:
-    """Write metadata to SQLite cache atomically."""
+    """Write metadata to SQLite cache atomically.
+
+    When ``is_vision_doc`` is not None, the observed extraction source is
+    persisted under the reserved ``_is_vision_doc`` key so cache hits can
+    replay the fact instead of reconstructing it from request flags.
+    """
     with _cache_lock:
         db_dir = _get_db_dir(cache_path=cache_path)
         cache_key = cache_path.name
         try:
-            data = metadata.model_dump() if isinstance(metadata, BaseModel) else metadata
+            data = metadata.model_dump() if isinstance(metadata, BaseModel) else dict(metadata)
+            if is_vision_doc is not None:
+                data["_is_vision_doc"] = is_vision_doc
             metadata_json = json.dumps(data, ensure_ascii=False, indent=4)
 
             with _get_db_connection(db_dir) as conn, conn:
@@ -274,6 +359,14 @@ def write_metadata_cache(
                     (cache_key, provider, model, metadata_json),
                 )
             return True
+        except sqlite3.DatabaseError as e:
+            # Caching is best-effort: extraction succeeded, so never fail the
+            # run — but a broken store must not look like a routine miss.
+            logging.error(
+                f"Metadata cache database {db_dir / 'cache.db'} is corrupt or unreadable ({e}); "
+                "metadata was extracted but NOT cached. Delete or rename the file to rebuild."
+            )
+            return False
         except Exception as e:
             logging.warning(f"Failed to write metadata cache {cache_path}: {e}")
             return False

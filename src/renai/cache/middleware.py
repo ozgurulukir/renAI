@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from renai.cache.manager import read_metadata_cache, write_metadata_cache
+from renai.cache.manager import read_metadata_cache_with_source, write_metadata_cache
 from renai.config import get_image_extensions
 from renai.logging_config import get_logger
 
@@ -146,8 +146,8 @@ def with_metadata_cache(
             model = model_resolver(self, request.use_vision_cache)
 
             if not request.update_metadata:
-                cached_data = await asyncio.to_thread(
-                    read_metadata_cache,
+                cached_data, cached_is_vision_doc = await asyncio.to_thread(
+                    read_metadata_cache_with_source,
                     request.cache_path,
                     provider,
                     model,
@@ -160,11 +160,14 @@ def with_metadata_cache(
                         provider=provider,
                         model=model,
                     )
-                    is_image = request.file_path.suffix.lower() in get_image_extensions()
-                    is_vision_doc = request.use_vision_cache and not (
-                        is_image and request.rename_images
-                    )
-                    return cached_data, is_vision_doc
+                    if cached_is_vision_doc is None:
+                        # Legacy record predating the persisted source marker:
+                        # reconstruct from request flags (previous behavior).
+                        is_image = request.file_path.suffix.lower() in get_image_extensions()
+                        cached_is_vision_doc = request.use_vision_cache and not (
+                            is_image and request.rename_images
+                        )
+                    return cached_data, cached_is_vision_doc
 
             metadata, is_vision_fallback = await func(self, request, **extra)
 
@@ -175,6 +178,7 @@ def with_metadata_cache(
                     metadata,
                     provider,
                     model,
+                    is_vision_doc=is_vision_fallback,
                 )
 
             return metadata, is_vision_fallback

@@ -199,6 +199,64 @@ async def test_middleware_wrong_request_annotation_raises_at_decoration_time():
 
 
 @pytest.mark.asyncio
+async def test_middleware_persists_source_stable_across_cache_hits(tmp_path: Path):
+    """Regression: a text-path extraction under a vision-cache request must keep
+    reporting is_vision_doc=False on cache hits.
+
+    Previously the hit path reconstructed the flag from use_vision_cache, so a
+    text-extractable PDF run with --fallback vision got is_vision_doc=False on
+    the cold run but True once cached -- same file, same flags, different
+    filename template depending on cache warmth.
+    """
+
+    class TextPathProcessor(VisionDummyProcessor):
+        """Vision-cache request, but the text path succeeds (returns False)."""
+
+        @with_metadata_cache()
+        async def extract(self, request: MetadataRequest) -> tuple[DummyMetadata, bool]:
+            self.call_count += 1
+            return DummyMetadata(title="From Text Path"), False
+
+    processor = TextPathProcessor()
+    vision_cache = tmp_path / "metadata" / "text_success_under_vision.json"
+    request = _make_request(vision_cache, DummyMetadata, use_vision_cache=True)
+
+    _result, cold_is_vision = await processor.extract(request)
+    assert cold_is_vision is False
+    assert processor.call_count == 1
+
+    # Warm run: the persisted marker (False) must win over the flag-based
+    # reconstruction (which would say True).
+    _result, warm_is_vision = await processor.extract(request)
+    assert warm_is_vision is False
+    assert processor.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_middleware_legacy_record_without_marker_reconstructs(tmp_path: Path):
+    """Records written before the marker existed keep the old reconstruction."""
+    processor = VisionDummyProcessor()
+    vision_cache = tmp_path / "metadata" / "legacy.json"
+
+    # Write a record the old way: no is_vision_doc marker.
+    from renai.cache.manager import write_metadata_cache
+
+    write_metadata_cache(
+        vision_cache,
+        DummyMetadata(title="Legacy"),
+        "vision_provider",
+        "vision_model",
+    )
+
+    request = _make_request(vision_cache, DummyMetadata, use_vision_cache=True)
+    result, is_vision = await processor.extract(request)
+    assert result is not None and result.title == "Legacy"
+    # Legacy reconstruction: use_vision_cache=True and not an image request.
+    assert is_vision is True
+    assert processor.call_count == 0
+
+
+@pytest.mark.asyncio
 async def test_middleware_decorated_method_can_be_invoked_with_request():
     """A correctly-typed method accepts a MetadataRequest and behaves normally."""
     processor = DummyProcessor()

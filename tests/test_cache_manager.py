@@ -1,3 +1,4 @@
+import sqlite3
 import sys
 from unittest.mock import MagicMock
 
@@ -34,6 +35,7 @@ from renai.cache.manager import (  # noqa: E402
     get_metadata_cache_path,
     invalidate_cache_for_provider_model,
     read_metadata_cache,
+    read_metadata_cache_with_source,
     read_text_cache,
     write_metadata_cache,
     write_text_cache,
@@ -88,6 +90,80 @@ def test_read_metadata_cache_success(tmp_path):
     result = read_metadata_cache(cache_path, provider, model, model_class=BookMetadata)
     assert isinstance(result, BookMetadata)
     assert result.title == "Success Book"
+
+
+def test_metadata_cache_source_marker_roundtrip(tmp_path):
+    """The persisted _is_vision_doc marker round-trips and stays out of the model."""
+    cache_path = tmp_path / "marker_metadata.json"
+    metadata = BookMetadata(title="Marker Book", author="A", category="Other", language="en")
+    provider = "p1"
+    model = "m1"
+
+    write_metadata_cache(cache_path, metadata, provider, model, is_vision_doc=False)
+
+    # The source-aware reader returns the marker alongside the metadata.
+    result, is_vision_doc = read_metadata_cache_with_source(
+        cache_path, provider, model, model_class=BookMetadata
+    )
+    assert isinstance(result, BookMetadata)
+    assert result.title == "Marker Book"
+    assert is_vision_doc is False
+
+    # The plain reader strips the reserved key; validation still succeeds.
+    plain = read_metadata_cache(cache_path, provider, model, model_class=BookMetadata)
+    assert isinstance(plain, BookMetadata)
+    assert plain.title == "Marker Book"
+
+
+def test_metadata_cache_without_marker_reports_none_source(tmp_path):
+    """Records written without the marker read back as None (legacy semantics)."""
+    cache_path = tmp_path / "unmarked_metadata.json"
+    metadata = BookMetadata(title="Unmarked", author="A", category="Other", language="en")
+
+    write_metadata_cache(cache_path, metadata, "p1", "m1")
+
+    result, is_vision_doc = read_metadata_cache_with_source(
+        cache_path, "p1", "m1", model_class=BookMetadata
+    )
+    assert isinstance(result, BookMetadata)
+    assert is_vision_doc is None
+
+
+def test_read_metadata_cache_non_object_json_degrades_to_miss(tmp_path, caplog):
+    """A row holding valid-but-non-object JSON must degrade to a miss, not crash.
+
+    Regression guard: an unguarded dict-only operation (e.g. .pop) on such a row
+    used to raise out of the reader and fail the whole file.
+    """
+    cache_path = tmp_path / "corrupt_metadata.json"
+    db_dir = cache_path.parent
+    db_dir.mkdir(parents=True, exist_ok=True)
+
+    from renai.cache.manager import _get_db_connection
+
+    with _get_db_connection(db_dir) as conn, conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json) "
+            "VALUES (?, ?, ?, ?)",
+            (cache_path.name, "p", "m", "[1, 2, 3]"),
+        )
+
+    with caplog.at_level(logging.WARNING):
+        result = read_metadata_cache(cache_path, "p", "m")
+        with_source = read_metadata_cache_with_source(
+            cache_path, "p", "m", model_class=BookMetadata
+        )
+
+    assert result is None
+    assert with_source == (None, None)
+    assert any("expected a JSON object" in r.message for r in caplog.records)
+
+    # The corrupt row is dropped so subsequent reads fall through cleanly.
+    with _get_db_connection(db_dir) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM metadata_cache WHERE cache_key = ?", (cache_path.name,)
+        ).fetchone()
+    assert row[0] == 0
 
 
 def test_read_metadata_cache_nonexistent(tmp_path):
@@ -287,6 +363,56 @@ def test_read_metadata_cache_sqlite_error(tmp_path, caplog):
         assert result == {"title": "Fallback Book"}
         assert "Failed to read metadata cache" in caplog.text
         assert "DB lock error" in caplog.text
+
+
+def test_read_metadata_cache_corrupt_db_skips_legacy_fallback(tmp_path, caplog):
+    """A corrupt primary store must not be papered over by stale legacy JSON files.
+
+    sqlite3.DatabaseError means the DB file itself is broken: log loud (error
+    level, naming cache.db so the user can act on the right artifact), degrade
+    to a miss, and do NOT serve records from the superseded legacy store.
+    """
+    cache_path = tmp_path / "metadata" / "test.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(
+        '{"title": "Stale Legacy Book", "_provider": "p", "_model": "m"}', encoding="utf-8"
+    )
+
+    with (
+        patch(
+            "renai.cache.manager._get_db_connection",
+            side_effect=sqlite3.DatabaseError("file is not a database"),
+        ),
+        caplog.at_level(logging.ERROR),
+    ):
+        result = read_metadata_cache(cache_path, "p", "m")
+
+    assert result is None
+    assert "corrupt or unreadable" in caplog.text
+    assert "cache.db" in caplog.text
+
+
+def test_write_metadata_cache_corrupt_db_is_loud_but_not_fatal(tmp_path, caplog):
+    """Write failures on a corrupt store log an error naming cache.db, never raise.
+
+    Caching is best-effort: extraction already succeeded, so the run must
+    continue — but the failure must not look like a routine miss.
+    """
+    cache_path = tmp_path / "metadata" / "test.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch(
+            "renai.cache.manager._get_db_connection",
+            side_effect=sqlite3.DatabaseError("file is not a database"),
+        ),
+        caplog.at_level(logging.ERROR),
+    ):
+        result = write_metadata_cache(cache_path, {"title": "Uncached Book"}, "p", "m")
+
+    assert result is False
+    assert "corrupt or unreadable" in caplog.text
+    assert "NOT cached" in caplog.text
 
 
 def test_read_metadata_cache_validation_error(tmp_path, caplog):

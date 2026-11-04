@@ -479,7 +479,10 @@ class TestPipelineFolderRules:
         with (
             patch("renai.processors.book.get_folder_rule_for", return_value=rule),
             patch("renai.processors.book.get_file_hash", return_value="hash"),
-            patch("renai.cache.middleware.read_metadata_cache", return_value=cached),
+            patch(
+                "renai.cache.middleware.read_metadata_cache_with_source",
+                return_value=(cached, None),
+            ),
             patch(
                 "renai.file_ops.organizer.safe_move_file",
                 side_effect=lambda s, d, **kwargs: d,
@@ -500,7 +503,10 @@ class TestPipelineFolderRules:
         with (
             patch("renai.processors.book.get_folder_rule_for", return_value=rule),
             patch("renai.processors.book.get_file_hash", return_value="hash"),
-            patch("renai.cache.middleware.read_metadata_cache", return_value=cached),
+            patch(
+                "renai.cache.middleware.read_metadata_cache_with_source",
+                return_value=(cached, None),
+            ),
             patch(
                 "renai.file_ops.organizer.safe_move_file",
                 side_effect=lambda s, d, **kwargs: d,
@@ -521,7 +527,10 @@ class TestPipelineFolderRules:
         with (
             patch("renai.processors.book.get_folder_rule_for", return_value=rule),
             patch("renai.processors.book.get_file_hash", return_value="hash"),
-            patch("renai.cache.middleware.read_metadata_cache", return_value=cached),
+            patch(
+                "renai.cache.middleware.read_metadata_cache_with_source",
+                return_value=(cached, None),
+            ),
             patch(
                 "renai.file_ops.organizer.safe_move_file",
                 side_effect=lambda s, d, **kwargs: d,
@@ -543,7 +552,9 @@ class TestPipelineFolderRules:
         with (
             patch("renai.processors.book.get_folder_rule_for", return_value=rule),
             patch("renai.processors.book.get_file_hash", return_value="hash"),
-            patch("renai.cache.middleware.read_metadata_cache", return_value=None),
+            patch(
+                "renai.cache.middleware.read_metadata_cache_with_source", return_value=(None, None)
+            ),
             patch.object(processor.text_extractor, "extract", AsyncMock(return_value="some text")),
             patch.object(
                 processor.llm_engine,
