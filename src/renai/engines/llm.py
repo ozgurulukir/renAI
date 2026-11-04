@@ -17,6 +17,27 @@ from ..utils.rate_limiter import AsyncRateLimiter
 
 T = TypeVar("T", bound=BaseMetadata)
 
+# Values that indicate missing/placeholder metadata (P0-1 refinement gate).
+_METADATA_PLACEHOLDERS = frozenset(
+    {
+        "",
+        "unknown",
+        "unknown title",
+        "unknown author",
+        "untitled",
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "-",
+        "--",
+    }
+)
+
+# HTTP status threshold separating retryable server errors (>= threshold, i.e.
+# 5xx) from fail-fast client errors (< threshold, i.e. 4xx other than 429).
+_RETRYABLE_STATUS_THRESHOLD = 500
+
 
 class LLMEngine:
     def __init__(
@@ -136,8 +157,11 @@ class LLMEngine:
         if not initial_model:
             return None
 
-        # 2. Refinement Pass
-        return await self._refine_metadata(initial_model, allowed_categories)
+        # 2. Refinement Pass — gated by the refine_metadata cost setting (P0-1)
+        mode = app_settings.refine_metadata
+        if mode == "always" or (mode == "auto" and not self._is_metadata_complete(initial_model)):
+            return await self._refine_metadata(initial_model, allowed_categories)
+        return initial_model  # "never", or "auto" with complete metadata
 
     @staticmethod
     def _build_document_prompt(text: str) -> str:
@@ -152,6 +176,16 @@ class LLMEngine:
                 f"</document_content>"
             )
         return f"<document_content>\n{text}\n</document_content>"
+
+    def _is_metadata_complete(self, model: BookMetadata) -> bool:
+        """True iff title and author are present and not placeholder-ish."""
+        title = (model.title or "").strip().lower()
+        author = (getattr(model, "author", None) or "").strip().lower()
+        return (
+            bool(title and author)
+            and title not in _METADATA_PLACEHOLDERS
+            and author not in _METADATA_PLACEHOLDERS
+        )
 
     async def _refine_metadata(
         self, initial_model: BookMetadata, allowed_categories: dict[str, list] | None = None
@@ -211,7 +245,12 @@ class LLMEngine:
             if not initial_model:
                 return None
 
-            return await self._refine_metadata(initial_model, allowed_categories)
+            mode = app_settings.refine_metadata
+            if mode == "always" or (
+                mode == "auto" and not self._is_metadata_complete(initial_model)
+            ):
+                return await self._refine_metadata(initial_model, allowed_categories)
+            return initial_model
         except Exception as e:
             logging.error(f"Vision book extraction failed for {image_path.name}: {e}")
             return None
@@ -413,8 +452,18 @@ class LLMEngine:
         headers: dict[str, str] | None,
         context_name: str,
     ) -> str | None:
-        """Call the LLM API with progressive exponential backoff on RateLimitError."""
-        from openai import RateLimitError
+        """Call the LLM API with progressive exponential backoff.
+
+        Retries on RateLimitError (HTTP 429), timeouts, connection errors, and
+        server-side HTTP 5xx errors; non-retryable client errors (HTTP 4xx other
+        than 429) fail fast with LLMError.
+        """
+        from openai import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            RateLimitError,
+        )
 
         backoff_sec = 2.0
         max_backoff_sec = 60.0
@@ -449,6 +498,56 @@ class LLMEngine:
                     context_name,
                     backoff_sec,
                     rle,
+                )
+                await asyncio.sleep(backoff_sec)
+                backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
+            except (APITimeoutError, APIConnectionError) as conn_err:
+                if rl_attempt == rate_limit_attempts - 1:
+                    logging.error(
+                        "Connection/timeout retries exhausted (%d attempts) for %s.",
+                        rate_limit_attempts,
+                        context_name,
+                    )
+                    raise LLMError(
+                        f"Connection/timeout retries exhausted ({rate_limit_attempts} attempts) "
+                        f"for {context_name}: {conn_err}"
+                    ) from conn_err
+                logging.warning(
+                    "Timeout/connection error for %s. Retrying in %.1fs... Error: %s",
+                    context_name,
+                    backoff_sec,
+                    conn_err,
+                )
+                await asyncio.sleep(backoff_sec)
+                backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
+            except APIStatusError as status_err:
+                if status_err.status_code < _RETRYABLE_STATUS_THRESHOLD:
+                    logging.error(
+                        "Non-retryable API error (HTTP %d) for %s: %s",
+                        status_err.status_code,
+                        context_name,
+                        status_err,
+                    )
+                    raise LLMError(
+                        f"Non-retryable LLM API error (HTTP {status_err.status_code}) "
+                        f"for {context_name}: {status_err}"
+                    ) from status_err
+                if rl_attempt == rate_limit_attempts - 1:
+                    logging.error(
+                        "Server error retries exhausted (%d attempts) for %s.",
+                        rate_limit_attempts,
+                        context_name,
+                    )
+                    raise LLMError(
+                        f"Server error retries exhausted ({rate_limit_attempts} attempts) "
+                        f"for {context_name}: {status_err}"
+                    ) from status_err
+                logging.warning(
+                    "Server error (HTTP %d) for %s. Retrying in %.1fs... Error: %s",
+                    status_err.status_code,
+                    context_name,
+                    backoff_sec,
+                    status_err,
                 )
                 await asyncio.sleep(backoff_sec)
                 backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)

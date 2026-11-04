@@ -926,8 +926,223 @@ class TestProcessingConfigModes:
 
         from renai.models.schemas import ProcessingConfig
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="mode"):
             ProcessingConfig(mode="bogus")
+
+
+class TestLegacySettingsShim:
+    """Test that legacy settings import shim is removed."""
+
+    def test_legacy_settings_shim_removed(self):
+        import importlib
+
+        with pytest.raises(ModuleNotFoundError, match="renai.settings"):
+            importlib.import_module("renai.settings")
+
+
+class TestResolveAllowedBucket:
+    """Tests for resolve_allowed_bucket function in renai.config.folder_rules."""
+
+    @pytest.mark.parametrize(
+        "allowed_dict, language, expected",
+        [
+            # Exact language match
+            ({"ja": ["manga"], "en": ["books"]}, "ja", ["manga"]),
+            # Case-insensitive language handling
+            ({"ja": ["manga"], "en": ["books"]}, "JA", ["manga"]),
+            ({"ja": ["manga"], "en": ["books"]}, "En", ["books"]),
+            # Fallback to 'en' bucket when requested language key is absent
+            ({"ja": ["manga"], "en": ["books"]}, "fr", ["books"]),
+            # Fallback to first available bucket when neither language nor 'en' exists
+            ({"zh": ["manhua"], "ja": ["manga"]}, "fr", ["manhua"]),
+            # Fallback behavior when language is None or empty string (defaults to 'en' resolution)
+            ({"ja": ["manga"], "en": ["books"]}, None, ["books"]),
+            ({"ja": ["manga"], "en": ["books"]}, "", ["books"]),
+            # Empty dictionary handling
+            ({}, "en", []),
+            ({}, "ja", []),
+            ({}, None, []),
+            # Fallback when specified language bucket evaluates to empty list []
+            ({"ja": [], "en": ["books"]}, "ja", ["books"]),
+        ],
+    )
+    def test_resolve_allowed_bucket(
+        self, allowed_dict: dict[str, list[str]], language: str | None, expected: list[str]
+    ):
+        """Should correctly resolve category buckets according to language preference and fallbacks."""
+        from renai.config.folder_rules import resolve_allowed_bucket
+
+        result = resolve_allowed_bucket(allowed_dict, language)
+        assert result == expected
+
+
+class TestConstantHelpers:
+    """Test constant helper functions in renai.config.constants."""
+
+    def test_get_image_extensions(self):
+        """Should return the exact set of supported image extensions."""
+        from renai.config import get_image_extensions
+
+        expected = {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".bmp",
+            ".webp",
+            ".tiff",
+            ".tif",
+            ".heic",
+            ".heif",
+        }
+        exts = get_image_extensions()
+        assert exts == expected
+
+        # Mutability/independence check
+        exts.add(".svg")
+        assert ".svg" not in get_image_extensions()
+
+    def test_get_ocr_lang_default_and_override(self):
+        """Should return default ocr_lang or value from factory defaults."""
+        from renai.config import get_ocr_lang
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+            assert get_ocr_lang() == "tur+eng"
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": {"ocr_lang": "eng"}}):
+            assert get_ocr_lang() == "eng"
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": {}}):
+            assert get_ocr_lang() == "tur+eng"
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": None}):
+            assert get_ocr_lang() == "tur+eng"
+
+    def test_get_max_text_read_size_default_and_override(self):
+        """Should return default max_text_read_size or value from factory defaults."""
+        from renai.config import get_max_text_read_size
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+            assert get_max_text_read_size() == 1_000_000
+
+        with patch(
+            "renai.config.constants.FACTORY_DEFAULTS",
+            {"processing": {"max_text_read_size": 500_000}},
+        ):
+            assert get_max_text_read_size() == 500_000
+
+    def test_get_subprocess_timeout_default_and_override(self):
+        """Should return default subprocess_timeout or value from factory defaults."""
+        from renai.config import get_subprocess_timeout
+
+        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+            assert get_subprocess_timeout() == 60
+
+        with patch(
+            "renai.config.constants.FACTORY_DEFAULTS",
+            {"processing": {"subprocess_timeout": 120}},
+        ):
+            assert get_subprocess_timeout() == 120
+
+
+class TestGetEffectiveVisionProvider:
+    """Test get_effective_vision_provider function."""
+
+    def test_returns_explicit_vision_provider_when_set(self):
+        """Should return app.vision_provider when it is explicitly set."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_provider
+
+        with patch.object(app_settings, "vision_provider", "openrouter"):
+            # Act
+            result = get_effective_vision_provider()
+
+            # Assert
+            assert result == "openrouter"
+
+    def test_fallbacks_to_main_provider_when_vision_provider_not_set(self):
+        """Should fallback to app.provider when vision_provider is None or empty."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_provider
+
+        with (
+            patch.object(app_settings, "vision_provider", None),
+            patch.object(app_settings, "provider", "deepinfra"),
+        ):
+            # Act
+            result = get_effective_vision_provider()
+
+            # Assert
+            assert result == "deepinfra"
+
+
+class TestGetEffectiveVisionModel:
+    """Test get_effective_vision_model function."""
+
+    def test_returns_explicit_vision_model_when_set(self):
+        """Should return app.vision_model when explicitly configured."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_model
+
+        with patch.object(app_settings, "vision_model", "gpt-4o"):
+            # Act
+            result = get_effective_vision_model()
+
+            # Assert
+            assert result == "gpt-4o"
+
+    def test_returns_provider_specific_model_when_vision_model_not_set(self):
+        """Should return provider's model setting when vision_model is None."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_model, provider_settings
+
+        with (
+            patch.object(app_settings, "vision_model", None),
+            patch.object(app_settings, "vision_provider", "openrouter"),
+            patch.object(provider_settings, "openrouter_model", "openai/gpt-4-vision"),
+        ):
+            # Act
+            result = get_effective_vision_model()
+
+            # Assert
+            assert result == "openai/gpt-4-vision"
+
+    def test_fallbacks_to_main_app_model_when_provider_matches_and_model_set(self):
+        """Should fallback to app.model when vision_provider equals app.provider and app.model is set."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_model, provider_settings
+
+        with (
+            patch.object(app_settings, "vision_model", None),
+            patch.object(app_settings, "vision_provider", None),
+            patch.object(app_settings, "provider", "openai"),
+            patch.object(app_settings, "model", "gpt-4o-mini"),
+            patch.object(provider_settings, "openai_model", None),
+        ):
+            # Act
+            result = get_effective_vision_model()
+
+            # Assert
+            assert result == "gpt-4o-mini"
+
+    def test_fallbacks_to_default_model_when_no_specific_model_found(self):
+        """Should fallback to get_default_model when no other model is configured."""
+        # Arrange
+        from renai.config import app_settings, get_effective_vision_model, provider_settings
+
+        with (
+            patch.object(app_settings, "vision_model", None),
+            patch.object(app_settings, "vision_provider", None),
+            patch.object(app_settings, "provider", "deepinfra"),
+            patch.object(app_settings, "model", None),
+            patch.object(provider_settings, "deepinfra_model", None),
+            patch("renai.config.providers.get_default_model", return_value="llama3-default"),
+        ):
+            # Act
+            result = get_effective_vision_model()
+
+            # Assert
+            assert result == "llama3-default"
 
 
 if __name__ == "__main__":

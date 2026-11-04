@@ -158,7 +158,8 @@ CUSTOM_CATEGORIES_FILE = CATEGORIES_USER_FILE
 
 def get_ocr_lang() -> str:
     """Get OCR language from factory defaults or config."""
-    return FACTORY_DEFAULTS.get("processing", {}).get("ocr_lang", "tur+eng")
+    processing = FACTORY_DEFAULTS.get("processing") or {}
+    return processing.get("ocr_lang", "tur+eng")
 
 
 def get_max_text_read_size() -> int:

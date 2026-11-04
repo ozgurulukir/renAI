@@ -5,7 +5,9 @@ File operations module - handles safe file movement, audit recording, and path o
 import contextlib
 import json
 import logging
+import os
 import shutil
+import tempfile
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -13,6 +15,9 @@ from typing import Any
 
 from ..exceptions import FileOperationError
 from ..utils import get_file_hash
+
+UNDO_JOURNAL_NAME = "undo_journal.jsonl"
+LEGACY_HISTORY_NAME = "undo_history.json"
 
 
 def ensure_within_root(dest_path: Path, root_dir: Path) -> None:
@@ -44,6 +49,61 @@ def ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path:
     return dest_path.parent / f"{dest_path.stem}_{unique_id}{dest_path.suffix}"
 
 
+def _load_undo_entries(cache_dir: Path) -> list[dict]:
+    """Load undo entries from the JSONL journal, skipping corrupt/torn lines.
+
+    Falls back to the legacy undo_history.json JSON array when the journal
+    does not exist yet (backward compatibility).
+    """
+    journal_path = cache_dir / UNDO_JOURNAL_NAME
+    entries: list[dict] = []
+    if journal_path.exists():
+        try:
+            with journal_path.open(encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    try:
+                        parsed = json.loads(line)
+                    except json.JSONDecodeError:
+                        logging.warning("Skipping corrupt line in %s", journal_path)
+                        continue
+                    if isinstance(parsed, dict):
+                        entries.append(parsed)
+        except OSError as e:
+            logging.error("Failed to read undo journal %s: %s", journal_path, e)
+            return []
+        return entries
+    legacy_path = cache_dir / LEGACY_HISTORY_NAME
+    if legacy_path.exists():
+        try:
+            with legacy_path.open(encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                entries = [item for item in data if isinstance(item, dict)]
+        except (json.JSONDecodeError, OSError) as e:
+            logging.warning("Failed to read legacy undo history %s: %s", legacy_path, e)
+    return entries
+
+
+def _persist_undo_entries(cache_dir: Path, entries: list[dict]) -> None:
+    """Atomically rewrite the journal (temp file + os.replace)."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    journal_path = cache_dir / UNDO_JOURNAL_NAME
+    fd, tmp_name = tempfile.mkstemp(dir=cache_dir, prefix=".undo_journal_", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        tmp_path.replace(journal_path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink()
+        raise
+
+
 def record_undo_entry(
     old_path: Path,
     new_path: Path,
@@ -56,59 +116,50 @@ def record_undo_entry(
 
         cache_dir = CACHE_DIR
 
-    history_file = cache_dir / "undo_history.json"
-    history = []
-    if history_file.exists():
-        try:
-            history = json.loads(history_file.read_text(encoding="utf-8"))
-        except Exception:
-            history = []
-
-    history.append(
-        {
-            "old_path": str(old_path.resolve()),
-            "new_path": str(new_path.resolve()),
-            "operation_type": operation_type,
-        }
-    )
+    entry = {
+        "old_path": str(old_path),
+        "new_path": str(new_path),
+        "operation_type": operation_type,
+    }
     try:
-        history_file.parent.mkdir(parents=True, exist_ok=True)
-        history_file.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        with (cache_dir / UNDO_JOURNAL_NAME).open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as e:
-        logging.warning(f"Failed to record undo entry: {e}")
+        logging.warning("Failed to record undo entry: %s", e)
 
 
 def undo_last_operation(cache_dir: Path | None = None) -> int:
-    """Revert file operations recorded during the last batch/run in undo_history.json."""
+    """Revert recorded file operations, newest first, from the undo journal."""
     if cache_dir is None:
         from renai.config import CACHE_DIR
 
         cache_dir = CACHE_DIR
 
-    history_file = cache_dir / "undo_history.json"
-    if not history_file.exists():
-        return 0
-
     try:
-        history = json.loads(history_file.read_text(encoding="utf-8"))
-    except Exception:
+        entries = _load_undo_entries(cache_dir)
+    except Exception as e:
+        logging.error(f"Failed to load undo journal from {cache_dir}: {e}")
         return 0
-
+    if not entries:
+        return 0
     reverted_count = 0
-    while history:
-        entry = history.pop()
-        old_path = Path(entry["old_path"])
-        new_path = Path(entry["new_path"])
+    while entries:
+        last_entry = entries.pop()
+        old_path = Path(last_entry["old_path"])
+        new_path = Path(last_entry["new_path"])
         if new_path.exists():
             try:
                 old_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(new_path), str(old_path))
-                reverted_count += 1
             except Exception as e:
                 logging.error(f"Failed to undo {new_path} -> {old_path}: {e}")
-
-    with contextlib.suppress(Exception):
-        history_file.unlink()
+                continue
+            reverted_count += 1
+        try:
+            _persist_undo_entries(cache_dir, entries)
+        except OSError as e:
+            logging.warning(f"Failed to persist remaining undo journal entries: {e}")
     return reverted_count
 
 
