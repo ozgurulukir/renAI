@@ -99,17 +99,21 @@ def test_metadata_cache_source_marker_roundtrip(tmp_path):
     provider = "p1"
     model = "m1"
 
-    write_metadata_cache(cache_path, metadata, provider, model, is_vision_doc=False)
+    write_metadata_cache(
+        cache_path, metadata, provider, model, is_vision_doc=False, rule_signature="abc123"
+    )
 
-    # The source-aware reader returns the marker alongside the metadata.
-    result, is_vision_doc = read_metadata_cache_with_source(
+    # The source-aware reader returns the provenance alongside the metadata.
+    result, source = read_metadata_cache_with_source(
         cache_path, provider, model, model_class=BookMetadata
     )
     assert isinstance(result, BookMetadata)
     assert result.title == "Marker Book"
-    assert is_vision_doc is False
+    assert source is not None
+    assert source.is_vision_doc is False
+    assert source.rule_signature == "abc123"
 
-    # The plain reader strips the reserved key; validation still succeeds.
+    # The plain reader strips the reserved keys; validation still succeeds.
     plain = read_metadata_cache(cache_path, provider, model, model_class=BookMetadata)
     assert isinstance(plain, BookMetadata)
     assert plain.title == "Marker Book"
@@ -122,11 +126,14 @@ def test_metadata_cache_without_marker_reports_none_source(tmp_path):
 
     write_metadata_cache(cache_path, metadata, "p1", "m1")
 
-    result, is_vision_doc = read_metadata_cache_with_source(
+    result, source = read_metadata_cache_with_source(
         cache_path, "p1", "m1", model_class=BookMetadata
     )
     assert isinstance(result, BookMetadata)
-    assert is_vision_doc is None
+    assert source is not None
+    # No vision marker -> None; rule signature is always explicit ("" = global).
+    assert source.is_vision_doc is None
+    assert source.rule_signature == ""
 
 
 def test_read_metadata_cache_non_object_json_degrades_to_miss(tmp_path, caplog):
@@ -462,3 +469,45 @@ def test_clear_models_dev_cache_exception(tmp_path, caplog):
         assert count == 0
         assert "Failed to clear models.dev cache" in caplog.text
         assert "Cannot unlink" in caplog.text
+
+
+def test_legacy_rows_without_rule_sig_read_as_legacy_provenance(tmp_path):
+    """Rows predating _rule_sig must read with rule_signature=None.
+
+    The middleware treats a None stored signature as global: global runs keep
+    hitting, rule-scoped runs re-extract once and rewrite the row. Both a
+    pre-marker row (no reserved keys at all) and a #175-era row (_is_vision_doc
+    set, no _rule_sig) must surface rule_signature=None, not "".
+    """
+    from renai.cache.manager import _get_db_connection
+
+    db_dir = tmp_path
+    rows = {
+        "pre-marker.json": '{"title": "Legacy Book", "language": "en", "category": "Fiction"}',
+        "175-era.json": '{"title": "175-era Book", "language": "en", "category": "Fiction", '
+        '"_is_vision_doc": true}',
+    }
+    for name, metadata_json in rows.items():
+        with _get_db_connection(db_dir) as conn, conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json)"
+                " VALUES (?, ?, ?, ?)",
+                (name, "p", "m", metadata_json),
+            )
+
+    result, source = read_metadata_cache_with_source(
+        tmp_path / "pre-marker.json", "p", "m", model_class=BookMetadata
+    )
+    assert isinstance(result, BookMetadata)
+    assert source is not None
+    assert source.is_vision_doc is None
+    assert source.rule_signature is None
+
+    result_era, source_era = read_metadata_cache_with_source(
+        tmp_path / "175-era.json", "p", "m", model_class=BookMetadata
+    )
+    assert isinstance(result_era, BookMetadata)
+    assert source_era is not None
+    assert source_era.is_vision_doc is True
+    # _rule_sig absent -> legacy (None), distinct from "" (global).
+    assert source_era.rule_signature is None

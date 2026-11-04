@@ -3,6 +3,7 @@ renai.cache - Cache management
 """
 
 from .manager import (
+    CacheSource,
     clear_all_cache,
     get_metadata_cache_path,
     get_text_cache_path,
@@ -15,6 +16,7 @@ from .manager import (
 )
 
 __all__ = [
+    "CacheSource",
     "clear_all_cache",
     "get_metadata_cache_path",
     "get_text_cache_path",

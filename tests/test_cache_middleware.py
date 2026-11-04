@@ -257,6 +257,70 @@ async def test_middleware_legacy_record_without_marker_reconstructs(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+async def test_middleware_rule_signature_mismatch_reextracts(tmp_path: Path):
+    """A cached record from a different category universe is a miss, not a hit.
+
+    The mismatched row is not deleted immediately; the re-extraction overwrite
+    replaces it atomically.
+    """
+    processor = DummyProcessor()
+    test_cache_path = tmp_path / "metadata" / "rule_scoped.json"
+
+    # Seed the cache the old way (global categories -> empty signature).
+    from renai.cache.manager import write_metadata_cache
+
+    write_metadata_cache(
+        test_cache_path,
+        DummyMetadata(title="Global Universe"),
+        "test_provider",
+        "test_model",
+        is_vision_doc=False,
+    )
+
+    request = _make_request(test_cache_path, DummyMetadata, rule_signature="rule-sig-1")
+    result, _ = await processor.extract(request)
+    assert processor.call_count == 1  # mismatch -> re-extraction ran
+    assert result is not None and result.title == "Extracted Title"
+
+    # The rewrite carries the rule signature, so the next rule run is a hit.
+    _result, _ = await processor.extract(request)
+    assert processor.call_count == 1
+
+    # A global run (no rule) now mismatches the rule-scoped row -> miss.
+    global_request = _make_request(test_cache_path, DummyMetadata)
+    await processor.extract(global_request)
+    assert processor.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_middleware_rule_signature_match_serves_cache(tmp_path: Path):
+    from renai.cache.manager import read_metadata_cache_with_source, write_metadata_cache
+
+    processor = DummyProcessor()
+    test_cache_path = tmp_path / "metadata" / "rule_match.json"
+
+    write_metadata_cache(
+        test_cache_path,
+        DummyMetadata(title="Rule Universe"),
+        "test_provider",
+        "test_model",
+        is_vision_doc=False,
+        rule_signature="rule-sig-1",
+    )
+
+    request = _make_request(test_cache_path, DummyMetadata, rule_signature="rule-sig-1")
+    result, _ = await processor.extract(request)
+    assert processor.call_count == 0
+    assert result is not None and result.title == "Rule Universe"
+
+    # Sanity: the stored source really carries the signature.
+    _meta, source = read_metadata_cache_with_source(
+        test_cache_path, "test_provider", "test_model", model_class=DummyMetadata
+    )
+    assert source is not None and source.rule_signature == "rule-sig-1"
+
+
+@pytest.mark.asyncio
 async def test_middleware_decorated_method_can_be_invoked_with_request():
     """A correctly-typed method accepts a MetadataRequest and behaves normally."""
     processor = DummyProcessor()

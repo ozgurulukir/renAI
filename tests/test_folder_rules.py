@@ -6,7 +6,7 @@ Covers:
 - Prefix matching with subfolder inheritance and longest-prefix wins
 - Filename template rendering and builder integration
 - LLMEngine per-call category override
-- Pipeline integration: cache-hit category clamping and organizer templates
+- Pipeline integration: rule-signature-aware caching and organizer templates
 """
 
 import logging
@@ -17,9 +17,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from renai.cache.manager import CacheSource
 from renai.config import folder_rules as fr
 from renai.config.constants import PACKAGE_CONFIG_DIR
-from renai.config.folder_rules import FolderRule, get_folder_rule_for, load_folder_rules
+from renai.config.folder_rules import (
+    FolderRule,
+    get_folder_rule_for,
+    load_folder_rules,
+    rule_cache_signature,
+)
 from renai.engines.llm import LLMEngine
 from renai.file_ops.organizer import FileOrganizer
 from renai.filename.builder import build_book_filename, build_image_filename
@@ -470,19 +476,32 @@ def processor():
 
 class TestPipelineFolderRules:
     @pytest.mark.asyncio
-    async def test_cache_hit_category_clamped_to_rule(self, processor, tmp_path):
+    async def test_cache_rule_mismatch_reextracts_under_rule_categories(self, processor, tmp_path):
+        """A cache row written under global categories must not serve a rule run.
+
+        The cache is rule-signature aware: a mismatch is a miss and the file is
+        re-extracted with the rule's category list (replacing the old lossy
+        post-hoc clamp that demoted the cached category to a fallback bucket).
+        """
         test_file = tmp_path / "book.pdf"
         test_file.write_text("content")
         cached = BookMetadata(title="Cached", author="A", category="Fiction", language="en")
         rule = FolderRule(path=tmp_path, categories={"en": ["Comic"]})
+        extracted = BookMetadata(title="Fresh", author="B", category="Comic", language="en")
 
         with (
             patch("renai.processors.book.get_folder_rule_for", return_value=rule),
             patch("renai.processors.book.get_file_hash", return_value="hash"),
             patch(
                 "renai.cache.middleware.read_metadata_cache_with_source",
-                return_value=(cached, None),
+                return_value=(cached, CacheSource(is_vision_doc=False, rule_signature="")),
             ),
+            patch.object(processor.text_extractor, "extract", AsyncMock(return_value="some text")),
+            patch.object(
+                processor.llm_engine,
+                "get_book_metadata",
+                AsyncMock(return_value=extracted),
+            ) as mock_llm,
             patch(
                 "renai.file_ops.organizer.safe_move_file",
                 side_effect=lambda s, d, **kwargs: d,
@@ -492,9 +511,12 @@ class TestPipelineFolderRules:
 
         assert result.success is True
         assert result.metadata["category"] == "Comic"
+        assert result.metadata["title"] == "Fresh"
+        # Re-extraction runs under the rule's category universe, not the global one.
+        assert mock_llm.call_args.kwargs["allowed_categories"] == rule.categories
 
     @pytest.mark.asyncio
-    async def test_category_within_rule_passes_through(self, processor, tmp_path):
+    async def test_matching_rule_signature_serves_cache(self, processor, tmp_path):
         test_file = tmp_path / "book.pdf"
         test_file.write_text("content")
         cached = BookMetadata(title="Cached", category="Comic", language="en")
@@ -505,7 +527,13 @@ class TestPipelineFolderRules:
             patch("renai.processors.book.get_file_hash", return_value="hash"),
             patch(
                 "renai.cache.middleware.read_metadata_cache_with_source",
-                return_value=(cached, None),
+                return_value=(
+                    cached,
+                    CacheSource(
+                        is_vision_doc=False,
+                        rule_signature=rule_cache_signature(rule, mode="doc"),
+                    ),
+                ),
             ),
             patch(
                 "renai.file_ops.organizer.safe_move_file",
@@ -514,22 +542,34 @@ class TestPipelineFolderRules:
         ):
             result = await processor.process_file(test_file, mode="rename")
 
+        assert result.success is True
         assert result.metadata["category"] == "Comic"
+        # Signature matches the rule's universe: the cache row is served as-is.
+        processor.llm_engine.get_book_metadata.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_single_language_rule_clamps_other_language_cache_hit(self, processor, tmp_path):
-        """A tr-only rule clamps an en cache hit to the tr bucket."""
+    async def test_single_language_rule_reextracts_other_language_cache_hit(
+        self, processor, tmp_path
+    ):
+        """A tr-only rule re-extracts an en-global cache hit under the tr bucket."""
         test_file = tmp_path / "book.pdf"
         test_file.write_text("content")
         cached = BookMetadata(title="Cached", category="Fiction", language="en")
         rule = FolderRule(path=tmp_path, categories={"tr": ["Tez"]})
+        extracted = BookMetadata(title="Tez Work", author="C", category="Tez", language="tr")
 
         with (
             patch("renai.processors.book.get_folder_rule_for", return_value=rule),
             patch("renai.processors.book.get_file_hash", return_value="hash"),
             patch(
                 "renai.cache.middleware.read_metadata_cache_with_source",
-                return_value=(cached, None),
+                return_value=(cached, CacheSource(is_vision_doc=False, rule_signature="")),
+            ),
+            patch.object(processor.text_extractor, "extract", AsyncMock(return_value="some text")),
+            patch.object(
+                processor.llm_engine,
+                "get_book_metadata",
+                AsyncMock(return_value=extracted),
             ),
             patch(
                 "renai.file_ops.organizer.safe_move_file",
@@ -538,7 +578,43 @@ class TestPipelineFolderRules:
         ):
             result = await processor.process_file(test_file, mode="rename")
 
+        assert result.success is True
         assert result.metadata["category"] == "Tez"
+
+    @pytest.mark.asyncio
+    async def test_image_rule_mismatch_reextracts_with_image_categories(self, processor, tmp_path):
+        """Image mode signs image_categories; a global row must not serve a rule run."""
+        test_file = tmp_path / "photo.jpg"
+        test_file.write_bytes(b"jpeg")
+        cached = ImageMetadata(description="Global category photo", category="Photo", language="en")
+        rule = FolderRule(path=tmp_path, image_categories={"en": ["Screenshot"]})
+        extracted = ImageMetadata(
+            description="Rule category photo", category="Screenshot", language="en"
+        )
+
+        with (
+            patch("renai.processors.book.get_folder_rule_for", return_value=rule),
+            patch("renai.processors.book.get_file_hash", return_value="hash"),
+            patch(
+                "renai.cache.middleware.read_metadata_cache_with_source",
+                return_value=(cached, CacheSource(is_vision_doc=False, rule_signature="")),
+            ),
+            patch.object(
+                processor.visual_processor,
+                "extract_metadata_from_image",
+                AsyncMock(return_value=extracted),
+            ) as mock_visual,
+            patch(
+                "renai.file_ops.organizer.safe_move_file",
+                side_effect=lambda s, d, **kwargs: d,
+            ),
+        ):
+            result = await processor.process_file(test_file, mode="rename", rename_images=True)
+
+        assert result.success is True
+        assert result.metadata["description"] == "Rule category photo"
+        # Re-extraction receives the rule's image category universe.
+        assert mock_visual.call_args.kwargs["image_categories"] == rule.image_categories
 
     @pytest.mark.asyncio
     async def test_doc_template_applied_by_organizer(self, processor, tmp_path):
@@ -615,3 +691,28 @@ class TestPipelineFolderRules:
             result = await organizer.organize_file(tmp_path / "a.pdf", book, mode="rename")
 
         assert result.name == "Dune -- Frank Herbert -- (1965).pdf"
+
+
+def test_rule_cache_signature_mode_and_stability(tmp_path):
+    """Signatures hash the mode-relevant list, stay stable, and ignore absent lists."""
+    doc_rule = FolderRule(path=tmp_path, categories={"en": ["Comic"]})
+    img_rule = FolderRule(path=tmp_path, image_categories={"en": ["Screenshot"]})
+    same_doc_rule = FolderRule(path=tmp_path, categories={"en": ["Comic"]})
+
+    # Doc mode signs categories; image mode signs image_categories; a rule that
+    # does not restrict the mode's list shares the global universe (None).
+    assert rule_cache_signature(doc_rule, mode="doc") is not None
+    assert rule_cache_signature(doc_rule, mode="img") is None
+    assert rule_cache_signature(img_rule, mode="img") is not None
+    assert rule_cache_signature(img_rule, mode="doc") is None
+    assert rule_cache_signature(None, mode="doc") is None
+
+    # Equal universes hash identically; list order is semantically meaningful
+    # (the LLM fallback picks bucket[0]) so a reorder intentionally invalidates.
+    assert rule_cache_signature(doc_rule, mode="doc") == rule_cache_signature(
+        same_doc_rule, mode="doc"
+    )
+    assert rule_cache_signature(doc_rule, mode="doc") != rule_cache_signature(
+        FolderRule(path=tmp_path, categories={"en": ["Comic", "Other"]}),
+        mode="doc",
+    )
