@@ -9,7 +9,9 @@ import os
 import shutil
 import tempfile
 import uuid
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from ..exceptions import FileOperationError
 from ..utils import get_file_hash
@@ -161,6 +163,73 @@ def undo_last_operation(cache_dir: Path | None = None) -> int:
     return reverted_count
 
 
+def _safe_transfer(
+    source_path: Path,
+    dest_path: Path,
+    *,
+    transfer: Callable[[str, str], Any],
+    operation_type: str,
+    ensure_dirs: bool = True,
+    source_hash: str | None = None,
+    dry_run: bool = False,
+    root_dir: Path | None = None,
+    record_undo: bool = False,
+    cache_dir: Path | None = None,
+) -> Path:
+    """Shared safety preamble for move/copy transfers.
+
+    Single source of truth for the pre-flight checks both public helpers rely on:
+    source existence, root-boundary enforcement, duplicate-hash detection (same
+    content already at the destination is a no-op), unique-destination resolution,
+    and the dry-run gate. Only the terminal ``transfer`` step differs between
+    move and copy, so a fix to the dedup/dry-run logic lands exactly once.
+
+    When root_dir is given, the destination is validated against it before any
+    filesystem work, so a traversal destination fails even in dry-run mode.
+    """
+    if not source_path.exists():
+        raise FileNotFoundError(f"Source file {source_path} does not exist")
+
+    if root_dir is not None:
+        ensure_within_root(dest_path, root_dir)
+
+    final_dest_path = dest_path
+    if dest_path.exists():
+        existing_hash = get_file_hash(dest_path)
+        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
+
+        if existing_hash == new_hash:
+            logging.debug(
+                f"File {dest_path.name} already exists with same content, skipping {operation_type}"
+            )
+            return dest_path
+        final_dest_path = ensure_unique_path(dest_path, source_hash)
+
+    if dry_run:
+        logging.info(
+            f"[DRY-RUN] Would {operation_type} {source_path.name} -> {final_dest_path.name}"
+        )
+        return final_dest_path
+
+    try:
+        if ensure_dirs:
+            final_dest_path.parent.mkdir(parents=True, exist_ok=True)
+        transfer(str(source_path), str(final_dest_path))
+        if record_undo:
+            record_undo_entry(
+                source_path, final_dest_path, operation_type=operation_type, cache_dir=cache_dir
+            )
+        logging.debug(
+            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
+        )
+        return final_dest_path
+    except Exception as e:
+        logging.error(
+            f"ERROR: Failed to {operation_type} {source_path.name} to {dest_path.parent.name}: {e}"
+        )
+        raise
+
+
 def safe_move_file(
     source_path: Path,
     dest_path: Path,
@@ -176,46 +245,18 @@ def safe_move_file(
     When root_dir is given, the destination is validated against it before any
     filesystem work, so a traversal destination fails even in dry-run mode.
     """
-    if not source_path.exists():
-        raise FileNotFoundError(f"Source file {source_path} does not exist")
-
-    if root_dir is not None:
-        ensure_within_root(dest_path, root_dir)
-
-    final_dest_path = dest_path
-    if dest_path.exists():
-        existing_hash = get_file_hash(dest_path)
-        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
-
-        if existing_hash == new_hash:
-            logging.debug(
-                f"File {dest_path.name} already exists with same content, skipping {operation_type}"
-            )
-            return dest_path
-        final_dest_path = ensure_unique_path(dest_path, source_hash)
-
-    if dry_run:
-        logging.info(
-            f"[DRY-RUN] Would {operation_type} {source_path.name} -> {final_dest_path.name}"
-        )
-        return final_dest_path
-
-    try:
-        if ensure_dirs:
-            final_dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source_path), str(final_dest_path))
-        record_undo_entry(
-            source_path, final_dest_path, operation_type=operation_type, cache_dir=cache_dir
-        )
-        logging.debug(
-            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
-        )
-        return final_dest_path
-    except Exception as e:
-        logging.error(
-            f"ERROR: Failed to {operation_type} {source_path.name} to {dest_path.parent.name}: {e}"
-        )
-        raise
+    return _safe_transfer(
+        source_path,
+        dest_path,
+        transfer=shutil.move,
+        operation_type=operation_type,
+        ensure_dirs=ensure_dirs,
+        source_hash=source_hash,
+        dry_run=dry_run,
+        root_dir=root_dir,
+        record_undo=True,
+        cache_dir=cache_dir,
+    )
 
 
 def safe_copy_file(
@@ -229,44 +270,22 @@ def safe_copy_file(
 ) -> Path:
     """Safely copy a file with duplicate detection, dry-run support, and error handling.
 
+    Copies never record undo entries: the source stays in place, so there is
+    nothing to revert.
+
     When root_dir is given, the destination is validated against it before any
     filesystem work, so a traversal destination fails even in dry-run mode.
     """
-    if not source_path.exists():
-        raise FileNotFoundError(f"Source file {source_path} does not exist")
-
-    if root_dir is not None:
-        ensure_within_root(dest_path, root_dir)
-
-    final_dest_path = dest_path
-    if dest_path.exists():
-        existing_hash = get_file_hash(dest_path)
-        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
-
-        if existing_hash == new_hash:
-            logging.debug(
-                f"File {dest_path.name} already exists with same content, skipping {operation_type}"
-            )
-            return dest_path
-        final_dest_path = ensure_unique_path(dest_path, source_hash)
-
-    if dry_run:
-        logging.info(
-            f"[DRY-RUN] Would {operation_type} {source_path.name} -> {final_dest_path.name}"
-        )
-        return final_dest_path
-
-    try:
-        if ensure_dirs:
-            final_dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(source_path), str(final_dest_path))
-        logging.debug(
-            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
-        )
-        return final_dest_path
-    except Exception as e:
-        logging.error(f"ERROR: Failed to {operation_type} {source_path.name}: {e}")
-        raise
+    return _safe_transfer(
+        source_path,
+        dest_path,
+        transfer=shutil.copy2,
+        operation_type=operation_type,
+        ensure_dirs=ensure_dirs,
+        source_hash=source_hash,
+        dry_run=dry_run,
+        root_dir=root_dir,
+    )
 
 
 def resolve_target_destination(

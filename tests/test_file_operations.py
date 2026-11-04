@@ -73,6 +73,17 @@ class TestSafeCopyFile:
         assert dest.exists()
         assert dest.read_text() == "test content"
 
+    def test_safe_copy_file_never_records_undo(self, tmp_path):
+        """Copies leave the source in place, so they must never record an undo entry."""
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("test content")
+
+        with patch("renai.file_ops.operations.record_undo_entry") as mock_record:
+            safe_copy_file(source, dest)
+
+        mock_record.assert_not_called()
+
     def test_safe_copy_file_missing_source(self, tmp_path):
         """Test FileNotFoundError if source doesn't exist."""
         source = tmp_path / "nonexistent.txt"
