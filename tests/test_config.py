@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import typer
 
 from renai.cli import display_warnings
 from renai.config import (
@@ -381,32 +382,26 @@ class TestDisplayWarnings:
             )
 
     def test_display_warnings_cancel_keyboard_interrupt(self):
-        """Should log cancellation and exit when KeyboardInterrupt is raised."""
+        """Should log cancellation and exit with typer.Exit(0) when KeyboardInterrupt is raised."""
         with patch("builtins.input", side_effect=KeyboardInterrupt):
             with patch("renai.cli.console.print") as mock_print:
-                with patch("sys.exit") as mock_exit:
-                    mock_exit.side_effect = SystemExit(0)
-                    with pytest.raises(SystemExit) as exc_info:
-                        display_warnings("rename", False)
-                    assert exc_info.value.code == 0
-                    assert any(
-                        "cancelled" in str(args).lower() for args, _ in mock_print.call_args_list
-                    )
-                    mock_exit.assert_called_with(0)
+                with pytest.raises(typer.Exit) as exc_info:
+                    display_warnings("rename", False)
+                assert exc_info.value.exit_code == 0
+                assert any(
+                    "cancelled" in str(args).lower() for args, _ in mock_print.call_args_list
+                )
 
     def test_display_warnings_cancel_eof_error(self):
-        """Should log cancellation and exit when EOFError is raised."""
+        """Should log cancellation and exit with typer.Exit(0) when EOFError is raised."""
         with patch("builtins.input", side_effect=EOFError):
             with patch("renai.cli.console.print") as mock_print:
-                with patch("sys.exit") as mock_exit:
-                    mock_exit.side_effect = SystemExit(0)
-                    with pytest.raises(SystemExit) as exc_info:
-                        display_warnings("rename", False)
-                    assert exc_info.value.code == 0
-                    assert any(
-                        "cancelled" in str(args).lower() for args, _ in mock_print.call_args_list
-                    )
-                    mock_exit.assert_called_with(0)
+                with pytest.raises(typer.Exit) as exc_info:
+                    display_warnings("rename", False)
+                assert exc_info.value.exit_code == 0
+                assert any(
+                    "cancelled" in str(args).lower() for args, _ in mock_print.call_args_list
+                )
 
 
 class TestDirectories:

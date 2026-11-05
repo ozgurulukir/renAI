@@ -52,10 +52,24 @@ class Info:
     PROVIDER_TABLE_TITLE = "Available LLM Providers"
     COL_PROVIDER = "Provider"
     COL_MODEL = "Model Default"
+    UNDO_REVERTED = "[green]Successfully reverted {} file operations.[/green]"
+    UNDO_NOTHING = "[yellow]No recent operations to undo.[/yellow]"
 
 
 class Error:
     SETUP_FAILED = "[bold red]❌ Setup failed:[/bold red] {}"
+    VISION_GUARD_TITLE = "[bold yellow]Vision Configuration Guard[/bold yellow]"
+    VISION_GUARD_BODY = (
+        "[bold red]⚠️ VISION MODEL CONFIGURATION REQUIRED[/bold red]\n\n"
+        "[yellow]{}[/yellow]\n\n"
+        "[cyan]Please run 'renai init' to configure a Vision Provider & Model,\n"
+        "or specify '--vision-model <model_name>' when running process.[/cyan]"
+    )
+    VISION_REASON_NOT_CONFIGURED = (
+        "Vision model is not configured. Image processing or vision fallback\n"
+        "requires a vision model."
+    )
+    VISION_REASON_NOT_SUPPORTED = "Selected vision model '{}' does not support vision modalities."
 
 
 class Help:
@@ -74,6 +88,7 @@ class Help:
     MODEL = "Specific model name override"
     WORKERS = "Concurrency level"
     OCR_ENHANCED = "Advanced OCR preprocessing"
+    DRY_RUN = "Simulate processing without renaming or moving files."
     DEBUG_OCR = "Save OCR debug images"
     USE_MUTOOL = "Use mutool for PDF extraction"
     MUTOOL_PATH = "Path to mutool"
