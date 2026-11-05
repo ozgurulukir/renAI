@@ -335,7 +335,7 @@ def _configure_single_provider(
 ) -> None:
     """Configure credentials and models for a single provider."""
     if selected_provider not in configured:
-        configured[selected_provider] = {"models": []}
+        configured[selected_provider] = {"models": [], "base_url": "", "api_key": ""}
 
     if selected_provider == "custom":
         base_url = questionary.text(

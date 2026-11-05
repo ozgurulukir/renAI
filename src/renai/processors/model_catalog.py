@@ -5,15 +5,20 @@ Prompt-free and I/O-free by design: importing this module must not drag in
 Rich, questionary, or typer, so the mapping is directly testable.
 """
 
-from typing import NotRequired, TypedDict
+from typing import TypedDict
 
 
 class ConfiguredProvider(TypedDict):
-    """One provider entry collected by the init wizard's ``configured`` dict."""
+    """One provider entry collected by the init wizard's ``configured`` dict.
+
+    ``base_url`` and ``api_key`` are populated for every provider before
+    ``_build_final_config_and_secrets`` reads them (wizard always collects
+    them on both the custom and standard paths), so they are required.
+    """
 
     models: list[str]
-    base_url: NotRequired[str]
-    api_key: NotRequired[str]
+    base_url: str
+    api_key: str
 
 
 ConfiguredProviders = dict[str, ConfiguredProvider]
