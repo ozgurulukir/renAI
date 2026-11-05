@@ -15,6 +15,18 @@ from renai.messages import setup as msg
 from ..config import app_settings
 from ..exceptions import ConfigurationError
 
+# Pure catalog mapping lives in model_catalog.py; re-exported here so existing
+# import sites (tests, callers) keep working unchanged.
+from .model_catalog import (  # noqa: F401
+    DIRECT_DEV_PROVIDERS,
+    ConfiguredProviders,
+    _filter_catalog_models,
+    _get_display_choices,
+    _map_deepinfra_model,
+    _map_openrouter_model,
+    get_provider_model_name,
+)
+
 # Custom theme for setup messages
 custom_theme = Theme(
     {
@@ -45,63 +57,6 @@ custom_style = Style(
         ("scrollbar.button", "bg:#00ffff"),
     ]
 )
-
-
-DIRECT_DEV_PROVIDERS = {
-    "openai",
-    "google",
-    "anthropic",
-    "deepseek",
-    "mistral",
-    "cohere",
-    "xai",
-    "alibaba",
-}
-
-
-def _map_openrouter_model(catalog_id: str) -> str:
-    model = catalog_id
-    if model.startswith("openrouter/"):
-        model = model[len("openrouter/") :]
-    if model.startswith("meta/"):
-        return "meta-llama/" + model[len("meta/") :]
-    if model.startswith("mistral/"):
-        return "mistralai/" + model[len("mistral/") :]
-    return model
-
-
-def _map_deepinfra_model(catalog_id: str, catalog_info: dict) -> str:
-    for w in catalog_info.get("weights", []):
-        if w.get("label") == "Hugging Face" and "huggingface.co/" in w.get("url", ""):
-            parts = w["url"].split("huggingface.co/")
-            if len(parts) > 1:
-                return parts[1].strip("/")
-    model = catalog_id
-    if model.startswith("deepinfra/"):
-        model = model[len("deepinfra/") :]
-    if model.startswith("meta/"):
-        return "meta-llama/" + model[len("meta/") :]
-    if model.startswith("mistral/"):
-        return "mistralai/" + model[len("mistral/") :]
-    return model
-
-
-def get_provider_model_name(catalog_id: str, catalog_info: dict, provider: str) -> str:
-    """Map the models.dev catalog ID to the actual model name expected by the provider."""
-    if provider == "openrouter":
-        return _map_openrouter_model(catalog_id)
-    if provider == "deepinfra":
-        return _map_deepinfra_model(catalog_id, catalog_info)
-
-    if catalog_id.startswith(f"{provider}/"):
-        return catalog_id[len(f"{provider}/") :]
-
-    if "/" in catalog_id:
-        dev, name = catalog_id.split("/", 1)
-        if dev in DIRECT_DEV_PROVIDERS:
-            return name
-
-    return catalog_id
 
 
 def _build_provider_options(
@@ -160,68 +115,6 @@ def _build_provider_options(
             }
         )
     return provider_options
-
-
-def _filter_catalog_models(
-    selected_provider: str,
-    catalog: dict,
-    providers_catalog: dict | None = None,
-    vision_only: bool = False,
-) -> list[str]:
-    """Filter models from catalog based on provider and optional vision capability."""
-    from renai.utils.models_dev import filter_vision_models
-
-    models = []
-    if providers_catalog and selected_provider in providers_catalog:
-        p_models = providers_catalog[selected_provider].get("models")
-        if p_models and isinstance(p_models, dict) and p_models:
-            models = list(p_models.keys())
-
-    if not models:
-        if not catalog:
-            models = []
-        elif selected_provider in ["deepinfra", "openrouter"]:
-            models = list(catalog.keys())
-        else:
-            models = [k for k in catalog if k.startswith(f"{selected_provider}/")]
-
-    if vision_only and models:
-        models = filter_vision_models(models, catalog=catalog)
-
-    return models
-
-
-def _get_display_choices(
-    selected_provider: str, model_names: list[str], catalog: dict | None = None
-) -> list[str]:
-    """Map full catalog model IDs to display choices."""
-    catalog = catalog or {}
-    display_choices = []
-    for m in model_names:
-        info = catalog.get(m, {})
-        display_name = get_provider_model_name(m, info, selected_provider)
-        display_choices.append(display_name)
-    return display_choices
-
-
-def _get_popular_rank(
-    m: str, catalog: dict, provider: str, popular_models: list[str] | None = None
-) -> tuple[bool, int, str]:
-    """Determine sort priority rank for a model based on popular_models list (legacy fallback)."""
-    popular_models = popular_models or []
-    info = catalog.get(m, {})
-    actual = get_provider_model_name(m, info, provider)
-    m_no_tag = m.split(":", maxsplit=1)[0]
-    actual_no_tag = actual.split(":")[0]
-    m_base = m_no_tag.split("/")[-1]
-    actual_base = actual_no_tag.split("/")[-1]
-
-    for idx, pop in enumerate(popular_models):
-        pop_no_tag = pop.split(":")[0]
-        pop_base = pop_no_tag.split("/")[-1]
-        if pop in (m, actual, m_no_tag, actual_no_tag) or pop_base in (m_base, actual_base):
-            return (False, idx, m)
-    return (True, 999, m)
 
 
 def _prompt_model_selection(
@@ -390,7 +283,7 @@ def _prompt_and_validate_api_key(
 
 def _configure_standard_provider(
     selected_provider: str,
-    configured: dict,
+    configured: ConfiguredProviders,
     provider_options: list,
     catalog: dict,
     providers_catalog: dict | None = None,
@@ -435,14 +328,14 @@ def _configure_standard_provider(
 
 def _configure_single_provider(
     selected_provider: str,
-    configured: dict,
+    configured: ConfiguredProviders,
     provider_options: list,
     catalog: dict,
     providers_catalog: dict | None = None,
 ) -> None:
     """Configure credentials and models for a single provider."""
     if selected_provider not in configured:
-        configured[selected_provider] = {"models": []}
+        configured[selected_provider] = {"models": [], "base_url": "", "api_key": ""}
 
     if selected_provider == "custom":
         base_url = questionary.text(
@@ -467,7 +360,7 @@ def _configure_single_provider(
 
 
 def _build_final_config_and_secrets(
-    configured: dict,
+    configured: ConfiguredProviders,
     default_provider: str,
     default_model: str,
     vision_provider: str | None = None,
@@ -507,7 +400,7 @@ def _configure_vision_selection(
     default_provider: str,
     default_model: str,
     configured_names: list[str],
-    configured: dict,
+    configured: ConfiguredProviders,
     catalog: dict,
     provider_options: list,
     providers_catalog: dict | None,
@@ -580,7 +473,7 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     provider_options = _build_provider_options(
         catalog, all_devs, providers_catalog=providers_catalog
     )
-    configured = {}
+    configured: ConfiguredProviders = {}
 
     while True:
         provider_choices = []
