@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2026-11-05
+
+### Changed
+
+- **Refinement Pass Cost Gate**: Added the `refine_metadata` setting (`"auto"` | `"always"` | `"never"`, default `"auto"`). The "Senior Editor" refinement pass is skipped when the initial extraction already produced a real title and author, cutting a full extra LLM call per well-extracted file; `"always"` forces it, `"never"` disables it. The gate applies uniformly to the text and vision extraction paths.
+- **Durable Undo Journal**: The rewrite-in-place `undo_history.json` was replaced with an append-only `undo_journal.jsonl` — atomic persist via temp file + `os.replace`, tolerant of corrupt/torn lines, with the legacy `undo_history.json` still read as a fallback.
+- **Folder Rules Now Key the Metadata Cache**: Cache entries are keyed with a rule signature (`rule_cache_signature`). Changing a folder rule's categories or templates invalidates stale cache rows for that folder instead of post-hoc clamping them, and rule-run records can no longer leak into global runs.
+- **Corrupt Cache Database Fails Loud**: A `sqlite3.DatabaseError` on `cache.db` no longer masquerades as an ordinary cache miss and silently re-extracted every file at full cost via the superseded legacy JSON store. The read path now logs an error naming `cache.db` with a remediation hint and skips the legacy fallback; the write path logs that extraction results are not being cached.
+
+### Fixed
+
+- **Cache Hits Keep the Same Template**: The observed extraction source (text vs vision) is persisted with the cache entry, so a text-extractable PDF run with `--fallback vision` builds the same filename cold and cached instead of flipping between the doc and vision templates depending on cache warmth. Text-path metadata is also no longer written under the vision provider/model.
+- **Broader API Backoff**: Retries now cover `APITimeoutError`, `APIConnectionError`, and 5xx `APIStatusError`; non-429 4xx client errors fail fast instead of stalling.
+- **Undo Journal Is Best-Effort Again**: A journal write failure logs a warning instead of turning an already-successful move into a raised error, and `undo` counts an entry as reverted only when a file was actually moved back.
+- Setup hardening: `ConfiguredProvider` fields are now required, preventing half-configured providers from slipping through the wizard.
+
+### Internal
+
+- Consolidated the safe move/copy safety preamble in `file_ops`, routed the last hardcoded CLI strings through `messages/` with normalized exit paths, and extracted the prompt-free model catalog mapping to `model_catalog.py`. Extensive new unit-test coverage (cache, config helpers, sanitization, OCR language handling).
+
 ## [2.3.1] - 2026-10-05
 
 ### Changed
