@@ -88,6 +88,7 @@ class Help:
     MODEL = "Specific model name override"
     WORKERS = "Concurrency level"
     OCR_ENHANCED = "Advanced OCR preprocessing"
+    DRY_RUN = "Simulate processing without renaming or moving files."
     DEBUG_OCR = "Save OCR debug images"
     USE_MUTOOL = "Use mutool for PDF extraction"
     MUTOOL_PATH = "Path to mutool"

@@ -163,6 +163,9 @@ def display_warnings(
         input("")
     except (KeyboardInterrupt, EOFError):
         console.print(msg.Prompt.CANCELLED)
+        # typer.Exit is an Exception (not BaseException like sys.exit), so it
+        # MUST NOT be raised where a broad `except Exception` upstream could
+        # swallow it and turn a deliberate cancel into an apparent crash.
         raise typer.Exit(code=0) from None
 
 
@@ -501,7 +504,7 @@ def process_cmd(
         bool,
         typer.Option(
             "--dry-run",
-            help="Simulate processing without renaming or moving files.",
+            help=msg.Help.DRY_RUN,
         ),
     ] = False,
 ) -> None:
