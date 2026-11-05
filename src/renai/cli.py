@@ -163,7 +163,7 @@ def display_warnings(
         input("")
     except (KeyboardInterrupt, EOFError):
         console.print(msg.Prompt.CANCELLED)
-        sys.exit(0)
+        raise typer.Exit(code=0) from None
 
 
 # =============================================================================
@@ -249,16 +249,10 @@ def check_vision_model_guard(
 def _display_vision_missing_error(reason: str) -> None:
     from rich.panel import Panel
 
-    message = (
-        f"[bold red]⚠️ VISION MODEL CONFIGURATION REQUIRED[/bold red]\n\n"
-        f"[yellow]{reason}[/yellow]\n\n"
-        f"[cyan]Please run 'renai init' to configure a Vision Provider & Model,\n"
-        f"or specify '--vision-model <model_name>' when running process.[/cyan]"
-    )
     console.print(
         Panel(
-            message,
-            title="[bold yellow]Vision Configuration Guard[/bold yellow]",
+            msg.Error.VISION_GUARD_BODY.format(reason),
+            title=msg.Error.VISION_GUARD_TITLE,
             border_style="red",
             padding=(1, 2),
         )
@@ -633,9 +627,9 @@ def undo_cmd() -> None:
 
     reverted = undo_last_operation()
     if reverted > 0:
-        console.print(f"[green]Successfully reverted {reverted} file operations.[/green]")
+        console.print(msg.Info.UNDO_REVERTED.format(reverted))
     else:
-        console.print("[yellow]No recent operations to undo.[/yellow]")
+        console.print(msg.Info.UNDO_NOTHING)
 
 
 def main() -> None:

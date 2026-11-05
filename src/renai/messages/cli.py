@@ -52,10 +52,19 @@ class Info:
     PROVIDER_TABLE_TITLE = "Available LLM Providers"
     COL_PROVIDER = "Provider"
     COL_MODEL = "Model Default"
+    UNDO_REVERTED = "[green]Successfully reverted {} file operations.[/green]"
+    UNDO_NOTHING = "[yellow]No recent operations to undo.[/yellow]"
 
 
 class Error:
     SETUP_FAILED = "[bold red]❌ Setup failed:[/bold red] {}"
+    VISION_GUARD_TITLE = "[bold yellow]Vision Configuration Guard[/bold yellow]"
+    VISION_GUARD_BODY = (
+        "[bold red]⚠️ VISION MODEL CONFIGURATION REQUIRED[/bold red]\n\n"
+        "[yellow]{}[/yellow]\n\n"
+        "[cyan]Please run 'renai init' to configure a Vision Provider & Model,\n"
+        "or specify '--vision-model <model_name>' when running process.[/cyan]"
+    )
 
 
 class Help:
