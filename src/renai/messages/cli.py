@@ -65,6 +65,11 @@ class Error:
         "[cyan]Please run 'renai init' to configure a Vision Provider & Model,\n"
         "or specify '--vision-model <model_name>' when running process.[/cyan]"
     )
+    VISION_REASON_NOT_CONFIGURED = (
+        "Vision model is not configured. Image processing or vision fallback\n"
+        "requires a vision model."
+    )
+    VISION_REASON_NOT_SUPPORTED = "Selected vision model '{}' does not support vision modalities."
 
 
 class Help:

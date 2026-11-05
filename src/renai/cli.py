@@ -232,17 +232,12 @@ def check_vision_model_guard(
     eff_v_model = vision_model or get_effective_vision_model(eff_v_provider)
 
     if not eff_v_model:
-        _display_vision_missing_error(
-            "Vision model is not configured. Image processing or vision fallback\n"
-            "requires a vision model."
-        )
+        _display_vision_missing_error(msg.Error.VISION_REASON_NOT_CONFIGURED)
         raise typer.Exit(code=1)
 
     vis_ok = is_vision_supported(eff_v_model)
     if vis_ok is False:
-        _display_vision_missing_error(
-            f"Selected vision model '{eff_v_model}' does not support vision modalities."
-        )
+        _display_vision_missing_error(msg.Error.VISION_REASON_NOT_SUPPORTED.format(eff_v_model))
         raise typer.Exit(code=1)
 
 
