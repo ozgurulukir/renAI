@@ -1,9 +1,25 @@
+from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pymupdf
 import pytest
+from PIL import Image
 
 from renai.models.schemas import BookMetadata, ImageMetadata
 from renai.processors.visual import VisualProcessor
+
+
+@pytest.fixture
+def sample_pdf(tmp_path):
+    """3-page PDF with fixed geometry (612x792 pt)."""
+    path = tmp_path / "sample.pdf"
+    doc = pymupdf.open()
+    for i in range(3):
+        page = doc.new_page(width=612, height=792)
+        page.insert_text((72, 100 + 30 * i), f"page {i}", fontsize=24)
+    doc.save(str(path))
+    doc.close()
+    return path
 
 
 class TestVisualProcessor:
@@ -63,145 +79,85 @@ class TestVisualProcessor:
         assert len(pages) == 3
 
     @pytest.mark.asyncio
-    async def test_extract_metadata_from_pdf(self, visual_processor, tmp_path):
-        """Test PDF vision extraction asynchronously."""
-        test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf")
-
-        with patch("pymupdf.open") as mock_pdf_open:
-            mock_doc = MagicMock()
-            mock_doc.__len__.return_value = 1
-            mock_page = MagicMock()
-            mock_doc.load_page.return_value = mock_page
-            mock_pix = MagicMock()
-            mock_pix.width = 100
-            mock_pix.height = 100
-            mock_pix.samples = b"\x00" * (100 * 100 * 3)
-            mock_page.get_pixmap.return_value = mock_pix
-            mock_pdf_open.return_value.__enter__.return_value = mock_doc
-
-            with patch("PIL.Image.frombytes") as mock_frombytes:
-                mock_img = MagicMock()
-                mock_img.width = 100
-                mock_img.height = 100
-                mock_frombytes.return_value = mock_img
-                mock_img.thumbnail = MagicMock()
-
-                with patch("renai.processors.visual.BytesIO") as mock_bytesio:
-                    mock_buffer = MagicMock()
-                    mock_buffer.getvalue.return_value = b"image bytes"
-                    mock_bytesio.return_value = mock_buffer
-
-                    result = await visual_processor.extract_metadata_from_pdf(test_file)
-                    assert result.title == "Vision Book"
-                    visual_processor.llm_engine.get_book_metadata_from_image.assert_awaited_once_with(
-                        test_file, [b"image bytes"], allowed_categories=None
-                    )
+    async def test_extract_metadata_from_pdf(self, visual_processor, sample_pdf):
+        """Test PDF vision extraction asynchronously with a real render."""
+        result = await visual_processor.extract_metadata_from_pdf(sample_pdf)
+        assert result.title == "Vision Book"
+        visual_processor.llm_engine.get_book_metadata_from_image.assert_awaited_once()
+        call = visual_processor.llm_engine.get_book_metadata_from_image.await_args
+        # All sampled pages are converted and passed together in a single
+        # consolidated vision call -- a regression that silently drops pages
+        # (or skips the page loop) must not pass.
+        assert len(call.args[1]) == 3
+        first = Image.open(BytesIO(call.args[1][0]))
+        assert first.format == "JPEG"
 
     @pytest.mark.asyncio
     async def test_extract_metadata_from_pdf_llm_returns_none_all_pages(
-        self, visual_processor, tmp_path
+        self, visual_processor, sample_pdf
     ):
         """Test PDF extraction when LLM returns None for all pages."""
-        test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf")
-
         visual_processor.llm_engine.get_book_metadata_from_image = AsyncMock(return_value=None)
-
-        with patch("pymupdf.open") as mock_pdf_open:
-            mock_doc = MagicMock()
-            mock_doc.__len__.return_value = 3
-            mock_page = MagicMock()
-            mock_doc.load_page.return_value = mock_page
-            mock_pix = MagicMock()
-            mock_pix.width = 100
-            mock_pix.height = 100
-            mock_pix.samples = b"\x00" * (100 * 100 * 3)
-            mock_page.get_pixmap.return_value = mock_pix
-            mock_pdf_open.return_value.__enter__.return_value = mock_doc
-
-            with patch("PIL.Image.frombytes") as mock_frombytes:
-                mock_img = MagicMock()
-                mock_img.width = 100
-                mock_img.height = 100
-                mock_frombytes.return_value = mock_img
-                mock_img.thumbnail = MagicMock()
-
-                with patch("renai.processors.visual.BytesIO") as mock_bytesio:
-                    mock_buffer = MagicMock()
-                    mock_buffer.getvalue.return_value = b"image bytes"
-                    mock_bytesio.return_value = mock_buffer
-
-                    result = await visual_processor.extract_metadata_from_pdf(test_file)
-                    assert result is None
-                    # All sampled pages must be converted and passed together in a single
-                    # consolidated vision call -- a regression that silently drops pages
-                    # (or skips the page loop) must not pass.
-                    call = visual_processor.llm_engine.get_book_metadata_from_image.await_args
-                    assert call is not None
-                    assert len(call.args[1]) == 3
-
-    @pytest.mark.asyncio
-    async def test_convert_page_out_of_bounds(self, visual_processor):
-        """Test _convert_page returns None if page number is out of bounds."""
-        mock_doc = MagicMock()
-        mock_doc.__len__.return_value = 1
-        result = visual_processor._convert_page(mock_doc, 5, 72)
+        result = await visual_processor.extract_metadata_from_pdf(sample_pdf)
         assert result is None
+        call = visual_processor.llm_engine.get_book_metadata_from_image.await_args
+        assert call is not None
+        assert len(call.args[1]) == 3
 
     @pytest.mark.asyncio
-    async def test_convert_page_large_image(self, visual_processor):
-        """Test _convert_page resizes large images using thumbnail."""
-        mock_doc = MagicMock()
-        mock_doc.__len__.return_value = 1
-        mock_page = MagicMock()
-        mock_doc.load_page.return_value = mock_page
-        mock_pix = MagicMock()
-        mock_pix.width = 3000
-        mock_pix.height = 3000
-        mock_pix.samples = b"\x00" * 3
-        mock_page.get_pixmap.return_value = mock_pix
+    async def test_out_of_bounds_page_absent(self, visual_processor, sample_pdf):
+        """Pages beyond the document are absent from the seam results (old: None)."""
+        from renai.engines.render import create_page_renderer
 
-        with patch("PIL.Image.frombytes") as mock_frombytes:
-            mock_img = MagicMock()
-            mock_img.width = 3000
-            mock_img.height = 3000
-            mock_frombytes.return_value = mock_img
+        renderer = create_page_renderer(
+            image_max_size=visual_processor.image_max_size,
+            image_quality=visual_processor.image_quality,
+        )
+        rendered = await renderer.render_pages(sample_pdf, [5], 72)
+        assert rendered == {}
 
-            with patch("renai.processors.visual.BytesIO") as mock_bytesio:
-                mock_buffer = MagicMock()
-                mock_buffer.getvalue.return_value = b"large image bytes"
-                mock_bytesio.return_value = mock_buffer
+    @pytest.mark.asyncio
+    async def test_large_image_thumbnail_knobs(self, visual_processor, sample_pdf):
+        """Rendering honors image_max_size (old _convert_page thumbnail behavior)."""
+        from renai.engines.render import create_page_renderer
 
-                result = visual_processor._convert_page(mock_doc, 0, 72)
-                assert result == b"large image bytes"
-
-                # Genuine verification: thumbnail should be called with correct size and resampling
-                from PIL import Image
-
-                mock_img.thumbnail.assert_called_once_with((1024, 1024), Image.Resampling.LANCZOS)
+        renderer = create_page_renderer(image_max_size=100, image_quality=85)
+        rendered = await renderer.render_pages(sample_pdf, [0], 72)
+        img = Image.open(BytesIO(rendered[0].encoded))
+        assert img.format == "JPEG"
+        assert img.size == (77, 100)
 
     @pytest.mark.asyncio
     async def test_extract_metadata_from_pdf_no_pages(self, visual_processor, tmp_path):
         """Test extract_metadata_from_pdf when no pages are converted."""
         test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf")
+        test_file.write_bytes(b"%PDF-1.4 fake")
 
-        with patch("pymupdf.open") as mock_pdf_open:
-            mock_doc = MagicMock()
-            mock_doc.__len__.return_value = 0
-            mock_pdf_open.return_value.__enter__.return_value = mock_doc
+        mock_doc = MagicMock()
+        mock_doc.__len__.return_value = 0
+        mock_doc.__enter__.return_value = mock_doc
 
+        with patch("pymupdf.open", return_value=mock_doc):
             result = await visual_processor.extract_metadata_from_pdf(test_file)
-            assert result is None
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_extract_metadata_from_pdf_exception(self, visual_processor, tmp_path):
         """Test extract_metadata_from_pdf handles exceptions gracefully."""
         test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf")
+        test_file.write_bytes(b"%PDF-1.4 broken")
 
         with patch("pymupdf.open", side_effect=Exception("Failed to open")):
+            result = await visual_processor.extract_metadata_from_pdf(test_file)
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_extract_metadata_from_pdf_render_exception(self, visual_processor, tmp_path):
+        """Test extract_metadata_from_pdf handles render failures gracefully."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"%PDF-1.4 broken")
+
+        with patch("renai.engines.render.pymupdf.open", side_effect=Exception("Render failed")):
             result = await visual_processor.extract_metadata_from_pdf(test_file)
             assert result is None
 
@@ -258,23 +214,31 @@ class TestVisualProcessor:
             assert result == "2026-06-10"
 
     @pytest.mark.asyncio
-    async def test_convert_pdf_page_to_image_async_success(self, visual_processor, tmp_path):
-        """Test _convert_pdf_page_to_image_async success."""
-        test_file = tmp_path / "test.pdf"
-        test_file.write_bytes(b"fake pdf")
+    async def test_convert_pdf_page_to_image_async_success(self, visual_processor, sample_pdf):
+        """Test _convert_pdf_page_to_image_async success with a real render."""
+        result = await visual_processor._convert_pdf_page_to_image_async(sample_pdf, page_number=0)
+        assert result is not None
+        img = Image.open(BytesIO(result))
+        assert img.format == "JPEG"
+        # 612x792 at default vision_dpi=150 (1275x1650), thumbnail-capped to 1024
+        assert img.size == (791, 1024)
 
-        with patch("pymupdf.open") as mock_pdf_open:
-            mock_doc = MagicMock()
-            mock_pdf_open.return_value.__enter__.return_value = mock_doc
+    @pytest.mark.asyncio
+    async def test_convert_pdf_page_to_image_async_custom_dpi(self, visual_processor, sample_pdf):
+        """Explicit dpi overrides vision_dpi."""
+        result = await visual_processor._convert_pdf_page_to_image_async(
+            sample_pdf, page_number=0, dpi=72
+        )
+        img = Image.open(BytesIO(result))
+        assert img.size == (612, 792)  # below max size, no thumbnail
 
-            with patch.object(
-                visual_processor, "_convert_page", return_value=b"page bytes"
-            ) as mock_convert:
-                result = await visual_processor._convert_pdf_page_to_image_async(
-                    test_file, page_number=0
-                )
-                assert result == b"page bytes"
-                mock_convert.assert_called_once_with(mock_doc, 0, 150)  # default vision DPI
+    @pytest.mark.asyncio
+    async def test_convert_pdf_page_to_image_async_out_of_bounds(
+        self, visual_processor, sample_pdf
+    ):
+        """Out-of-bounds page returns None (old _convert_page behavior)."""
+        result = await visual_processor._convert_pdf_page_to_image_async(sample_pdf, page_number=99)
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_convert_pdf_page_to_image_async_exception(self, visual_processor, tmp_path):

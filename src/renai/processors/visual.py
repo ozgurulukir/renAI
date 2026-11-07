@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from io import BytesIO
 from pathlib import Path
 
 import pymupdf
@@ -8,6 +7,7 @@ from PIL import Image
 from PIL.ExifTags import TAGS
 
 from ..engines.llm import LLMEngine
+from ..engines.render import create_page_renderer
 from ..models.schemas import BookMetadata, ImageMetadata
 
 
@@ -15,6 +15,9 @@ class VisualProcessor:
     """
     Handles all visual-based metadata extraction asynchronously.
     Consolidates PDF page sampling and direct image processing.
+
+    PDF page rendering is delegated to the engines.render seam; this class
+    keeps page sampling (``_select_pages``) and LLM orchestration only.
     """
 
     def __init__(
@@ -35,25 +38,11 @@ class VisualProcessor:
         self.vision_max_pages = vision_max_pages
         self.vision_dpi = vision_dpi
 
-    def _convert_page(self, doc: pymupdf.Document, page_number: int, dpi: int) -> bytes | None:
-        """Helper to convert a loaded PDF page to optimized image bytes (synchronous)."""
-        if page_number >= len(doc):
-            return None
-
-        page = doc.load_page(page_number)
-        zoom = dpi / 72
-        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
-        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-
-        if img.width > self.image_max_size or img.height > self.image_max_size:
-            img.thumbnail(
-                (self.image_max_size, self.image_max_size),
-                Image.Resampling.LANCZOS,
-            )
-
-        buffer = BytesIO()
-        img.save(buffer, format="JPEG", quality=self.image_quality, optimize=True)
-        return buffer.getvalue()
+    def _make_renderer(self):
+        """Rendering knobs forwarded to the seam; the factory picks the backend."""
+        return create_page_renderer(
+            image_max_size=self.image_max_size, image_quality=self.image_quality
+        )
 
     async def extract_metadata_from_pdf(
         self, file_path: Path, allowed_categories: dict[str, list] | None = None
@@ -61,18 +50,15 @@ class VisualProcessor:
         """Extract metadata from PDF asynchronously by sampling pages and using vision model."""
         try:
 
-            def _get_page_count_and_convert():
+            def _get_page_count():
                 with pymupdf.open(str(file_path)) as doc:
-                    total_pages = len(doc)
-                    pages_to_process = self._select_pages(total_pages)
-                    images = []
-                    for page_num in pages_to_process:
-                        img_bytes = self._convert_page(doc, page_num, self.vision_dpi)
-                        if img_bytes is not None:
-                            images.append(img_bytes)
-                    return images
+                    return len(doc)
 
-            page_images = await asyncio.to_thread(_get_page_count_and_convert)
+            total_pages = await asyncio.to_thread(_get_page_count)
+            pages_to_process = self._select_pages(total_pages)
+            renderer = self._make_renderer()
+            rendered = await renderer.render_pages(file_path, pages_to_process, self.vision_dpi)
+            page_images = [page.encoded for page in rendered.values() if page.encoded is not None]
 
             if not page_images or not self.llm_engine:
                 return None
@@ -150,12 +136,10 @@ class VisualProcessor:
             dpi = self.vision_dpi
 
         try:
-
-            def _convert():
-                with pymupdf.open(str(file_path)) as doc:
-                    return self._convert_page(doc, page_number, dpi)
-
-            return await asyncio.to_thread(_convert)
+            renderer = self._make_renderer()
+            rendered = await renderer.render_pages(file_path, [page_number], dpi)
+            page = rendered.get(page_number)
+            return page.encoded if page else None
         except Exception as e:
             logging.error(f"Failed to convert PDF page to image for {file_path.name}: {e}")
             return None

@@ -1,8 +1,11 @@
-"""Characterization tests for the three PDF page→image render sites.
+"""Characterization tests for the three PDF page→image render paths.
 
-These pin the CURRENT rendered output (dimensions, mode, format, pixel bytes)
-of each backend before the PageRenderer seam refactor. The refactor is green
-only when these assertions pass unchanged per backend.
+These pinned the rendered output (dimensions, mode, format, pixel bytes) of
+each backend BEFORE the PageRenderer seam refactor (pre-refactor they targeted
+OCREngine._extract_image_from_page / VisualProcessor._convert_page /
+OCREngine._bulk_extract_images). They now drive the same renders through the
+seam (create_page_renderer) with the assertions UNCHANGED — the refactor is
+green only because these pass byte-identically per backend.
 """
 
 import shutil
@@ -13,7 +16,7 @@ import pymupdf
 import pytest
 from PIL import Image
 
-from renai.engines.ocr import OCREngine
+from renai.engines.render import create_page_renderer
 from renai.models.schemas import BookMetadata
 from renai.processors.visual import VisualProcessor
 
@@ -43,91 +46,80 @@ def _direct_pixmap(doc, pno, dpi):
 
 
 class TestPymupdfOCRFallback:
-    """Site 1: OCREngine._get_pixmap_thread (via _extract_image_from_page, pymupdf path)."""
+    """Site 1: OCR pymupdf pixmap fallback (was OCREngine._get_pixmap_thread)."""
 
     async def test_pixel_identical_at_150_dpi(self, sample_pdf):
-        engine = OCREngine(silent=True)
         doc = pymupdf.open(str(sample_pdf))
         try:
-            image, temp_path = await engine._extract_image_from_page(doc, 0, sample_pdf, 150)
+            renderer = create_page_renderer(doc=doc)
+            rendered = await renderer.render_pages(sample_pdf, [0], 150)
             expected = _direct_pixmap(doc, 0, 150)
-            assert temp_path is None
-            assert image.size == expected.size == (1275, 1650)
-            assert image.tobytes() == expected.tobytes()
+            page = rendered[0]
+            assert page.temp_path is None
+            assert page.encoded is None
+            assert page.image.size == expected.size == (1275, 1650)
+            assert page.image.tobytes() == expected.tobytes()
         finally:
             doc.close()
 
     async def test_pixel_identical_at_72_dpi(self, sample_pdf):
-        engine = OCREngine(silent=True)
         doc = pymupdf.open(str(sample_pdf))
         try:
-            image, _ = await engine._extract_image_from_page(doc, 2, sample_pdf, 72)
+            renderer = create_page_renderer(doc=doc)
+            rendered = await renderer.render_pages(sample_pdf, [2], 72)
             expected = _direct_pixmap(doc, 2, 72)
-            assert image.size == expected.size == (612, 792)
-            assert image.tobytes() == expected.tobytes()
+            assert rendered[2].image.size == expected.size == (612, 792)
+            assert rendered[2].image.tobytes() == expected.tobytes()
         finally:
             doc.close()
 
 
 class TestVisualConvertPage:
-    """Site 2: VisualProcessor._convert_page (pymupdf + thumbnail + JPEG encode)."""
+    """Site 2: vision JPEG path (was VisualProcessor._convert_page)."""
 
-    def test_jpeg_output_at_72_dpi(self, sample_pdf):
-        processor = VisualProcessor(llm_engine=MagicMock())
-        doc = pymupdf.open(str(sample_pdf))
-        try:
-            data = processor._convert_page(doc, 0, 72)
-        finally:
-            doc.close()
+    async def test_jpeg_output_at_72_dpi(self, sample_pdf):
+        renderer = create_page_renderer(image_max_size=1024, image_quality=85)
+        rendered = await renderer.render_pages(sample_pdf, [0], 72)
+        data = rendered[0].encoded
         img = Image.open(BytesIO(data))
         assert img.format == "JPEG"
         assert img.size == (612, 792)  # below image_max_size, no thumbnail
 
-    def test_thumbnail_knobs_applied(self, sample_pdf):
-        processor = VisualProcessor(
-            llm_engine=MagicMock(), image_max_size=100, image_quality=85
-        )
-        doc = pymupdf.open(str(sample_pdf))
-        try:
-            data = processor._convert_page(doc, 0, 72)
-        finally:
-            doc.close()
-        img = Image.open(BytesIO(data))
+    async def test_thumbnail_knobs_applied(self, sample_pdf):
+        renderer = create_page_renderer(image_max_size=100, image_quality=85)
+        rendered = await renderer.render_pages(sample_pdf, [0], 72)
+        img = Image.open(BytesIO(rendered[0].encoded))
         assert img.format == "JPEG"
         assert img.size == (77, 100)  # 612x792 fit into 100x100 box, LANCZOS thumbnail
 
-    def test_out_of_bounds_page_returns_none(self, sample_pdf):
-        processor = VisualProcessor(llm_engine=MagicMock())
-        doc = pymupdf.open(str(sample_pdf))
-        try:
-            assert processor._convert_page(doc, 99, 72) is None
-        finally:
-            doc.close()
+    async def test_out_of_bounds_page_absent(self, sample_pdf):
+        renderer = create_page_renderer(image_max_size=1024, image_quality=85)
+        rendered = await renderer.render_pages(sample_pdf, [99], 72)
+        assert rendered == {}
 
 
 @pytest.mark.skipif(MUTOOL_PATH is None, reason="mutool binary not available")
 class TestMutoolBulk:
-    """Site 3: OCREngine._bulk_extract_images (mutool subprocess, grayscale PNGs)."""
+    """Site 3: mutool subprocess bulk path (was OCREngine._bulk_extract_images)."""
 
     async def test_bulk_render_pages(self, sample_pdf):
-        engine = OCREngine(use_mutool=True, mutool_path=MUTOOL_PATH, silent=True)
-        paths = await engine._bulk_extract_images(sample_pdf, [0, 2], 150)
+        renderer = create_page_renderer(use_mutool=True, mutool_path=MUTOOL_PATH)
+        rendered = await renderer.render_pages(sample_pdf, [0, 2], 150)
         try:
-            assert set(paths) == {0, 2}
-            for pno, img_path in paths.items():
-                assert "temp_batch_" in img_path.name
-                img = Image.open(img_path)
-                img.load()
+            assert set(rendered) == {0, 2}
+            for _pno, page in rendered.items():
+                assert "temp_batch_" in page.temp_path.name
+                img = page.image
                 assert img.format == "PNG"
                 assert img.mode == "L"  # mutool renders grayscale (-c gray)
                 assert img.size == (1275, 1650)
         finally:
-            for img_path in paths.values():
-                img_path.unlink(missing_ok=True)
+            for page in rendered.values():
+                page.temp_path.unlink(missing_ok=True)
 
     async def test_empty_page_list_returns_empty(self, sample_pdf):
-        engine = OCREngine(use_mutool=True, mutool_path=MUTOOL_PATH, silent=True)
-        assert await engine._bulk_extract_images(sample_pdf, [], 150) == {}
+        renderer = create_page_renderer(use_mutool=True, mutool_path=MUTOOL_PATH)
+        assert await renderer.render_pages(sample_pdf, [], 150) == {}
 
 
 class TestVisionSmoke:
@@ -141,9 +133,7 @@ class TestVisionSmoke:
             return BookMetadata(title="Smoke", category="Article", language="en")
 
         processor = VisualProcessor(llm_engine=MagicMock())
-        processor.llm_engine.get_book_metadata_from_image = AsyncMock(
-            side_effect=fake_metadata
-        )
+        processor.llm_engine.get_book_metadata_from_image = AsyncMock(side_effect=fake_metadata)
 
         result = await processor.extract_metadata_from_pdf(sample_pdf)
         assert result is not None and result.title == "Smoke"

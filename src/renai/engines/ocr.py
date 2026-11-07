@@ -13,12 +13,10 @@ import logging
 import re
 import shutil
 import subprocess
-import sys
 import threading
-import uuid
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pymupdf
@@ -26,13 +24,13 @@ import pytesseract  # type: ignore[import-untyped]
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from ..config import (
-    CACHE_DIR,
     DEBUG_DIR,
     TESSERACT_PATH,
     get_ocr_lang,
     get_subprocess_timeout,
 )
 from ..utils import ensure_secure_dir, sanitize_filename
+from .render import RenderedPage, create_page_renderer, get_subprocess_kwargs
 
 if TYPE_CHECKING:
     import cv2  # type: ignore[import-untyped]
@@ -120,16 +118,6 @@ class OCREngine:
 
         self.MAX_DIMENSION = 2000
 
-    def _get_subprocess_kwargs(self) -> dict[str, Any]:
-        """Consolidate Windows-specific subprocess flags."""
-        kwargs: dict[str, Any] = {}
-        if sys.platform == "win32":
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            kwargs["startupinfo"] = startupinfo
-            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        return kwargs
-
     def _validate_mutool(self, path: str) -> str | None:
         """
         Verify that the provided path points to a valid mutool executable.
@@ -158,7 +146,7 @@ class OCREngine:
 
         # 3. Identity check via version command
         try:
-            kwargs = self._get_subprocess_kwargs()
+            kwargs = get_subprocess_kwargs()
             result = subprocess.run(
                 [resolved, "-v"],
                 capture_output=True,
@@ -291,149 +279,6 @@ class OCREngine:
         tail = list(range(tail_start, total_pages))
         return sorted(set(head + tail))
 
-    async def _bulk_extract_images(
-        self, file_path: Path, pages: list[int], target_dpi: int
-    ) -> dict[int, Path]:
-        """Extract multiple pages from a PDF in a single mutool call asynchronously."""
-        if not pages:
-            return {}
-
-        batch_id = uuid.uuid4().hex
-        output_pattern = CACHE_DIR / f"temp_batch_{batch_id}_%d.png"
-
-        # mutool uses 1-based page numbers
-        page_range = ",".join(str(p + 1) for p in pages)
-
-        try:
-            cmd = [
-                self.mutool_path,
-                "draw",
-                "-q",
-                "-o",
-                str(output_pattern),
-                "-c",
-                "gray",
-                "-r",
-                str(int(target_dpi)),
-                str(file_path),
-                page_range,
-            ]
-
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                **self._get_subprocess_kwargs(),
-            )
-
-            try:
-                _stdout, stderr = await asyncio.wait_for(
-                    process.communicate(), timeout=get_subprocess_timeout()
-                )
-                if process.returncode != 0:
-                    logging.error(f"mutool bulk error: {stderr.decode()}")
-                    return {}
-            except TimeoutError:
-                process.kill()
-                logging.error("mutool bulk extraction timed out")
-                return {}
-
-            # Map back to 0-based pno
-            results = {}
-            for pno in pages:
-                img_path = CACHE_DIR / f"temp_batch_{batch_id}_{pno + 1}.png"
-                if img_path.exists():
-                    results[pno] = img_path
-            return results
-
-        except Exception as e:
-            logging.error(f"Bulk mutool extraction failed: {e}")
-            return {}
-
-    async def _extract_image_from_page(
-        self,
-        doc: pymupdf.Document,
-        pno: int,
-        file_path: Path,
-        target_dpi: int,
-        pre_extracted_path: Path | None = None,
-    ) -> tuple[Image.Image | None, Path | None]:
-        """Handles mutool or pymupdf fallback to extract an image from a page asynchronously."""
-        image: Image.Image | None = None
-        succeeded = False
-        if pre_extracted_path and pre_extracted_path.exists():
-            try:
-                # CPU intensive image loading
-                image = await asyncio.to_thread(Image.open, pre_extracted_path)
-                await asyncio.to_thread(image.load)
-                return image, pre_extracted_path
-            except Exception as e:
-                logging.error(f"Failed to load pre-extracted image for page {pno + 1}: {e}")
-
-        use_mutool_for_page = self.use_mutool and file_path.suffix.lower() == ".pdf"
-        temp_img = None
-
-        if use_mutool_for_page:
-            temp_img = CACHE_DIR / f"temp_page_{pno}_{uuid.uuid4().hex}.png"
-            try:
-                cmd = [
-                    self.mutool_path,
-                    "draw",
-                    "-q",
-                    "-o",
-                    str(temp_img),
-                    "-c",
-                    "gray",
-                    "-r",
-                    str(int(target_dpi)),
-                    str(file_path),
-                    str(pno + 1),
-                ]
-
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    **self._get_subprocess_kwargs(),
-                )
-
-                try:
-                    _stdout, stderr = await asyncio.wait_for(
-                        process.communicate(), timeout=get_subprocess_timeout()
-                    )
-                    if process.returncode == 0:
-                        succeeded = True
-                        image = await asyncio.to_thread(Image.open, temp_img)
-                        await asyncio.to_thread(image.load)
-                    else:
-                        logging.error(f"mutool page error: {stderr.decode()}")
-                except TimeoutError:
-                    process.kill()
-                    logging.error(f"mutool timed out for page {pno + 1}")
-            except Exception as e:
-                logging.error(f"mutool failed for page {pno + 1}: {e}")
-            finally:
-                # Only remove the temp image when we did NOT hand it back to the caller.
-                # On success the caller owns it and performs its own cleanup, so deleting
-                # it here would destroy the very image we return (data-loss regression).
-                if temp_img and temp_img.exists() and not succeeded:
-                    try:
-                        await asyncio.to_thread(temp_img.unlink)
-                    except Exception as e:
-                        logging.debug(f"Cleanup of temp image failed for page {pno + 1}: {e}")
-
-        if not image:
-
-            def _get_pixmap_thread():
-                page = doc.load_page(pno)
-                zoom = target_dpi / 72
-                pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
-                return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-
-            image = await asyncio.to_thread(_get_pixmap_thread)
-
-        return image, temp_img
-
     @classmethod
     def shutdown_process_pool(cls, wait: bool = False) -> None:
         """Shutdown the shared ProcessPoolExecutor if running.
@@ -528,7 +373,8 @@ class OCREngine:
             )
             return ""
         doc = None
-        bulk_images: dict[int, Path] = {}
+        bulk_pages: dict[int, RenderedPage] = {}
+        per_page_temps: list[Path] = []
         try:
             file_debug_dir = None
             if self.debug:
@@ -541,18 +387,29 @@ class OCREngine:
 
             pages_to_extract = self._get_page_sampling(total_pages)
 
-            if self.use_mutool and file_path.suffix.lower() == ".pdf":
-                bulk_images = await self._bulk_extract_images(
+            is_pdf = file_path.suffix.lower() == ".pdf"
+            use_mutool = self.use_mutool and is_pdf
+            # Factory picks the backend; this flow only orchestrates its own
+            # sampling + DPI policy (bulk @ cfg dpi, per-page @ dynamic dpi).
+            mutool_renderer = (
+                create_page_renderer(use_mutool=True, mutool_path=self.mutool_path)
+                if use_mutool
+                else None
+            )
+            pymupdf_renderer = create_page_renderer(doc=doc)
+
+            if mutool_renderer is not None:
+                bulk_pages = await mutool_renderer.render_pages(
                     file_path, pages_to_extract, int(self.cfg["dpi"])
                 )
 
             extracted_text = []
             total_chars = 0
             for pno in pages_to_extract:
-                pre_path = bulk_images.get(pno)
-                target_dpi = self.cfg["dpi"]
+                page_result = bulk_pages.get(pno)
+                page_temp: Path | None = None
 
-                if not pre_path:
+                if page_result is None:
 
                     def _get_dpi(p_no):
                         page = doc.load_page(p_no)
@@ -560,12 +417,21 @@ class OCREngine:
 
                     target_dpi = await asyncio.to_thread(_get_dpi, pno)
 
-                image, temp_img = await self._extract_image_from_page(
-                    doc, pno, file_path, int(target_dpi), pre_extracted_path=pre_path
-                )
+                    # Fallback chain preserved: per-page mutool retry, then pymupdf.
+                    if mutool_renderer is not None:
+                        page_result = (
+                            await mutool_renderer.render_pages(file_path, [pno], int(target_dpi))
+                        ).get(pno)
+                    if page_result is None:
+                        page_result = (
+                            await pymupdf_renderer.render_pages(file_path, [pno], int(target_dpi))
+                        ).get(pno)
+                    page_temp = page_result.temp_path if page_result else None
+                    if page_temp:
+                        per_page_temps.append(page_temp)
 
-                if image:
-                    image = await self._preprocess_image(image)
+                if page_result is not None and page_result.image is not None:
+                    image = await self._preprocess_image(page_result.image)
 
                     if self.debug and file_debug_dir:
 
@@ -579,10 +445,12 @@ class OCREngine:
                     extracted_text.append(page_text)
                     total_chars += len(page_text)
 
-                    if temp_img and temp_img.exists():
+                    # Only per-page rendered temps are cleaned here; bulk temps
+                    # are caller-owned until the finally block below.
+                    if page_temp and page_temp.exists():
                         try:
                             image.close()
-                            await asyncio.to_thread(temp_img.unlink)
+                            await asyncio.to_thread(page_temp.unlink)
                         except Exception as e:
                             logging.debug(f"Cleanup of temp_img failed: {e}")
 
@@ -601,10 +469,17 @@ class OCREngine:
             if doc:
                 with contextlib.suppress(Exception):
                     await asyncio.to_thread(doc.close)
-            for img_path in bulk_images.values():
-                if img_path.exists():
+            for rendered in bulk_pages.values():
+                if rendered.temp_path and rendered.temp_path.exists():
                     with contextlib.suppress(Exception):
-                        await asyncio.to_thread(img_path.unlink)
+                        await asyncio.to_thread(rendered.temp_path.unlink)
+            # Per-page temps are usually unlinked right after their OCR; this
+            # catches any left behind by an exception between hand-back and
+            # that cleanup (previously a leak window).
+            for temp_path in per_page_temps:
+                if temp_path.exists():
+                    with contextlib.suppress(Exception):
+                        await asyncio.to_thread(temp_path.unlink)
 
 
 atexit.register(OCREngine.shutdown_process_pool, wait=False)
