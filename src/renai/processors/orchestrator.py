@@ -503,21 +503,11 @@ async def run_evaluation_pipeline(
             root_dir=root_dir,
             provider=provider,
             model=model_name,
-            config=ProcessingConfig(
+            config=ProcessingConfig.from_app_settings(
                 mode="evaluate",
                 workers=workers,
                 recursive=False,
                 fallback_mode=FallbackMode.OCR,
-                extractor=app_settings.extractor,
-                text_length=app_settings.text_length,
-                text_extraction=app_settings.text_extraction,
-                extraction_pages=app_settings.extraction_pages,
-                vision_max_pages=app_settings.vision_max_pages,
-                head_ratio=app_settings.head_ratio,
-                min_sufficient_text=app_settings.min_sufficient_text,
-                vision_image_max_size=app_settings.vision_image_max_size,
-                vision_image_quality=app_settings.vision_image_quality,
-                vision_dpi=app_settings.vision_dpi,
             ),
         )
         all_eval_results[f"{provider}/{model_name}"] = results

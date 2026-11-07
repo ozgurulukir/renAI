@@ -48,6 +48,33 @@ class ProcessingConfig(BaseModel):
     vision_image_quality: int = 85
     vision_dpi: int = 150
 
+    @classmethod
+    def from_app_settings(cls, **overrides: Any) -> "ProcessingConfig":
+        """Build a config from app_settings defaults, with explicit overrides on top.
+
+        Maps the settings-derived processing knobs (extractor, text heuristics,
+        vision sizing) in one place so callers that start from settings — like
+        the evaluate pipeline — don't hand-copy them field by field. Deliberately
+        does NOT map skip_ocr_checks: the CLI derives it from skip_needs_ocr
+        while evaluate mode intentionally leaves it False.
+        """
+        from renai.config import app_settings  # lazy: avoid config <-> models import cycle
+
+        s = app_settings
+        return cls(
+            extractor=s.extractor,
+            text_length=s.text_length,
+            text_extraction=s.text_extraction,
+            extraction_pages=s.extraction_pages,
+            vision_max_pages=s.vision_max_pages,
+            head_ratio=s.head_ratio,
+            min_sufficient_text=s.min_sufficient_text,
+            vision_image_max_size=s.vision_image_max_size,
+            vision_image_quality=s.vision_image_quality,
+            vision_dpi=s.vision_dpi,
+            **overrides,
+        )
+
 
 class BaseMetadata(BaseModel):
     """Base schema for all metadata extracted by renAI."""

@@ -257,67 +257,16 @@ def _display_vision_missing_error(reason: str) -> None:
     )
 
 
-def handle_process_command(
-    directory: str,
-    mode: Literal["rename", "organize", "copy", "evaluate"],
+def _run_process_pipeline(
+    config: ProcessingConfig,
+    root_dir: Path,
     provider: str,
     model: str | None,
-    workers: int,
-    ocr_enhanced: bool,
-    debug_ocr: bool,
-    use_mutool: bool,
-    mutool_path: str,
-    extractor: str,
-    text_length: int,
-    text_extraction: str,
-    extraction_pages: int,
-    recursive: bool,
-    update_metadata: bool,
-    fallback_mode: FallbackMode | None,
-    move_scan_failures: bool,
-    rename_images: bool,
-    exif: bool,
-    benchmark: bool,
-    vision_max_pages: int,
-    vision_provider: str | None = None,
-    vision_model: str | None = None,
-    dry_run: bool = False,
 ) -> None:
-    """Orchestrate and execute the file processing pipeline."""
-    final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
-    root_dir = Path(directory).resolve()
-    _validate_cli_flags(root_dir)
+    """Run the processing pipeline with the CLI error mapping.
 
-    # Check Vision Model Guard before running pipeline
-    check_vision_model_guard(final_fallback, rename_images, vision_provider, vision_model)
-
-    _print_process_header(root_dir, mode, provider, model)
-    display_warnings(mode, recursive, provider, model, final_fallback, rename_images)
-
-    config = _build_processing_config(
-        mode=mode,
-        workers=workers,
-        recursive=recursive,
-        ocr_enhanced=ocr_enhanced,
-        debug_ocr=debug_ocr,
-        use_mutool=use_mutool,
-        mutool_path=mutool_path,
-        extractor=extractor,
-        text_length=text_length,
-        text_extraction=text_extraction,
-        extraction_pages=extraction_pages,
-        fallback_mode=final_fallback,
-        move_scan_failures=move_scan_failures,
-        rename_images=rename_images,
-        exif=exif,
-        update_metadata=update_metadata,
-        benchmark=benchmark,
-        vision_max_pages=vision_max_pages,
-        vision_provider=vision_provider,
-        vision_model=vision_model,
-        dry_run=dry_run,
-    )
-
+    Setup failure maps to exit 1, user cancellation to exit 0.
+    """
     try:
         asyncio.run(
             run_pipeline(
@@ -509,12 +458,17 @@ def process_cmd(
     ] = False,
 ) -> None:
     """Process files in a directory."""
-    handle_process_command(
-        directory=directory,
+    final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
+    root_dir = Path(directory).resolve()
+    _validate_cli_flags(root_dir)
+
+    # Check Vision Model Guard before running pipeline
+    check_vision_model_guard(final_fallback, rename_images, vision_provider, vision_model)
+
+    config = _build_processing_config(
         mode=mode,
-        provider=provider,
-        model=model,
         workers=workers,
+        recursive=recursive,
         ocr_enhanced=ocr_enhanced,
         debug_ocr=debug_ocr,
         use_mutool=use_mutool,
@@ -523,18 +477,21 @@ def process_cmd(
         text_length=text_length,
         text_extraction=text_extraction,
         extraction_pages=extraction_pages,
-        recursive=recursive,
-        update_metadata=update_metadata,
-        fallback_mode=fallback_mode,
+        fallback_mode=final_fallback,
         move_scan_failures=move_scan_failures,
         rename_images=rename_images,
         exif=exif,
+        update_metadata=update_metadata,
         benchmark=benchmark,
         vision_max_pages=vision_max_pages,
         vision_provider=vision_provider,
         vision_model=vision_model,
         dry_run=dry_run,
     )
+
+    _print_process_header(root_dir, mode, provider, model)
+    display_warnings(mode, recursive, provider, model, final_fallback, rename_images)
+    _run_process_pipeline(config, root_dir, provider, model)
 
 
 @app.command("evaluate")
