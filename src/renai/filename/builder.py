@@ -9,7 +9,6 @@ module has no dependency on the global ``app_settings`` singleton.
 
 import logging
 import re
-from pathlib import Path
 from typing import Any
 
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
@@ -262,11 +261,6 @@ def extract_category_from_metadata(
     category_raw = data.safe_category
     category_raw = (category_raw or default).strip()
     return sanitize_filename(category_raw, max_filename_length) or default
-
-
-def is_filename_changed(original_path: Path, new_name: str) -> bool:
-    """Check if the new filename is different from original."""
-    return new_name != original_path.name
 
 
 def build_vision_filename(

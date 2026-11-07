@@ -3,7 +3,6 @@ from renai.filename.builder import (
     build_image_filename,
     build_vision_filename,
     extract_category_from_metadata,
-    is_filename_changed,
 )
 from renai.models.schemas import BookMetadata, ImageMetadata
 
@@ -266,24 +265,6 @@ class TestExtractCategoryFromMetadata:
         metadata = BookMetadata(category="History/Military\\Biography", language="en")
         result = extract_category_from_metadata(metadata, 200)
         assert result == "History&Military&Biography"
-
-
-class TestIsFilenameChanged:
-    """Test is_filename_changed function."""
-
-    def test_identical_names(self):
-        """Test identical filenames return False."""
-        from pathlib import Path
-
-        result = is_filename_changed(Path("book.pdf"), "book.pdf")
-        assert result is False
-
-    def test_different_names(self):
-        """Test different filenames return True."""
-        from pathlib import Path
-
-        result = is_filename_changed(Path("old.pdf"), "new.pdf")
-        assert result is True
 
 
 class TestSeriesAndVolumeInFilename:

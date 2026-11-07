@@ -6,22 +6,22 @@ import pytest
 
 from renai.exceptions import FileOperationError
 from renai.file_ops import safe_copy_file, safe_move_file
-from renai.file_ops.operations import ensure_unique_path, ensure_within_root
+from renai.file_ops.operations import _ensure_unique_path, ensure_within_root
 
 
 class TestEnsureUniquePath:
-    """Test ensure_unique_path function."""
+    """Test _ensure_unique_path function."""
 
-    def test_ensure_unique_path_dest_not_exists(self, tmp_path):
+    def test__ensure_unique_path_dest_not_exists(self, tmp_path):
         """Test that it returns original path if destination doesn't exist."""
         dest = tmp_path / "new_file.txt"
 
-        result = ensure_unique_path(dest)
+        result = _ensure_unique_path(dest)
 
         assert result == dest
 
     @patch("renai.file_ops.operations.get_file_hash")
-    def test_ensure_unique_path_dest_exists_same_hash(self, mock_get_file_hash, tmp_path):
+    def test__ensure_unique_path_dest_exists_same_hash(self, mock_get_file_hash, tmp_path):
         """Test that it returns original path if destination exists with same hash."""
         dest = tmp_path / "existing_file.txt"
         dest.touch()
@@ -29,14 +29,14 @@ class TestEnsureUniquePath:
         # Both hashes match
         mock_get_file_hash.return_value = "same_hash"
 
-        result = ensure_unique_path(dest, source_hash="same_hash")
+        result = _ensure_unique_path(dest, source_hash="same_hash")
 
         assert result == dest
         mock_get_file_hash.assert_called_once_with(dest)
 
     @patch("renai.file_ops.operations.get_file_hash")
     @patch("renai.file_ops.operations.uuid")
-    def test_ensure_unique_path_dest_exists_diff_hash(
+    def test__ensure_unique_path_dest_exists_diff_hash(
         self, mock_uuid, mock_get_file_hash, tmp_path
     ):
         """Test that it appends UUID if destination exists with different hash."""
@@ -49,7 +49,7 @@ class TestEnsureUniquePath:
         # Mock uuid4 to return a predictable string
         mock_uuid.uuid4.return_value.hex = "1234567890abcdef"
 
-        result = ensure_unique_path(dest, source_hash="new_hash")
+        result = _ensure_unique_path(dest, source_hash="new_hash")
 
         assert result != dest
         assert result.parent == dest.parent
@@ -214,18 +214,23 @@ class TestSafeMoveFile:
         assert dest.exists()
         assert dest.read_text() == "content"
 
-    def test_move_file_with_custom_operation_type(self, tmp_path):
-        """Test move with custom operation type for logging."""
+    def test_move_file_journal_records_physical_kind(self, tmp_path):
+        """The undo journal records the physical transfer kind, not the CLI mode.
+
+        Regression: organize/rename mode used to be forwarded as operation_type,
+        so the journal said "rename" for what was physically a move.
+        """
         source = tmp_path / "source.txt"
         dest = tmp_path / "dest.txt"
 
         source.write_text("content")
 
-        result = safe_move_file(source, dest, operation_type="organize")
+        safe_move_file(source, dest, cache_dir=tmp_path / "cache")
 
-        assert result == dest
-        assert not source.exists()
-        assert dest.exists()
+        journal = tmp_path / "cache" / "undo_journal.jsonl"
+        assert journal.exists()
+        entry = json.loads(journal.read_text(encoding="utf-8").splitlines()[0])
+        assert entry["operation_type"] == "move"
 
     def test_move_preserves_extension(self, tmp_path):
         """Test that file extension is preserved during rename."""
