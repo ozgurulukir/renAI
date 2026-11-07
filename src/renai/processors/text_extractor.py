@@ -3,6 +3,7 @@ import logging
 import shutil
 import uuid
 from pathlib import Path
+from typing import NamedTuple
 
 from renai.cache.manager import (
     CACHE_DIR,
@@ -35,6 +36,21 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".txt",
     ".md",
 }
+
+
+class TextExtractorRunState(NamedTuple):
+    """Quarantine run-state set post-construction by ``setup_move_folders``.
+
+    Lives outside the constructor so ``swap_extractor`` can carry it across
+    backend rebuilds instead of silently resetting the fallback policy.
+    """
+
+    needs_scan_dir: Path | None
+    skip_scan_files: bool
+    scan_failures_dir: Path | None
+    move_scan_failures: bool
+    fallback_base_dir: Path | None
+    move_lock: asyncio.Lock
 
 
 class TextExtractor:
@@ -339,6 +355,28 @@ class TextExtractor:
             logging.debug(f"Moved {file_path.name} to {dest_dir.name} directory")
         except Exception as e:
             logging.error(f"Failed to move {file_path.name} to {dest_dir}: {e}")
+
+    def capture_run_state(self) -> TextExtractorRunState:
+        """Snapshot quarantine run-state (see :class:`TextExtractorRunState`)."""
+        return TextExtractorRunState(
+            needs_scan_dir=self.needs_scan_dir,
+            skip_scan_files=self.skip_scan_files,
+            scan_failures_dir=self.scan_failures_dir,
+            move_scan_failures=self.move_scan_failures,
+            fallback_base_dir=self.fallback_base_dir,
+            move_lock=self._move_lock,
+        )
+
+    def apply_run_state(self, state: TextExtractorRunState) -> None:
+        """Restore run-state captured by :meth:`capture_run_state`."""
+        self.needs_scan_dir = state.needs_scan_dir
+        self.skip_scan_files = state.skip_scan_files
+        self.scan_failures_dir = state.scan_failures_dir
+        self.move_scan_failures = state.move_scan_failures
+        self.fallback_base_dir = state.fallback_base_dir
+        # Share the original lock: a swap between files must not break the
+        # TOCTOU serialization the old extractor's suspended moves rely on.
+        self._move_lock = state.move_lock
 
     def setup_move_folders(
         self,
