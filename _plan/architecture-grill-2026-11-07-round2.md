@@ -9,10 +9,10 @@ C3 was reproduced live (`AttributeError` running `scripts/benchmark_organize.py`
 
 | PR | Candidate | Type | Content |
 |----|-----------|------|---------|
-| TBD-1 | C5 | fix | `BookProcessor.swap_extractor` preserves TextExtractor run-state (needs_scan_dir, skip_scan_files, scan_failures_dir, move_scan_failures, fallback_base_dir). Bug: benchmark mode + quarantine flags silently moved user files and made extractors #2-4 behave differently from #1. |
-| TBD-2 | C3a | fix | `scripts/benchmark_organize.py` patched nonexistent `book.write_metadata_cache`/`read_metadata_cache`; sync Mock for async method; patches targeted the wrong module. Repaired: patch `renai.cache.middleware.read_metadata_cache_with_source` + AsyncMock. |
-| TBD-3 | C3b | refactor | Delete production-dead `read_metadata_cache`; widen `read_metadata_cache_with_source` to `model_class=None`; migrate 10 test call sites; consolidate reserved-key (`_is_vision_doc`/`_rule_sig`) encode/decode into one internal serializer. |
-| TBD-4 | C2+C4 | refactor | Remove write-only `operation_type` param (journal mislabeled moves as "rename"/"organize"; no reader exists); delete dead `is_filename_changed`; privatize `ensure_unique_path`. |
+| [#182](https://github.com/ozgurulukir/renAI/pull/182) | C5 | fix | `BookProcessor.swap_extractor` preserves TextExtractor run-state (needs_scan_dir, skip_scan_files, scan_failures_dir, move_scan_failures, fallback_base_dir). Bug: benchmark mode + quarantine flags silently moved user files and made extractors #2-4 behave differently from #1. |
+| [#183](https://github.com/ozgurulukir/renAI/pull/183) | C3a | fix | `scripts/benchmark_organize.py` patched nonexistent `book.write_metadata_cache`/`read_metadata_cache`; sync Mock for async method; patches targeted the wrong module. Repaired: patch `renai.cache.middleware.read_metadata_cache_with_source` + AsyncMock. |
+| [#184](https://github.com/ozgurulukir/renAI/pull/184) | C3b | refactor | Delete production-dead `read_metadata_cache`; widen `read_metadata_cache_with_source` to `model_class=None`; migrate 10 test call sites; consolidate reserved-key (`_is_vision_doc`/`_rule_sig`) encode/decode into one internal serializer. |
+| [#185](https://github.com/ozgurulukir/renAI/pull/185) | C2+C4 | refactor | Remove write-only `operation_type` param (journal mislabeled moves as "rename"/"organize"; no reader exists); delete dead `is_filename_changed`; privatize `ensure_unique_path`. |
 
 ## Deferred to next round (ranked, verified ACTIVE by grill)
 
