@@ -347,5 +347,45 @@ class TestBookProcessor:
         assert processor.text_extractor is not first
         assert processor.text_extractor.extractor_name == "pypdf"
 
+    def test_swap_preserves_quarantine_run_state(self, mock_ocr, mock_llm, tmp_path):
+        """swap_extractor must carry setup_move_folders run-state across the rebuild.
+
+        Regression: benchmark mode calls setup_move_folders once, then swaps the
+        extractor several times — the rebuild used to reset quarantine policy,
+        so extractors after the first silently stopped quarantining scan
+        failures and moved files inconsistently mid-benchmark.
+        """
+        processor = BookProcessor(mock_ocr, ProcessingConfig(), mock_llm)
+
+        original_lock = processor.text_extractor._move_lock
+        processor.text_extractor.setup_move_folders(
+            tmp_path,
+            skip_ocr_checks=True,
+            move_scan_failures=True,
+        )
+
+        processor.swap_extractor("pdfplumber")
+
+        rebuilt = processor.text_extractor
+        assert rebuilt.needs_scan_dir == tmp_path / "Needs_Scan"
+        assert rebuilt.skip_scan_files is True
+        assert rebuilt.scan_failures_dir == tmp_path / "Scan_Failures"
+        assert rebuilt.move_scan_failures is True
+        assert rebuilt.fallback_base_dir == tmp_path
+        assert rebuilt._move_lock is original_lock
+
+    def test_swap_keeps_default_run_state(self, mock_ocr, mock_llm):
+        """Swapping without setup_move_folders must leave quarantine disabled."""
+        processor = BookProcessor(mock_ocr, ProcessingConfig(), mock_llm)
+
+        processor.swap_extractor("pdfplumber")
+
+        rebuilt = processor.text_extractor
+        assert rebuilt.needs_scan_dir is None
+        assert rebuilt.skip_scan_files is False
+        assert rebuilt.scan_failures_dir is None
+        assert rebuilt.move_scan_failures is False
+        assert rebuilt.fallback_base_dir is None
+
 
 # Simplified version for the plan

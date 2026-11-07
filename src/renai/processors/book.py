@@ -100,8 +100,11 @@ class BookProcessor:
 
         The single place where ``extractor_name`` may change after construction;
         benchmark mode uses this instead of hand-building a TextExtractor so the
-        constructor arguments can never drift from ``__init__``.
+        constructor arguments can never drift from ``__init__``. Quarantine
+        run-state set by ``setup_move_folders`` is carried across the swap so
+        every extractor in a benchmark run shares the same fallback policy.
         """
+        run_state = self.text_extractor.capture_run_state()
         self.extractor_name = extractor_name
         self.text_extractor = TextExtractor(
             ocr_engine=self.ocr_engine,
@@ -112,6 +115,7 @@ class BookProcessor:
             head_ratio=self.config.head_ratio,
             min_sufficient_text=self.config.min_sufficient_text,
         )
+        self.text_extractor.apply_run_state(run_state)
 
     async def setup_move_folders(
         self,
