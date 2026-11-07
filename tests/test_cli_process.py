@@ -3,15 +3,15 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import typer
 
-from renai.cli import handle_process_command
+from renai.cli import process_cmd
 from renai.models.schemas import FallbackMode
 
 
-def test_handle_process_command_nonexistent_directory():
-    """Verify handle_process_command raises Exit(code=1) when directory does not exist."""
+def test_process_cmd_nonexistent_directory():
+    """Verify process_cmd raises Exit(code=1) when directory does not exist."""
     with patch("renai.cli.console") as mock_console:
         with pytest.raises(typer.Exit) as exc_info:
-            handle_process_command(
+            process_cmd(
                 directory="/nonexistent/directory/path/that/does/not/exist",
                 mode="rename",
                 provider="openai",
@@ -39,8 +39,8 @@ def test_handle_process_command_nonexistent_directory():
         assert "Error: Directory not found" in str(mock_console.print.call_args[0][0])
 
 
-def test_handle_process_command_success(tmp_path):
-    """Verify handle_process_command resolves directory and successfully invokes run_pipeline."""
+def test_process_cmd_success(tmp_path):
+    """Verify process_cmd resolves directory and successfully invokes run_pipeline."""
     with (
         patch("renai.cli.run_pipeline", new_callable=AsyncMock) as mock_run_pipeline,
         patch("renai.cli.display_warnings") as mock_warnings,
@@ -48,7 +48,7 @@ def test_handle_process_command_success(tmp_path):
         patch("renai.utils.models_dev.is_vision_supported", return_value=True),
         patch("renai.config.get_effective_vision_model", return_value="gpt-4"),
     ):
-        handle_process_command(
+        process_cmd(
             directory=str(tmp_path),
             mode="rename",
             provider="openai",
@@ -96,8 +96,8 @@ def test_handle_process_command_success(tmp_path):
         assert config.vision_max_pages == 4
 
 
-def test_handle_process_command_keyboard_interrupt(tmp_path):
-    """Verify handle_process_command handles KeyboardInterrupt gracefully."""
+def test_process_cmd_keyboard_interrupt(tmp_path):
+    """Verify process_cmd handles KeyboardInterrupt gracefully."""
     with (
         patch("renai.cli.run_pipeline", side_effect=KeyboardInterrupt),
         patch("renai.cli.display_warnings"),
@@ -105,7 +105,7 @@ def test_handle_process_command_keyboard_interrupt(tmp_path):
         patch("renai.cli.console") as mock_console,
     ):
         with pytest.raises(typer.Exit) as exc_info:
-            handle_process_command(
+            process_cmd(
                 directory=str(tmp_path),
                 mode="rename",
                 provider="openai",
@@ -132,7 +132,7 @@ def test_handle_process_command_keyboard_interrupt(tmp_path):
         mock_console.print.assert_any_call("\n[yellow]Cancelled by user. Exiting...[/yellow]")
 
 
-def test_handle_process_command_configuration_error(tmp_path):
+def test_process_cmd_configuration_error(tmp_path):
     """Verify ConfigurationError from the pipeline renders the setup-failed message and exits 1."""
     from renai.exceptions import ConfigurationError
     from renai.messages import cli as msg
@@ -147,7 +147,7 @@ def test_handle_process_command_configuration_error(tmp_path):
         patch("renai.cli.console") as mock_console,
     ):
         with pytest.raises(typer.Exit) as exc_info:
-            handle_process_command(
+            process_cmd(
                 directory=str(tmp_path),
                 mode="rename",
                 provider="bogus",
