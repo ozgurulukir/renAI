@@ -4,7 +4,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 # Add src to path if running from root or scripts/
 if (Path.cwd() / "src").exists():
@@ -65,20 +65,31 @@ async def run_benchmark():
 
         # Mock engines since we only care about organization speed (hash + move)
         processor = BookProcessor(Mock(), ProcessingConfig(), Mock())
-        # Mock extract_document_metadata to avoid LLM/OCR calls
-        processor._extract_document_metadata = Mock(return_value=None)
-        # We'll patch write_metadata_cache to avoid disk-bound cache writes during move benchmark
-        with patch("renai.processors.book.write_metadata_cache"), \
-             patch("renai.processors.book.read_metadata_cache") as mock_read:
-
-            # Mock return value for all files to be organized
+        # Mock extract_document_metadata to avoid LLM/OCR calls. AsyncMock because
+        # the middleware awaits it whenever the mocked cache read misses.
+        processor._extract_document_metadata = AsyncMock(return_value=None)
+        # Patch the cache layer at its real home (renai.cache.middleware -- the
+        # module the with_metadata_cache decorator actually imports) so the
+        # benchmark measures hash + move without disk-bound cache I/O. The stale
+        # renai.processors.book.read_metadata_cache/write_metadata_cache patch
+        # targets started raising AttributeError when the middleware seam landed.
+        with (
+            patch("renai.cache.middleware.read_metadata_cache_with_source") as mock_read,
+            patch("renai.cache.middleware.write_metadata_cache"),
+        ):
+            # Mock return value for all files to be organized: a cache hit is
+            # (metadata, CacheSource-or-None).
             from renai.models.schemas import BookMetadata
-            mock_read.return_value = BookMetadata(
-                title="Mock Book",
-                author="Mock Author",
-                category="Fiction",
-                year=2024,
-                language="en"
+
+            mock_read.return_value = (
+                BookMetadata(
+                    title="Mock Book",
+                    author="Mock Author",
+                    category="Fiction",
+                    year=2024,
+                    language="en",
+                ),
+                None,
             )
 
             print("Starting benchmark...")
@@ -98,6 +109,7 @@ async def run_benchmark():
 
 def benchmark():
     import asyncio
+
     return asyncio.run(run_benchmark())
 
 
