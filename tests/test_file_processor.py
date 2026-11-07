@@ -310,5 +310,42 @@ class TestBookProcessor:
         assert processor.vision_provider == "deepinfra"
         assert processor.vision_model == "text-model"
 
+    def test_swap_rebuilds_extractor_with_same_config(self, mock_ocr, mock_llm):
+        """swap_extractor must rebuild TextExtractor exactly like __init__ does."""
+        config = ProcessingConfig(
+            extractor="pymupdf",
+            text_length=6000,
+            text_extraction="head-tail",
+            extraction_pages=7,
+            head_ratio=0.8,
+            min_sufficient_text=900,
+        )
+        processor = BookProcessor(mock_ocr, config, mock_llm)
+        original = processor.text_extractor
+
+        processor.swap_extractor("pdfplumber")
+
+        assert processor.extractor_name == "pdfplumber"
+        assert processor.text_extractor is not original
+        rebuilt = processor.text_extractor
+        assert rebuilt.ocr_engine is mock_ocr
+        assert rebuilt.extractor_name == "pdfplumber"
+        assert rebuilt.target_length == 6000
+        assert rebuilt.text_extraction_mode == "head-tail"
+        assert rebuilt.extraction_pages == 7
+        assert rebuilt.head_ratio == 0.8
+        assert rebuilt.min_sufficient_text == 900
+
+    def test_swap_twice_keeps_tracking_latest(self, mock_ocr, mock_llm):
+        processor = BookProcessor(mock_ocr, ProcessingConfig(), mock_llm)
+
+        processor.swap_extractor("pdfplumber")
+        first = processor.text_extractor
+        processor.swap_extractor("pypdf")
+
+        assert processor.extractor_name == "pypdf"
+        assert processor.text_extractor is not first
+        assert processor.text_extractor.extractor_name == "pypdf"
+
 
 # Simplified version for the plan
