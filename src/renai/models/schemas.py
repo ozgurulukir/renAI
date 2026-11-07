@@ -61,19 +61,20 @@ class ProcessingConfig(BaseModel):
         from renai.config import app_settings  # lazy: avoid config <-> models import cycle
 
         s = app_settings
-        return cls(
-            extractor=s.extractor,
-            text_length=s.text_length,
-            text_extraction=s.text_extraction,
-            extraction_pages=s.extraction_pages,
-            vision_max_pages=s.vision_max_pages,
-            head_ratio=s.head_ratio,
-            min_sufficient_text=s.min_sufficient_text,
-            vision_image_max_size=s.vision_image_max_size,
-            vision_image_quality=s.vision_image_quality,
-            vision_dpi=s.vision_dpi,
-            **overrides,
-        )
+        fields: dict[str, Any] = {
+            "extractor": s.extractor,
+            "text_length": s.text_length,
+            "text_extraction": s.text_extraction,
+            "extraction_pages": s.extraction_pages,
+            "vision_max_pages": s.vision_max_pages,
+            "head_ratio": s.head_ratio,
+            "min_sufficient_text": s.min_sufficient_text,
+            "vision_image_max_size": s.vision_image_max_size,
+            "vision_image_quality": s.vision_image_quality,
+            "vision_dpi": s.vision_dpi,
+        }
+        fields.update(overrides)
+        return cls(**fields)
 
 
 class BaseMetadata(BaseModel):
