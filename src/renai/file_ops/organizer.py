@@ -105,7 +105,6 @@ class FileOrganizer:
                         return safe_copy_file(
                             file_path,
                             target_dest,
-                            operation_type=mode,
                             source_hash=file_hash,
                             dry_run=dry_run,
                             root_dir=self.root_dir,
@@ -118,7 +117,6 @@ class FileOrganizer:
                         return safe_move_file(
                             file_path,
                             target_dest,
-                            operation_type=mode,
                             source_hash=file_hash,
                             dry_run=dry_run,
                             root_dir=self.root_dir,

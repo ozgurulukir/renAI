@@ -91,7 +91,7 @@ src/renai/                  # Main package
     manager.py              # Text + metadata cache (SQLite WAL primary store, SHA256-keyed)
     middleware.py           # MetadataRequest cache middleware (typed request contract)
   file_ops/                 # File system operations
-    operations.py           # safe_move_file, safe_copy_file, ensure_unique_path
+    operations.py           # safe_move_file, safe_copy_file, _ensure_unique_path
     organizer.py            # FileOrganizer (move/copy routing, dry-run and undo support)
   prompts/                  # LLM prompt templates (plain text)
     system_base.txt         # Base system prompt

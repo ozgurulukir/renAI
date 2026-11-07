@@ -117,7 +117,6 @@ class TestBookProcessor:
 
         assert result.success is True
         mock_copy.assert_called_once()
-        assert mock_copy.call_args.kwargs["operation_type"] == "copy"
         # The renamed copy is reported as the new path and the original is intact
         assert result.file_path is not None
         assert result.file_path != test_file

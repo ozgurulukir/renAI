@@ -34,7 +34,7 @@ def ensure_within_root(dest_path: Path, root_dir: Path) -> None:
         )
 
 
-def ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path:
+def _ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path:
     """Ensure the destination path is unique by appending a UUID if needed."""
     if not dest_path.exists():
         return dest_path
@@ -168,7 +168,7 @@ def _safe_transfer(
     dest_path: Path,
     *,
     transfer: Callable[[str, str], Any],
-    operation_type: str,
+    kind: str,
     ensure_dirs: bool = True,
     source_hash: str | None = None,
     dry_run: bool = False,
@@ -200,15 +200,13 @@ def _safe_transfer(
 
         if existing_hash == new_hash:
             logging.debug(
-                f"File {dest_path.name} already exists with same content, skipping {operation_type}"
+                f"File {dest_path.name} already exists with same content, skipping {kind}"
             )
             return dest_path
-        final_dest_path = ensure_unique_path(dest_path, source_hash)
+        final_dest_path = _ensure_unique_path(dest_path, source_hash)
 
     if dry_run:
-        logging.info(
-            f"[DRY-RUN] Would {operation_type} {source_path.name} -> {final_dest_path.name}"
-        )
+        logging.info(f"[DRY-RUN] Would {kind} {source_path.name} -> {final_dest_path.name}")
         return final_dest_path
 
     try:
@@ -217,23 +215,19 @@ def _safe_transfer(
         transfer(str(source_path), str(final_dest_path))
         if record_undo:
             record_undo_entry(
-                source_path, final_dest_path, operation_type=operation_type, cache_dir=cache_dir
+                source_path, final_dest_path, operation_type=kind, cache_dir=cache_dir
             )
-        logging.debug(
-            f"SUCCESS: {operation_type.capitalize()} {source_path.name} -> {final_dest_path.name}"
-        )
+        logging.debug(f"SUCCESS: {kind.capitalize()} {source_path.name} -> {final_dest_path.name}")
         return final_dest_path
     except Exception as e:
-        logging.error(
-            f"ERROR: Failed to {operation_type} {source_path.name} to {dest_path.parent.name}: {e}"
-        )
+        logging.error(f"ERROR: Failed to {kind} {source_path.name} to {dest_path.parent.name}: {e}")
         raise
 
 
 def safe_move_file(
     source_path: Path,
     dest_path: Path,
-    operation_type: str = "move",
+    *,
     ensure_dirs: bool = True,
     source_hash: str | None = None,
     dry_run: bool = False,
@@ -249,7 +243,7 @@ def safe_move_file(
         source_path,
         dest_path,
         transfer=shutil.move,
-        operation_type=operation_type,
+        kind="move",
         ensure_dirs=ensure_dirs,
         source_hash=source_hash,
         dry_run=dry_run,
@@ -262,7 +256,7 @@ def safe_move_file(
 def safe_copy_file(
     source_path: Path,
     dest_path: Path,
-    operation_type: str = "copy",
+    *,
     ensure_dirs: bool = True,
     source_hash: str | None = None,
     dry_run: bool = False,
@@ -280,7 +274,7 @@ def safe_copy_file(
         source_path,
         dest_path,
         transfer=shutil.copy2,
-        operation_type=operation_type,
+        kind="copy",
         ensure_dirs=ensure_dirs,
         source_hash=source_hash,
         dry_run=dry_run,
