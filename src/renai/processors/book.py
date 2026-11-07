@@ -95,6 +95,24 @@ class BookProcessor:
             ".md",
         }
 
+    def swap_extractor(self, extractor_name: str) -> None:
+        """Swap the text extractor backend, rebuilding TextExtractor from config.
+
+        The single place where ``extractor_name`` may change after construction;
+        benchmark mode uses this instead of hand-building a TextExtractor so the
+        constructor arguments can never drift from ``__init__``.
+        """
+        self.extractor_name = extractor_name
+        self.text_extractor = TextExtractor(
+            ocr_engine=self.ocr_engine,
+            extractor_name=extractor_name,
+            target_length=self.target_length,
+            text_extraction=self.config.text_extraction,
+            extraction_pages=self.config.extraction_pages,
+            head_ratio=self.config.head_ratio,
+            min_sufficient_text=self.config.min_sufficient_text,
+        )
+
     async def setup_move_folders(
         self,
         root_dir: Path,

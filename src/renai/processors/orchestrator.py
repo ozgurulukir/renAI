@@ -39,7 +39,6 @@ from renai.messages import orchestrator as orch_msg
 from renai.models import ProcessingResult
 from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.book import BookProcessor
-from renai.processors.text_extractor import TextExtractor
 from renai.utils.rate_limiter import AsyncRateLimiter
 
 console = Console()
@@ -432,17 +431,7 @@ async def _run_benchmark_mode(
         bench_msg = orch_msg.Benchmark.TESTING.format(ext_name)
         status_display.update(bench_msg)
 
-        processor.extractor_name = ext_name
-        # Re-initialize TextExtractor with new library
-        processor.text_extractor = TextExtractor(
-            ocr_engine=processor.ocr_engine,
-            extractor_name=ext_name,
-            target_length=processor.target_length,
-            text_extraction=processor.config.text_extraction,
-            extraction_pages=processor.config.extraction_pages,
-            head_ratio=processor.config.head_ratio,
-            min_sufficient_text=processor.config.min_sufficient_text,
-        )
+        processor.swap_extractor(ext_name)
 
         start_t = time.perf_counter()
         success_count = 0
