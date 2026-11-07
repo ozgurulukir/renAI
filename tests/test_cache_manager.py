@@ -34,7 +34,6 @@ from renai.cache.manager import (  # noqa: E402
     clear_all_cache,
     get_metadata_cache_path,
     invalidate_cache_for_provider_model,
-    read_metadata_cache,
     read_metadata_cache_with_source,
     read_text_cache,
     write_metadata_cache,
@@ -63,7 +62,7 @@ def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
 
     # Test provider mismatch
     with caplog.at_level(logging.DEBUG):
-        result = read_metadata_cache(cache_path, "different_provider", model)
+        result, _ = read_metadata_cache_with_source(cache_path, "different_provider", model)
         assert result is None
         assert "Cache invalidated" in caplog.text
         assert "was test_provider/test_model" in caplog.text
@@ -87,7 +86,9 @@ def test_read_metadata_cache_success(tmp_path):
     write_metadata_cache(cache_path, metadata, provider, model)
 
     # Test reading with model validation - SSoT focus
-    result = read_metadata_cache(cache_path, provider, model, model_class=BookMetadata)
+    result, _ = read_metadata_cache_with_source(
+        cache_path, provider, model, model_class=BookMetadata
+    )
     assert isinstance(result, BookMetadata)
     assert result.title == "Success Book"
 
@@ -113,10 +114,9 @@ def test_metadata_cache_source_marker_roundtrip(tmp_path):
     assert source.is_vision_doc is False
     assert source.rule_signature == "abc123"
 
-    # The plain reader strips the reserved keys; validation still succeeds.
-    plain = read_metadata_cache(cache_path, provider, model, model_class=BookMetadata)
-    assert isinstance(plain, BookMetadata)
-    assert plain.title == "Marker Book"
+    # The dict path (model_class=None) strips the reserved keys too.
+    raw, _ = read_metadata_cache_with_source(cache_path, provider, model)
+    assert raw == metadata.model_dump()
 
 
 def test_metadata_cache_without_marker_reports_none_source(tmp_path):
@@ -156,7 +156,7 @@ def test_read_metadata_cache_non_object_json_degrades_to_miss(tmp_path, caplog):
         )
 
     with caplog.at_level(logging.WARNING):
-        result = read_metadata_cache(cache_path, "p", "m")
+        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
         with_source = read_metadata_cache_with_source(
             cache_path, "p", "m", model_class=BookMetadata
         )
@@ -176,7 +176,7 @@ def test_read_metadata_cache_non_object_json_degrades_to_miss(tmp_path, caplog):
 def test_read_metadata_cache_nonexistent(tmp_path):
     """Test reading from non-existent cache file."""
     cache_path = tmp_path / "nonexistent.json"
-    result = read_metadata_cache(cache_path, "p", "m")
+    result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
     assert result is None
 
 
@@ -186,7 +186,7 @@ def test_read_metadata_cache_invalid_json(tmp_path, caplog):
     cache_path.write_text("invalid json content", encoding="utf-8")
 
     with caplog.at_level(logging.WARNING):
-        result = read_metadata_cache(cache_path, "p", "m")
+        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
         assert result is None
         assert "Failed to read metadata cache" in caplog.text
 
@@ -200,7 +200,7 @@ def test_read_metadata_cache_exception(tmp_path, caplog):
         patch.object(Path, "read_text", side_effect=Exception("Read error")),
         caplog.at_level(logging.WARNING),
     ):
-        result = read_metadata_cache(cache_path, "p", "m")
+        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
         assert result is None
         assert "Failed to read metadata cache" in caplog.text
         assert "Read error" in caplog.text
@@ -366,7 +366,7 @@ def test_read_metadata_cache_sqlite_error(tmp_path, caplog):
         patch("renai.cache.manager._get_db_connection", side_effect=Exception("DB lock error")),
         caplog.at_level(logging.WARNING),
     ):
-        result = read_metadata_cache(cache_path, "p", "m")
+        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
         assert result == {"title": "Fallback Book"}
         assert "Failed to read metadata cache" in caplog.text
         assert "DB lock error" in caplog.text
@@ -392,7 +392,7 @@ def test_read_metadata_cache_corrupt_db_skips_legacy_fallback(tmp_path, caplog):
         ),
         caplog.at_level(logging.ERROR),
     ):
-        result = read_metadata_cache(cache_path, "p", "m")
+        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
 
     assert result is None
     assert "corrupt or unreadable" in caplog.text
@@ -429,7 +429,7 @@ def test_read_metadata_cache_validation_error(tmp_path, caplog):
     write_metadata_cache(cache_path, {"invalid_field": 123}, "p", "m")
 
     with caplog.at_level(logging.WARNING):
-        result = read_metadata_cache(cache_path, "p", "m", model_class=BookMetadata)
+        result, _ = read_metadata_cache_with_source(cache_path, "p", "m", model_class=BookMetadata)
         assert result is None
         assert "Failed to validate cached metadata against BookMetadata" in caplog.text
 

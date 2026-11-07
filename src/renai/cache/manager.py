@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any, NamedTuple, TypeVar, overload
+from typing import Any, NamedTuple, overload
 
 from pydantic import BaseModel
 
@@ -14,8 +14,6 @@ from renai.config import CACHE_DIR, DEBUG_DIR
 from renai.utils import (
     get_provider_model_key,
 )
-
-T = TypeVar("T", bound=BaseModel)
 
 # Thread-safe lock for all cache database operations
 _cache_lock = threading.Lock()
@@ -152,24 +150,6 @@ def write_text_cache(file_path: Path, content: str) -> bool:
             return False
 
 
-@overload
-def read_metadata_cache(
-    cache_path: Path,
-    provider: str,
-    model: str,
-    model_class: None = None,
-) -> dict[str, Any] | None: ...
-
-
-@overload
-def read_metadata_cache[V: BaseModel](
-    cache_path: Path,
-    provider: str,
-    model: str,
-    model_class: type[V],
-) -> V | None: ...
-
-
 def _read_from_legacy_file(cache_path: Path, provider: str, model: str) -> dict[str, Any] | None:
     """Helper to read and validate stale/legacy metadata cache file."""
     if not cache_path.exists():
@@ -287,37 +267,36 @@ class CacheSource(NamedTuple):
     rule_signature: str | None
 
 
-def read_metadata_cache(
+@overload
+def read_metadata_cache_with_source[V: BaseModel](
     cache_path: Path,
     provider: str,
     model: str,
-    model_class: type[BaseModel] | None = None,
-) -> Any | None:
-    """Read cached metadata from SQLite (with legacy file fallback)."""
-    with _cache_lock:
-        cache_data = _read_validated_cache_data(cache_path, provider, model)
-        if cache_data is None:
-            return None
+    model_class: type[V],
+) -> tuple[V | None, CacheSource | None]: ...
 
-        # Reserved bookkeeping keys never belong to the metadata model itself.
-        cache_data.pop("_is_vision_doc", None)
-        cache_data.pop("_rule_sig", None)
 
-        if model_class:
-            return _validate_cached_metadata(cache_data, model_class)
-        return cache_data
+@overload
+def read_metadata_cache_with_source(
+    cache_path: Path,
+    provider: str,
+    model: str,
+    model_class: None = None,
+) -> tuple[dict[str, Any] | None, CacheSource | None]: ...
 
 
 def read_metadata_cache_with_source[V: BaseModel](
     cache_path: Path,
     provider: str,
     model: str,
-    model_class: type[V],
-) -> tuple[V | None, CacheSource | None]:
+    model_class: type[V] | None = None,
+) -> tuple[Any | None, CacheSource | None]:
     """Read cached metadata together with its persisted extraction provenance.
 
-    Returns ``(metadata, source)``; ``source`` is ``None`` on a miss. See
-    :class:`CacheSource` for the meaning of the individual fields.
+    Returns ``(metadata, source)``; ``source`` is ``None`` on a miss. With
+    ``model_class=None`` the raw dict is returned unvalidated (the reserved
+    bookkeeping keys are still stripped). See :class:`CacheSource` for the
+    meaning of the individual fields.
     """
     with _cache_lock:
         cache_data = _read_validated_cache_data(cache_path, provider, model)
@@ -341,10 +320,13 @@ def read_metadata_cache_with_source[V: BaseModel](
                 f"a string, got {type(rule_signature).__name__}; treating as legacy"
             )
             rule_signature = None
+        source = CacheSource(is_vision_doc=is_vision_doc, rule_signature=rule_signature)
+        if model_class is None:
+            return cache_data, source
         validated = _validate_cached_metadata(cache_data, model_class)
         if validated is None:
             return None, None
-        return validated, CacheSource(is_vision_doc=is_vision_doc, rule_signature=rule_signature)
+        return validated, source
 
 
 def write_metadata_cache(
