@@ -254,6 +254,8 @@ class _MutoolPageRenderer:
 
         except Exception as e:
             logging.error(f"Bulk mutool extraction failed for {file_path.name}: {e}", exc_info=True)
+            # results (if any) are abandoned: clean their handed-back temps too
+            await self._cleanup_batch(batch_id)
             return {}
 
 

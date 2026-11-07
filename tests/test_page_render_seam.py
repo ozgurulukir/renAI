@@ -124,6 +124,11 @@ class TestPymupdfBackendContract:
 
 
 class TestMutoolBackendContract:
+    @pytest.fixture(autouse=True)
+    def _isolated_cache_dir(self, tmp_path, monkeypatch):
+        """Point the seam's CACHE_DIR at tmp_path so tests never touch the real cache."""
+        monkeypatch.setattr("renai.engines.render.CACHE_DIR", tmp_path)
+
     def _make_renderer(self):
         return create_page_renderer(use_mutool=True, mutool_path="mutool")
 
