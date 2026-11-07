@@ -52,7 +52,7 @@ class TestGetBookMetadataFromImage:
 
         assert isinstance(result, BookMetadata)
         assert result.title == "Test Document"
-        # Since refinement is mandatory, expect 2 calls
+        # The payload has no author, so auto-mode treats it as incomplete and refines: 2 calls
         assert llm_engine.client.chat.completions.create.await_count == 2
 
     @pytest.mark.asyncio
