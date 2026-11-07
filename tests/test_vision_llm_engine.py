@@ -52,7 +52,7 @@ class TestGetBookMetadataFromImage:
 
         assert isinstance(result, BookMetadata)
         assert result.title == "Test Document"
-        # Since refinement is mandatory, expect 2 calls
+        # The payload has no author, so auto-mode treats it as incomplete and refines: 2 calls
         assert llm_engine.client.chat.completions.create.await_count == 2
 
     @pytest.mark.asyncio
@@ -202,3 +202,68 @@ class TestVisionLLMCall:
         assert isinstance(result, BookMetadata)
         assert result.title == "Fixed"
         assert llm_engine.client.chat.completions.create.await_count >= 2
+
+
+class TestVisionRefinementCostGate:
+    """Mirror of TestRefinementCostGate (test_llm_engine.py) for the vision path.
+
+    Pins the shared _maybe_refine gate on get_book_metadata_from_image, which
+    previously had zero refine_metadata coverage."""
+
+    IMG = b"\x89PNG\r\n\x1a\n"
+
+    @staticmethod
+    def _mock_book_response(title="Test Book", author="Test Author"):
+        mock_response = MagicMock()
+        mock_response.choices[
+            0
+        ].message.content = (
+            f'{{"title": "{title}", "category": "Fiction", "language": "en", "author": "{author}"}}'
+        )
+        return mock_response
+
+    @pytest.mark.asyncio
+    async def test_flag_never_makes_exactly_one_call(self, llm_engine):
+        from renai.config.settings import app_settings
+
+        llm_engine.client.chat.completions.create = AsyncMock(
+            return_value=self._mock_book_response()
+        )
+        with patch.object(app_settings, "refine_metadata", "never"):
+            result = await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
+        assert result is not None
+        assert llm_engine.client.chat.completions.create.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_auto_with_complete_metadata_makes_one_call(self, llm_engine):
+        from renai.config.settings import app_settings
+
+        llm_engine.client.chat.completions.create = AsyncMock(
+            return_value=self._mock_book_response()
+        )
+        with patch.object(app_settings, "refine_metadata", "auto"):
+            await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
+        assert llm_engine.client.chat.completions.create.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_auto_with_incomplete_metadata_makes_two_calls(self, llm_engine):
+        from renai.config.settings import app_settings
+
+        llm_engine.client.chat.completions.create = AsyncMock(
+            side_effect=[self._mock_book_response(author="Unknown"), self._mock_book_response()]
+        )
+        with patch.object(app_settings, "refine_metadata", "auto"):
+            result = await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
+        assert result.author == "Test Author"
+        assert llm_engine.client.chat.completions.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_always_makes_two_calls_even_when_complete(self, llm_engine):
+        from renai.config.settings import app_settings
+
+        llm_engine.client.chat.completions.create = AsyncMock(
+            return_value=self._mock_book_response()
+        )
+        with patch.object(app_settings, "refine_metadata", "always"):
+            await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
+        assert llm_engine.client.chat.completions.create.await_count == 2

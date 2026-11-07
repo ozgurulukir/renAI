@@ -158,10 +158,7 @@ class LLMEngine:
             return None
 
         # 2. Refinement Pass — gated by the refine_metadata cost setting (P0-1)
-        mode = app_settings.refine_metadata
-        if mode == "always" or (mode == "auto" and not self._is_metadata_complete(initial_model)):
-            return await self._refine_metadata(initial_model, allowed_categories)
-        return initial_model  # "never", or "auto" with complete metadata
+        return await self._maybe_refine(initial_model, allowed_categories)
 
     @staticmethod
     def _build_document_prompt(text: str) -> str:
@@ -186,6 +183,20 @@ class LLMEngine:
             and title not in _METADATA_PLACEHOLDERS
             and author not in _METADATA_PLACEHOLDERS
         )
+
+    async def _maybe_refine(
+        self, initial_model: BookMetadata, allowed_categories: dict[str, list] | None = None
+    ) -> BookMetadata:
+        """Gate the refinement pass by the refine_metadata cost setting.
+
+        Shared by the text and vision extraction paths: refines on "always",
+        or on "auto" when the initial metadata is incomplete; otherwise returns
+        the initial model untouched.
+        """
+        mode = app_settings.refine_metadata
+        if mode == "always" or (mode == "auto" and not self._is_metadata_complete(initial_model)):
+            return await self._refine_metadata(initial_model, allowed_categories)
+        return initial_model
 
     async def _refine_metadata(
         self, initial_model: BookMetadata, allowed_categories: dict[str, list] | None = None
@@ -245,12 +256,7 @@ class LLMEngine:
             if not initial_model:
                 return None
 
-            mode = app_settings.refine_metadata
-            if mode == "always" or (
-                mode == "auto" and not self._is_metadata_complete(initial_model)
-            ):
-                return await self._refine_metadata(initial_model, allowed_categories)
-            return initial_model
+            return await self._maybe_refine(initial_model, allowed_categories)
         except Exception as e:
             logging.error(f"Vision book extraction failed for {image_path.name}: {e}")
             return None
