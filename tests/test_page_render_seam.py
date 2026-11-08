@@ -5,6 +5,7 @@ subprocess / mocked pymupdf.open) plus the factory's backend selection,
 temp-file ownership, and failure semantics.
 """
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -202,6 +203,18 @@ class TestMutoolBackendContract:
         rendered = await self._make_renderer().render_pages(tmp_path / "x.pdf", [0], 150)
         assert rendered == {}  # page absent
         assert written and not written[0].exists()  # cleaned by renderer
+
+    async def test_cancellation_kills_reaps_and_cleans_partial_files(self, tmp_path, monkeypatch):
+        """Cancellation: child killed + reaped, partial PNGs cleaned, CancelledError propagates."""
+        process = _make_process_mock()
+        process.returncode = None  # still running when cancelled
+        process.communicate.side_effect = asyncio.CancelledError()
+        written = _patch_mutool_exec_write_partial(monkeypatch, process)
+        with pytest.raises(asyncio.CancelledError):
+            await self._make_renderer().render_pages(tmp_path / "x.pdf", [0], 150)
+        process.kill.assert_called_once()
+        process.wait.assert_awaited_once()  # reaped, not just killed
+        assert written and all(not p.exists() for p in written)  # no orphaned PNGs
 
     async def test_failed_load_closes_image_handle(self, tmp_path, monkeypatch):
         """Contract: a half-decoded image is closed so its Windows handle releases."""

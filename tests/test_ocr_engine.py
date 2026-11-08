@@ -91,12 +91,16 @@ class TestExtractText:
 
 
 @pytest.mark.asyncio
-async def test_mutool_backend_page_success():
+async def test_mutool_backend_page_success(monkeypatch, tmp_path):
     """Test the mutool seam backend's success path for a single page."""
     with patch.object(OCREngine, "_validate_mutool", return_value="mutool"):
         OCREngine(use_mutool=True)
 
-    from renai.engines.render import CACHE_DIR, create_page_renderer
+    import renai.engines.render as render_mod
+    from renai.engines.render import create_page_renderer
+
+    # Isolate the temp-PNG dir so failed asserts never litter the real cache
+    monkeypatch.setattr(render_mod, "CACHE_DIR", tmp_path)
 
     file_path = Path("test.pdf")
     target_dpi = 300
@@ -112,7 +116,7 @@ async def test_mutool_backend_page_success():
         # Fake the temp PNG mutool would have written into CACHE_DIR
         cmd_list = list(cmd)
         pattern = cmd_list[cmd_list.index("-o") + 1]
-        (CACHE_DIR / Path(pattern.replace("%d", "1")).name).write_bytes(b"fake")
+        (render_mod.CACHE_DIR / Path(pattern.replace("%d", "1")).name).write_bytes(b"fake")
         return process_mock
 
     with (

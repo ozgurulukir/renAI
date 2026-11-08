@@ -471,15 +471,19 @@ class OCREngine:
                     await asyncio.to_thread(doc.close)
             for rendered in bulk_pages.values():
                 if rendered.temp_path and rendered.temp_path.exists():
-                    with contextlib.suppress(Exception):
+                    try:
                         await asyncio.to_thread(rendered.temp_path.unlink)
+                    except Exception as e:
+                        logging.debug(f"Cleanup of bulk temp file failed: {e}")
             # Per-page temps are usually unlinked right after their OCR; this
             # catches any left behind by an exception between hand-back and
             # that cleanup (previously a leak window).
             for temp_path in per_page_temps:
                 if temp_path.exists():
-                    with contextlib.suppress(Exception):
+                    try:
                         await asyncio.to_thread(temp_path.unlink)
+                    except Exception as e:
+                        logging.debug(f"Cleanup of per-page temp file failed: {e}")
 
 
 atexit.register(OCREngine.shutdown_process_pool, wait=False)

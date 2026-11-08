@@ -15,7 +15,9 @@ Failure semantics (deliberate, mirrors the old sites):
   (nonzero exit or timeout) -- exactly the old bulk all-or-nothing behavior;
 - the pymupdf backend raises on render failure -- exactly the old fallback
   whose exceptions propagate through OCREngine.extract_text's handler;
-- a page missing from the returned dict means "this page failed to render";
+- a page missing from the returned dict means "this page failed to render"
+  (mutool backend only -- for pymupdf a render failure raises, so absence
+  there marks out-of-bounds pages);
   successful mutool temp files are CALLER-owned for cleanup.
 """
 
@@ -167,6 +169,40 @@ class _MutoolPageRenderer:
             except OSError as e:
                 logging.warning(f"Failed to remove mutool temp file {leftover.name}: {e}")
 
+    async def _collect_batch_pages(
+        self, batch_id: str, pages: Sequence[int]
+    ) -> dict[int, RenderedPage]:
+        """Load the batch's temp PNGs eagerly and map back to 0-based page numbers."""
+        results: dict[int, RenderedPage] = {}
+        for pno in pages:
+            img_path = CACHE_DIR / f"temp_batch_{batch_id}_{pno + 1}.png"
+            if not img_path.exists():
+                continue
+            image: Image.Image | None = None
+            succeeded = False
+            try:
+                image = await asyncio.to_thread(Image.open, img_path)
+                await asyncio.to_thread(image.load)
+                succeeded = True
+                results[pno] = RenderedPage(page_number=pno, image=image, temp_path=img_path)
+            except Exception as e:
+                logging.error(f"Failed to load rendered image for page {pno + 1}: {e}")
+                if image is not None:
+                    # Release the Windows file handle so the unlink below can succeed
+                    image.close()
+            finally:
+                # Only remove the temp image when we did NOT hand it back to the caller.
+                # On success the caller owns it and performs its own cleanup, so deleting
+                # it here would destroy the very image we return (data-loss regression).
+                if img_path.exists() and not succeeded:
+                    try:
+                        await asyncio.to_thread(img_path.unlink)
+                    except Exception as e:
+                        logging.warning(
+                            f"Failed to remove mutool temp file for page {pno + 1}: {e}"
+                        )
+        return results
+
     async def render_pages(
         self, file_path: Path, pages: Sequence[int], dpi: int
     ) -> dict[int, RenderedPage]:
@@ -179,6 +215,7 @@ class _MutoolPageRenderer:
         # mutool uses 1-based page numbers
         page_range = ",".join(str(p + 1) for p in pages)
 
+        process: asyncio.subprocess.Process | None = None
         try:
             cmd = [
                 self._mutool_path,
@@ -221,42 +258,23 @@ class _MutoolPageRenderer:
                 await self._cleanup_batch(batch_id)
                 return {}
 
-            # Map back to 0-based pno
-            results: dict[int, RenderedPage] = {}
-            for pno in pages:
-                img_path = CACHE_DIR / f"temp_batch_{batch_id}_{pno + 1}.png"
-                if not img_path.exists():
-                    continue
-                image: Image.Image | None = None
-                succeeded = False
-                try:
-                    image = await asyncio.to_thread(Image.open, img_path)
-                    await asyncio.to_thread(image.load)
-                    succeeded = True
-                    results[pno] = RenderedPage(page_number=pno, image=image, temp_path=img_path)
-                except Exception as e:
-                    logging.error(f"Failed to load rendered image for page {pno + 1}: {e}")
-                    if image is not None:
-                        # Release the Windows file handle so the unlink below can succeed
-                        image.close()
-                finally:
-                    # Only remove the temp image when we did NOT hand it back to the caller.
-                    # On success the caller owns it and performs its own cleanup, so deleting
-                    # it here would destroy the very image we return (data-loss regression).
-                    if img_path.exists() and not succeeded:
-                        try:
-                            await asyncio.to_thread(img_path.unlink)
-                        except Exception as e:
-                            logging.warning(
-                                f"Failed to remove mutool temp file for page {pno + 1}: {e}"
-                            )
-            return results
+            return await self._collect_batch_pages(batch_id, pages)
 
         except Exception as e:
             logging.error(f"Bulk mutool extraction failed for {file_path.name}: {e}", exc_info=True)
             # results (if any) are abandoned: clean their handed-back temps too
             await self._cleanup_batch(batch_id)
             return {}
+        except BaseException:
+            # Cancellation (CancelledError/KeyboardInterrupt) bypasses the
+            # Exception handler above: without this, the child would keep
+            # rendering and partial temps would leak past even the caller's
+            # finally (bulk_pages is only assigned after this call returns).
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.wait()  # reap so pipes/transport don't linger
+            await self._cleanup_batch(batch_id)
+            raise
 
 
 def create_page_renderer(
