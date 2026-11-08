@@ -7,7 +7,7 @@ from PIL import Image
 from PIL.ExifTags import TAGS
 
 from ..engines.llm import LLMEngine
-from ..engines.render import create_page_renderer
+from ..engines.render import PageRenderer, RenderedPage, create_page_renderer
 from ..models.schemas import BookMetadata, ImageMetadata
 
 
@@ -44,6 +44,27 @@ class VisualProcessor:
             image_max_size=self.image_max_size, image_quality=self.image_quality
         )
 
+    async def _render_pages_skipping_failures(
+        self, renderer: PageRenderer, file_path: Path, pages: list[int]
+    ) -> dict[int, RenderedPage]:
+        """Render sampled pages one at a time, skipping pages that fail.
+
+        A single corrupt page must not discard the whole vision sample: the
+        surviving pages still give the vision LLM something to work with.
+        """
+        rendered: dict[int, RenderedPage] = {}
+        for page_number in pages:
+            try:
+                rendered.update(
+                    await renderer.render_pages(file_path, [page_number], self.vision_dpi)
+                )
+            except Exception as e:
+                logging.error(
+                    f"Failed to render page {page_number + 1} of {file_path.name} "
+                    f"for vision extraction, skipping it: {e}"
+                )
+        return rendered
+
     async def extract_metadata_from_pdf(
         self, file_path: Path, allowed_categories: dict[str, list] | None = None
     ) -> BookMetadata | None:
@@ -57,7 +78,18 @@ class VisualProcessor:
             total_pages = await asyncio.to_thread(_get_page_count)
             pages_to_process = self._select_pages(total_pages)
             renderer = self._make_renderer()
-            rendered = await renderer.render_pages(file_path, pages_to_process, self.vision_dpi)
+            try:
+                rendered = await renderer.render_pages(file_path, pages_to_process, self.vision_dpi)
+            except Exception as e:
+                # Batch render failed; one corrupt page must not cost the
+                # whole sample -- degrade to per-page rendering, skipping
+                # the pages that fail.
+                logging.warning(
+                    f"Batch page render failed for {file_path.name}, retrying page by page: {e}"
+                )
+                rendered = await self._render_pages_skipping_failures(
+                    renderer, file_path, pages_to_process
+                )
             page_images = [page.encoded for page in rendered.values() if page.encoded is not None]
 
             if not page_images or not self.llm_engine:

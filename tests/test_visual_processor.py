@@ -153,13 +153,49 @@ class TestVisualProcessor:
 
     @pytest.mark.asyncio
     async def test_extract_metadata_from_pdf_render_exception(self, visual_processor, tmp_path):
-        """Test extract_metadata_from_pdf handles render failures gracefully."""
+        """All pages failing to render degrades to None (empty sample, no LLM call)."""
         test_file = tmp_path / "test.pdf"
         test_file.write_bytes(b"%PDF-1.4 broken")
 
         with patch("renai.engines.render.pymupdf.open", side_effect=Exception("Render failed")):
             result = await visual_processor.extract_metadata_from_pdf(test_file)
             assert result is None
+
+    @pytest.mark.asyncio
+    async def test_render_failure_skips_only_bad_page(self, visual_processor, tmp_path):
+        """One corrupt page degrades the sample; surviving pages still reach the vision LLM."""
+        from renai.engines.render import RenderedPage
+
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"%PDF-1.4 sample")
+
+        async def fake_render(file_path, pages, dpi):
+            if len(pages) > 1:
+                raise Exception("corrupt page in batch")
+            if pages == [1]:
+                raise Exception("corrupt page")
+            return {
+                p: RenderedPage(page_number=p, image=MagicMock(), encoded=b"jpeg-%d" % p)
+                for p in pages
+            }
+
+        fake_renderer = MagicMock()
+        fake_renderer.render_pages = AsyncMock(side_effect=fake_render)
+        mock_doc = MagicMock()
+        mock_doc.__len__.return_value = 3
+        mock_doc.__enter__.return_value = mock_doc
+
+        with (
+            patch("renai.processors.visual.pymupdf.open", return_value=mock_doc),
+            patch("renai.processors.visual.create_page_renderer", return_value=fake_renderer),
+        ):
+            result = await visual_processor.extract_metadata_from_pdf(test_file)
+
+        assert result.title == "Vision Book"
+        call = visual_processor.llm_engine.get_book_metadata_from_image.await_args
+        assert call.args[1] == [b"jpeg-0", b"jpeg-2"]  # page 1 skipped, others survive
+        # 1 batch attempt + 3 per-page retries
+        assert fake_renderer.render_pages.await_count == 4
 
     @pytest.mark.asyncio
     async def test_extract_metadata_from_image_no_engine(self, tmp_path):
