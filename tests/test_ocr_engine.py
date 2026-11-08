@@ -5,6 +5,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 from renai.engines.ocr import OPENCV_AVAILABLE, OCREngine
+from renai.engines.render import RenderedPage
 
 
 @pytest.mark.asyncio
@@ -69,110 +70,100 @@ class TestExtractText:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 100
 
-        mock_page = MagicMock()
-        mock_doc.load_page.return_value = mock_page
+        fake_renderer = MagicMock()
 
-        with patch("renai.engines.ocr.OCREngine.get_page_source_dpi", return_value=150):
-            with patch("pymupdf.open", return_value=mock_doc):
-                with patch.object(
-                    engine, "_extract_image_from_page", new_callable=AsyncMock
-                ) as mock_extract:
-                    mock_extract.return_value = (Image.new("L", (100, 100)), None)
-                    with patch.object(engine, "_perform_ocr", new_callable=AsyncMock) as mock_ocr:
-                        mock_ocr.return_value = "A" * 6000  # Two pages will exceed 10000 limit
+        async def fake_render(file_path, pages, dpi):
+            return {p: RenderedPage(page_number=p, image=Image.new("L", (100, 100))) for p in pages}
 
-                        await engine.extract_text(Path("test.pdf"))
+        fake_renderer.render_pages = AsyncMock(side_effect=fake_render)
 
-                        # Should have loaded 2 pages and then stopped
-                        assert mock_extract.await_count == 2
+        with (
+            patch("renai.engines.ocr.create_page_renderer", return_value=fake_renderer),
+            patch("pymupdf.open", return_value=mock_doc),
+            patch.object(engine, "_perform_ocr", new_callable=AsyncMock) as mock_ocr,
+        ):
+            mock_ocr.return_value = "A" * 6000  # Two pages will exceed 10000 limit
+
+            await engine.extract_text(Path("test.pdf"))
+
+            # Should have rendered 2 pages and then stopped
+            assert fake_renderer.render_pages.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_extract_page_image_mutool_success():
-    """Test _extract_page_image mutool success path."""
+async def test_mutool_backend_page_success(monkeypatch, tmp_path):
+    """Test the mutool seam backend's success path for a single page."""
     with patch.object(OCREngine, "_validate_mutool", return_value="mutool"):
-        engine = OCREngine(use_mutool=True)
+        OCREngine(use_mutool=True)
 
-    mock_doc = MagicMock()
+    import renai.engines.render as render_mod
+    from renai.engines.render import create_page_renderer
+
+    # Isolate the temp-PNG dir so failed asserts never litter the real cache
+    monkeypatch.setattr(render_mod, "CACHE_DIR", tmp_path)
+
     file_path = Path("test.pdf")
-    pno = 0
     target_dpi = 300
 
     process_mock = AsyncMock()
     process_mock.returncode = 0
     process_mock.communicate.return_value = (b"", b"")
 
+    mock_img = MagicMock()
+    mock_img.load = MagicMock()
+
+    async def fake_exec(*cmd, **kwargs):
+        # Fake the temp PNG mutool would have written into CACHE_DIR
+        cmd_list = list(cmd)
+        pattern = cmd_list[cmd_list.index("-o") + 1]
+        (render_mod.CACHE_DIR / Path(pattern.replace("%d", "1")).name).write_bytes(b"fake")
+        return process_mock
+
     with (
-        patch("asyncio.create_subprocess_exec", return_value=process_mock) as mock_exec,
-        patch("PIL.Image.open") as mock_open,
+        patch(
+            "renai.engines.render.asyncio.create_subprocess_exec",
+            side_effect=fake_exec,
+        ) as mock_exec,
+        patch("renai.engines.render.Image.open", return_value=mock_img) as mock_open,
     ):
-        mock_img = MagicMock()
-        mock_open.return_value = mock_img
+        renderer = create_page_renderer(use_mutool=True, mutool_path="mutool")
+        rendered = await renderer.render_pages(file_path, [0], target_dpi)
 
-        # We need to mock pymupdf fallback so it doesn't fail if we hit it
-        mock_page = MagicMock()
-        mock_doc.load_page.return_value = mock_page
-        mock_pix = MagicMock()
-        mock_pix.width = 100
-        mock_pix.height = 100
-        mock_pix.samples = b"RGB"
-        mock_page.get_pixmap.return_value = mock_pix
+    assert set(rendered) == {0}
+    page = rendered[0]
+    assert page.image == mock_img
+    assert page.temp_path is not None
+    assert "temp_batch_" in page.temp_path.name
+    mock_open.assert_called_once_with(page.temp_path)
+    page.temp_path.unlink(missing_ok=True)
 
-        with patch("PIL.Image.frombytes", return_value=mock_img):
-            img, temp_img = await engine._extract_image_from_page(
-                mock_doc, pno, file_path, target_dpi
-            )
-
-        assert img == mock_img
-        assert temp_img is not None
-        assert "temp_page_0" in str(temp_img)
-
-        # Genuine validation: ensure exactly what is passed to mutool
-        mock_exec.assert_called_once()
-        exec_args = mock_exec.call_args[0]
-        assert exec_args[0] == "mutool"
-        assert exec_args[1] == "draw"
-        assert "-r" in exec_args
-        assert str(int(target_dpi)) in exec_args
-        assert str(file_path.absolute()) in exec_args or str(file_path) in exec_args
-        assert "-o" in exec_args
-        assert "-c" in exec_args
-        assert "gray" in exec_args
+    # Genuine validation: ensure exactly what is passed to mutool
+    exec_args = mock_exec.call_args[0]
+    assert exec_args[0] == "mutool"
+    assert exec_args[1] == "draw"
+    assert "-r" in exec_args
+    assert str(int(target_dpi)) in exec_args
+    assert str(file_path) in exec_args
+    assert "-o" in exec_args
+    assert "-c" in exec_args
+    assert "gray" in exec_args
 
 
 @pytest.mark.asyncio
-async def test_extract_page_image_mutool_timeout():
-    """Test _extract_page_image mutool timeout fallback."""
+async def test_mutool_backend_timeout_returns_empty():
+    """Test the mutool seam backend kills the process and returns {} on timeout."""
     with patch.object(OCREngine, "_validate_mutool", return_value="mutool"):
-        engine = OCREngine(use_mutool=True)
+        OCREngine(use_mutool=True)
 
-    mock_doc = MagicMock()
-    mock_page = MagicMock()
-    mock_doc.load_page.return_value = mock_page
-
-    mock_pix = MagicMock()
-    mock_pix.width = 100
-    mock_pix.height = 100
-    mock_pix.samples = b"RGB" * 10000
-    mock_page.get_pixmap.return_value = mock_pix
-
-    file_path = Path("test.pdf")
-    pno = 0
-    target_dpi = 300
+    from renai.engines.render import create_page_renderer
 
     process_mock = AsyncMock()
     process_mock.communicate.side_effect = TimeoutError()
     process_mock.kill = MagicMock()
 
-    with (
-        patch("asyncio.create_subprocess_exec", return_value=process_mock),
-        patch("PIL.Image.frombytes") as mock_frombytes,
-    ):
-        mock_img = MagicMock()
-        mock_frombytes.return_value = mock_img
+    with patch("renai.engines.render.asyncio.create_subprocess_exec", return_value=process_mock):
+        renderer = create_page_renderer(use_mutool=True, mutool_path="mutool")
+        rendered = await renderer.render_pages(Path("test.pdf"), [0], 300)
 
-        img, _temp_img = await engine._extract_image_from_page(mock_doc, pno, file_path, target_dpi)
-
-        assert img == mock_img
-        process_mock.kill.assert_called_once()
-        mock_page.get_pixmap.assert_called_once()
+    assert rendered == {}
+    process_mock.kill.assert_called_once()

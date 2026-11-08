@@ -57,16 +57,29 @@ async def test_visual_processor_pdf_snapshot(tmp_path):
     mock_llm.get_book_metadata_from_image = AsyncMock(return_value=expected_metadata)
 
     processor = VisualProcessor(llm_engine=mock_llm)
-    processor._convert_page = MagicMock(return_value=b"fake_image_bytes")
 
     test_pdf = tmp_path / "sample.pdf"
     test_pdf.write_bytes(b"%PDF-1.4 sample content")
+
+    # Fake the rendering seam: page count comes from a mocked doc, the images
+    # handed to the LLM come from the fake renderer's RenderedPage.encoded.
+    from renai.engines.render import RenderedPage
 
     mock_doc = MagicMock()
     mock_doc.__len__.return_value = 1
     mock_doc.__enter__.return_value = mock_doc
 
-    with patch("pymupdf.open", return_value=mock_doc):
+    fake_renderer = MagicMock()
+    fake_renderer.render_pages = AsyncMock(
+        return_value={
+            0: RenderedPage(page_number=0, image=MagicMock(), encoded=b"fake_image_bytes")
+        }
+    )
+
+    with (
+        patch("pymupdf.open", return_value=mock_doc),
+        patch("renai.processors.visual.create_page_renderer", return_value=fake_renderer),
+    ):
         result = await processor.extract_metadata_from_pdf(test_pdf)
 
     assert result is not None
