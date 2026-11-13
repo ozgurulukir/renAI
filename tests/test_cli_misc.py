@@ -108,3 +108,24 @@ def test_evaluate_command_invalid_dir():
     with patch("renai.cli.Path.is_dir", return_value=False):
         result = runner.invoke(app, ["evaluate", "invalid_dir"])
         assert result.exit_code == 1
+
+
+def test_evaluate_exits_1_on_configuration_error():
+    """Typer exit codes are the scripting contract for evaluate failures."""
+    from renai.cli import app
+    from renai.exceptions import ConfigurationError
+
+    with patch("renai.cli.run_evaluation_pipeline", side_effect=ConfigurationError("no key")):
+        with patch("renai.cli.Path.is_dir", return_value=True):
+            result = runner.invoke(app, ["evaluate", "."])
+            assert result.exit_code == 1
+
+
+def test_evaluate_exits_0_on_keyboard_interrupt():
+    """Ctrl-C during evaluate must be a clean exit 0, not an error."""
+    from renai.cli import app
+
+    with patch("renai.cli.run_evaluation_pipeline", side_effect=KeyboardInterrupt):
+        with patch("renai.cli.Path.is_dir", return_value=True):
+            result = runner.invoke(app, ["evaluate", "."])
+            assert result.exit_code == 0

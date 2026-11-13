@@ -59,6 +59,15 @@ class LLMEngine:
         # Load templates once
         self._templates = self._load_all_templates()
 
+    async def aclose(self) -> None:
+        """Release the underlying HTTP client (sockets, connection pool).
+
+        The engine holds an ``AsyncOpenAI`` client backed by ``httpx``; without
+        an explicit close the pool lingers until garbage collection, which
+        matters for long-lived sessions and repeated pipeline runs.
+        """
+        await self.client.close()
+
     def _load_all_templates(self) -> dict[str, str]:
         """Load all prompt templates from the prompts directory."""
         templates = {}
@@ -448,7 +457,12 @@ class LLMEngine:
                 lang = filtered_data.get("language", "en").lower()
                 filtered_data["category"] = "Diğer" if lang == "tr" else "Other"
             return model_class(**filtered_data)
-        except Exception:
+        except Exception as e:
+            logging.debug(
+                "Could not coerce LLM JSON payload to %s (%s); treating as extraction failure.",
+                model_class.__name__,
+                e,
+            )
             return None
 
     async def _execute_completion_with_backoff(

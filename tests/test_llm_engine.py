@@ -4,6 +4,7 @@ import pytest
 from openai import OpenAIError
 
 from renai.engines.llm import LLMEngine
+from renai.exceptions import LLMError
 from renai.models.schemas import BookMetadata
 
 
@@ -414,3 +415,52 @@ class TestBroadenedBackoff:
             result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
         assert result.title == "Test Book"
         assert llm_engine.client.chat.completions.create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_retries_exhausted_raises_llm_error(llm_engine):
+    """Five consecutive 429s must raise LLMError, not hang or return None."""
+    import httpx
+    from openai import RateLimitError
+
+    req = httpx.Request("POST", "https://api.openai.com")
+    err = RateLimitError("429", response=httpx.Response(429, request=req), body=None)
+    llm_engine.client.chat.completions.create = AsyncMock(side_effect=err)
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(LLMError, match="Rate limit retries exhausted"):
+            await llm_engine._execute_completion_with_backoff(
+                messages=[
+                    {"role": "system", "content": "sys"},
+                    {"role": "user", "content": "prompt"},
+                ],
+                temperature=0.3,
+                headers=None,
+                context_name="document",
+            )
+
+    assert llm_engine.client.chat.completions.create.await_count == 5
+
+
+@pytest.mark.asyncio
+async def test_connection_retries_exhausted_raises_llm_error(llm_engine):
+    """Five consecutive connection failures must raise LLMError."""
+    import httpx
+    from openai import APIConnectionError
+
+    err = APIConnectionError(request=httpx.Request("POST", "https://api.openai.com"))
+    llm_engine.client.chat.completions.create = AsyncMock(side_effect=err)
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(LLMError, match="Connection/timeout retries exhausted"):
+            await llm_engine._execute_completion_with_backoff(
+                messages=[
+                    {"role": "system", "content": "sys"},
+                    {"role": "user", "content": "prompt"},
+                ],
+                temperature=0.3,
+                headers=None,
+                context_name="document",
+            )
+
+    assert llm_engine.client.chat.completions.create.await_count == 5
