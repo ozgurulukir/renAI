@@ -1002,7 +1002,10 @@ class TestConstantHelpers:
         from renai.config import get_ocr_lang
         from renai.config.settings import AppSettings
 
-        assert get_ocr_lang() == "tur+eng"
+        # model_construct bypasses env/TOML sources: the assertion stays hermetic
+        # even when the developer machine has RENAI_* vars or a user settings.toml.
+        with patch("renai.config.settings.app_settings", AppSettings.model_construct()):
+            assert get_ocr_lang() == "tur+eng"
 
         with patch("renai.config.settings.app_settings", AppSettings(ocr_lang="eng")):
             assert get_ocr_lang() == "eng"
@@ -1015,6 +1018,8 @@ class TestConstantHelpers:
         from renai.config.settings import AppSettings
 
         with patch.dict(os.environ, {"RENAI_OCR_LANG": "deu"}):
+            # Init kwargs rank below env vars, so a bare AppSettings() still picks
+            # up RENAI_OCR_LANG from the patched environment.
             with patch("renai.config.settings.app_settings", AppSettings()):
                 assert get_ocr_lang() == "deu"
 
@@ -1023,7 +1028,8 @@ class TestConstantHelpers:
         from renai.config import get_max_text_read_size
         from renai.config.settings import AppSettings
 
-        assert get_max_text_read_size() == 1_000_000
+        with patch("renai.config.settings.app_settings", AppSettings.model_construct()):
+            assert get_max_text_read_size() == 1_000_000
 
         with patch(
             "renai.config.settings.app_settings",
@@ -1036,7 +1042,8 @@ class TestConstantHelpers:
         from renai.config import get_subprocess_timeout
         from renai.config.settings import AppSettings
 
-        assert get_subprocess_timeout() == 60
+        with patch("renai.config.settings.app_settings", AppSettings.model_construct()):
+            assert get_subprocess_timeout() == 60
 
         with patch(
             "renai.config.settings.app_settings",

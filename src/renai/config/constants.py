@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 try:
     import tomllib
@@ -16,6 +17,9 @@ except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]
 
 from platformdirs import user_data_dir
+
+if TYPE_CHECKING:
+    from renai.config.settings import AppSettings
 
 # =============================================================================
 # Application Constants
@@ -156,7 +160,7 @@ CUSTOM_CATEGORIES_FILE = CATEGORIES_USER_FILE
 # =============================================================================
 
 
-def _app_settings():
+def _app_settings() -> "AppSettings":
     """Lazy accessor for the settings singleton (avoids the import cycle:
     settings.py imports constants at module level)."""
     from renai.config.settings import app_settings
