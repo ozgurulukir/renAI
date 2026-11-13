@@ -998,46 +998,66 @@ class TestConstantHelpers:
         assert ".svg" not in get_image_extensions()
 
     def test_get_ocr_lang_default_and_override(self):
-        """Should return default ocr_lang or value from factory defaults."""
+        """Should return default ocr_lang or the value from app settings."""
         from renai.config import get_ocr_lang
+        from renai.config.settings import AppSettings
 
-        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+        # model_construct bypasses env/TOML sources: the assertion stays hermetic
+        # even when the developer machine has RENAI_* vars or a user settings.toml.
+        with patch("renai.config.settings.app_settings", AppSettings.model_construct()):
             assert get_ocr_lang() == "tur+eng"
 
-        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": {"ocr_lang": "eng"}}):
+        with patch("renai.config.settings.app_settings", AppSettings(ocr_lang="eng")):
             assert get_ocr_lang() == "eng"
 
-        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": {}}):
-            assert get_ocr_lang() == "tur+eng"
+    def test_get_ocr_lang_env_override(self):
+        """RENAI_OCR_LANG env var should drive the getter (config priority: env > TOML)."""
+        import os
 
-        with patch("renai.config.constants.FACTORY_DEFAULTS", {"processing": None}):
-            assert get_ocr_lang() == "tur+eng"
+        from renai.config import get_ocr_lang
+        from renai.config.settings import AppSettings
+
+        with patch.dict(os.environ, {"RENAI_OCR_LANG": "deu"}):
+            # Init kwargs rank below env vars, so a bare AppSettings() still picks
+            # up RENAI_OCR_LANG from the patched environment.
+            with patch("renai.config.settings.app_settings", AppSettings()):
+                assert get_ocr_lang() == "deu"
 
     def test_get_max_text_read_size_default_and_override(self):
-        """Should return default max_text_read_size or value from factory defaults."""
+        """Should return default max_text_read_size or the value from app settings."""
         from renai.config import get_max_text_read_size
+        from renai.config.settings import AppSettings
 
-        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+        with patch("renai.config.settings.app_settings", AppSettings.model_construct()):
             assert get_max_text_read_size() == 1_000_000
 
         with patch(
-            "renai.config.constants.FACTORY_DEFAULTS",
-            {"processing": {"max_text_read_size": 500_000}},
+            "renai.config.settings.app_settings",
+            AppSettings(max_text_read_size=500_000),
         ):
             assert get_max_text_read_size() == 500_000
 
     def test_get_subprocess_timeout_default_and_override(self):
-        """Should return default subprocess_timeout or value from factory defaults."""
+        """Should return default subprocess_timeout or the value from app settings."""
         from renai.config import get_subprocess_timeout
+        from renai.config.settings import AppSettings
 
-        with patch("renai.config.constants.FACTORY_DEFAULTS", {}):
+        with patch("renai.config.settings.app_settings", AppSettings.model_construct()):
             assert get_subprocess_timeout() == 60
 
         with patch(
-            "renai.config.constants.FACTORY_DEFAULTS",
-            {"processing": {"subprocess_timeout": 120}},
+            "renai.config.settings.app_settings",
+            AppSettings(subprocess_timeout=120),
         ):
             assert get_subprocess_timeout() == 120
+
+    def test_processing_keys_loaded_from_default_toml(self):
+        """settings.default.toml carries the flat processing keys AppSettings reads."""
+        from renai.config.constants import FACTORY_DEFAULTS
+
+        assert FACTORY_DEFAULTS["ocr_lang"] == "tur+eng"
+        assert FACTORY_DEFAULTS["max_text_read_size"] == 1_000_000
+        assert FACTORY_DEFAULTS["subprocess_timeout"] == 60
 
 
 class TestGetEffectiveVisionProvider:

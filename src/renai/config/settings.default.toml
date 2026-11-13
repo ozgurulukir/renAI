@@ -5,6 +5,10 @@
 
 # App Settings
 provider = "deepinfra"
+# Also available (default: unset — provider default model is used):
+# model = "meta-llama/Llama-3.3-70B-Instruct"
+# vision_provider = "openai"
+# vision_model = "gpt-4o-mini"
 workers = 4
 text_length = 10000
 text_extraction = "head-tail"

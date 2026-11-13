@@ -59,6 +59,21 @@ class AppSettings(BaseSettings):
     )
     extraction_pages: int = Field(default=10, ge=1, description="Number of pages to read from PDFs")
     extractor: str = Field(default="pymupdf", description="PDF text extractor library")
+    ocr_lang: str = Field(
+        default="tur+eng",
+        min_length=1,
+        description="Tesseract OCR language(s), e.g. 'tur+eng'",
+    )
+    max_text_read_size: int = Field(
+        default=1_000_000,
+        ge=1000,
+        description="Maximum characters read from plain-text files",
+    )
+    subprocess_timeout: int = Field(
+        default=60,
+        ge=1,
+        description="Timeout (seconds) for external tool subprocesses",
+    )
 
     # Behavior settings
     show_warnings: bool = Field(default=True, description="Show warnings before processing")

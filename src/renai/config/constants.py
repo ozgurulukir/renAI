@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 try:
     import tomllib
@@ -16,6 +17,9 @@ except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]
 
 from platformdirs import user_data_dir
+
+if TYPE_CHECKING:
+    from renai.config.settings import AppSettings
 
 # =============================================================================
 # Application Constants
@@ -156,20 +160,27 @@ CUSTOM_CATEGORIES_FILE = CATEGORIES_USER_FILE
 # =============================================================================
 
 
+def _app_settings() -> "AppSettings":
+    """Lazy accessor for the settings singleton (avoids the import cycle:
+    settings.py imports constants at module level)."""
+    from renai.config.settings import app_settings
+
+    return app_settings
+
+
 def get_ocr_lang() -> str:
-    """Get OCR language from factory defaults or config."""
-    processing = FACTORY_DEFAULTS.get("processing") or {}
-    return processing.get("ocr_lang", "tur+eng")
+    """Get OCR language from application settings (CLI env vars / user TOML / defaults)."""
+    return _app_settings().ocr_lang
 
 
 def get_max_text_read_size() -> int:
-    """Get maximum text read size from factory defaults or config."""
-    return FACTORY_DEFAULTS.get("processing", {}).get("max_text_read_size", 1_000_000)
+    """Get maximum text read size from application settings."""
+    return _app_settings().max_text_read_size
 
 
 def get_subprocess_timeout() -> int:
-    """Get subprocess timeout from factory defaults or config."""
-    return FACTORY_DEFAULTS.get("processing", {}).get("subprocess_timeout", 60)
+    """Get subprocess timeout from application settings."""
+    return _app_settings().subprocess_timeout
 
 
 def get_image_extensions() -> set[str]:
