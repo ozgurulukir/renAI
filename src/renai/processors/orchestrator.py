@@ -437,10 +437,16 @@ async def _run_benchmark_mode(
         success_count = 0
 
         for f_path in file_paths:
-            res = await processor.process_file(f_path, mode="evaluate")
-            if res.success:
+            extracted = await processor.benchmark_extract(f_path)
+            if extracted:
                 success_count += 1
-            status_display.update(res)
+            status_display.update(
+                ProcessingResult(
+                    success=extracted,
+                    name=f_path.name,
+                    original_name=f_path.name,
+                )
+            )
 
         duration = time.perf_counter() - start_t
         benchmark_data.append(
