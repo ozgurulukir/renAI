@@ -56,6 +56,34 @@ class TestBookProcessor:
             BookProcessor(mock_ocr, None)
 
     @pytest.mark.asyncio
+    async def test_benchmark_extract_bypasses_cache_without_fallback(self, processor):
+        """Benchmark passes must do real extraction: no cache, no fallback side effects."""
+        processor.text_extractor.extract = AsyncMock(return_value="x" * 500)
+
+        assert await processor.benchmark_extract(Path("book.pdf")) is True
+        processor.text_extractor.extract.assert_awaited_once_with(
+            Path("book.pdf"),
+            fallback=FallbackMode.NONE,
+            use_cache=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_benchmark_extract_insufficient_text_is_failure(self, processor):
+        """Text at or below min_sufficient_text is not a successful extraction."""
+        threshold = processor.text_extractor.min_sufficient_text
+        processor.text_extractor.extract = AsyncMock(return_value="x" * threshold)
+
+        assert await processor.benchmark_extract(Path("scan.pdf")) is False
+
+    @pytest.mark.asyncio
+    async def test_benchmark_extract_error_does_not_abort_run(self, processor, caplog):
+        """One unreadable file must count as a failure, not crash the benchmark."""
+        processor.text_extractor.extract = AsyncMock(side_effect=OSError("corrupt pdf"))
+
+        assert await processor.benchmark_extract(Path("broken.pdf")) is False
+        assert "Benchmark extraction failed for broken.pdf" in caplog.text
+
+    @pytest.mark.asyncio
     async def test_process_file_with_cache(self, processor, tmp_path):
         """Test that process_file uses cache asynchronously."""
         test_file = tmp_path / "book.pdf"

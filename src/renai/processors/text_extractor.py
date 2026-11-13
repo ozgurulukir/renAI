@@ -113,7 +113,7 @@ class TextExtractor:
         fallback: FallbackMode = FallbackMode.OCR,
         file_hash: str | None = None,
         dry_run: bool = False,
-        update_cache: bool = True,
+        use_cache: bool = True,
     ) -> str:
         """
         Extract text from a file with caching asynchronously.
@@ -124,9 +124,9 @@ class TextExtractor:
             fallback: Fallback strategy for insufficient text
             file_hash: Pre-computed SHA256 hash of the file (optional)
             dry_run: When True, move-based fallbacks only log what they would do
-            update_cache: When False, bypass the text cache entirely (neither
-                read nor write) so the extractor always runs — used by
-                benchmark mode to time real extraction work
+            use_cache: When False, bypass the text cache entirely (neither read
+                nor write, and skip hashing) so the extractor always runs —
+                used by benchmark mode to time real extraction work
 
         Returns:
             Extracted text or empty string on failure
@@ -139,12 +139,12 @@ class TextExtractor:
             logging.warning(f"Skipping symlink to prevent arbitrary file read: {file_path.name}")
             return ""
 
-        # Get file hash for caching
-        if file_hash is None:
-            file_hash = await asyncio.to_thread(get_file_hash, file_path)
-
         cache_path = None
-        if update_cache:
+        if use_cache:
+            # Get file hash for caching (skipped when the cache is bypassed)
+            if file_hash is None:
+                file_hash = await asyncio.to_thread(get_file_hash, file_path)
+
             cache_path = get_text_cache_path(
                 file_hash,
                 ocr_enabled=self.ocr_engine.enhanced if fallback == FallbackMode.OCR else False,
@@ -172,7 +172,7 @@ class TextExtractor:
             )
 
         # Cache result if we got meaningful text
-        if update_cache and cache_path is not None and extracted_text.strip():
+        if cache_path is not None and extracted_text.strip():
             await asyncio.to_thread(write_text_cache, cache_path, extracted_text)
 
         return extracted_text

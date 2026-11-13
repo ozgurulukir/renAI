@@ -363,13 +363,23 @@ class BookProcessor:
         """Run one extraction-only pass for benchmark mode.
 
         Times must reflect the extractor, not the cache or the LLM: both caches
-        are bypassed (the text cache via ``update_cache=False``, the metadata
+        are bypassed (the text cache via ``use_cache=False``, the metadata
         cache and the LLM by never entering the metadata path), so every
         extractor pass performs real extraction work on the same files.
+
+        Matches the old ``process_file(mode="evaluate")`` contract: no fallback
+        side effects (NONE would OCR/quarantine files mid-benchmark) and the
+        success bar is ``min_sufficient_text``, the same boundary the pipeline
+        uses to decide extraction was good enough.
         """
-        text = await self.text_extractor.extract(
-            file_path,
-            fallback=FallbackMode.OCR,
-            update_cache=False,
-        )
-        return bool(text.strip())
+        try:
+            text = await self.text_extractor.extract(
+                file_path,
+                fallback=FallbackMode.NONE,
+                use_cache=False,
+            )
+        except Exception as e:
+            # One unreadable file must not abort the whole benchmark run.
+            logging.error(f"Benchmark extraction failed for {file_path.name}: {e}")
+            return False
+        return len(text.strip()) > self.text_extractor.min_sufficient_text
