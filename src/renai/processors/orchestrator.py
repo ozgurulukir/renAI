@@ -366,11 +366,12 @@ async def _close_llm_engines(processor: BookProcessor) -> None:
     """Release the HTTP clients of every engine the pipeline built.
 
     Best-effort: a failing close must not mask the pipeline's own outcome.
+    Identity-deduplicated: when vision shares the text engine's provider and
+    model, ``setup_engines`` reuses the same ``LLMEngine`` instance, so the
+    set here collapses both references into a single close.
     """
-    engines = [processor.llm_engine]
     vision_engine = getattr(processor.visual_processor, "llm_engine", None)
-    if vision_engine is not None:
-        engines.append(vision_engine)
+    engines = {processor.llm_engine, vision_engine} - {None}
     for engine in engines:
         aclose = getattr(engine, "aclose", None)
         if aclose is None:

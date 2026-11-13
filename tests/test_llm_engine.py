@@ -464,3 +464,10 @@ async def test_connection_retries_exhausted_raises_llm_error(llm_engine):
             )
 
     assert llm_engine.client.chat.completions.create.await_count == 5
+
+
+@pytest.mark.asyncio
+async def test_aclose_releases_http_client(llm_engine):
+    """aclose must shut down the underlying AsyncOpenAI/httpx pool."""
+    await llm_engine.aclose()
+    assert llm_engine.client.is_closed()
