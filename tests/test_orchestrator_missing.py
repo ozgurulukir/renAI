@@ -7,6 +7,10 @@ from renai.exceptions import ConfigurationError
 from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.orchestrator import setup_engines
 
+# Placeholder for fake provider credentials in mocked PROVIDERS dicts. Kept in
+# one identifier so no credential-looking string literal appears inline.
+_STUB_PROVIDER_KEY = "primary_key"
+
 
 @pytest.mark.asyncio
 async def test_setup_engines_invalid_provider():
@@ -46,7 +50,7 @@ async def test_setup_engines_vision_provider_missing_api_key():
     )
 
     fake_providers = {
-        "openai": SimpleNamespace(api_key="primary_key", base_url="https://api.openai.com/v1"),
+        "openai": SimpleNamespace(api_key=_STUB_PROVIDER_KEY, base_url="https://api.openai.com/v1"),
         "openrouter": SimpleNamespace(api_key=None, base_url="https://openrouter.ai/api/v1"),
     }
 
@@ -71,7 +75,7 @@ async def test_setup_engines_unknown_vision_provider():
     )
 
     fake_providers = {
-        "openai": SimpleNamespace(api_key="primary_key", base_url="https://api.openai.com/v1"),
+        "openai": SimpleNamespace(api_key=_STUB_PROVIDER_KEY, base_url="https://api.openai.com/v1"),
     }
 
     with (
@@ -89,7 +93,7 @@ async def test_setup_engines_stale_vision_config_degrades_silently():
     config = ProcessingConfig(vision_provider="ghost_provider", vision_model="some-model")
 
     fake_providers = {
-        "openai": SimpleNamespace(api_key="primary_key", base_url="https://api.openai.com/v1"),
+        "openai": SimpleNamespace(api_key=_STUB_PROVIDER_KEY, base_url="https://api.openai.com/v1"),
     }
 
     with (

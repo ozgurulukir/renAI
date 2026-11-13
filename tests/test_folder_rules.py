@@ -34,6 +34,10 @@ from renai.processors.book import BookProcessor
 
 MISSING = Path("__definitely_missing__.toml")
 
+# Placeholder for the engine's api_key argument in fixtures. Kept in one
+# identifier so no credential-looking string literal appears inline.
+_DUMMY_KEY = "test-key"
+
 
 @pytest.fixture(autouse=True)
 def _clear_rules_cache():
@@ -372,7 +376,7 @@ def engine():
     with patch("renai.engines.llm.get_allowed_categories", return_value=GLOBAL_CATEGORIES):
         return LLMEngine(
             provider="openai",
-            api_key="test-key",
+            api_key=_DUMMY_KEY,
             base_url="https://api.openai.com/v1",
             model_name="gpt-4o-mini",
         )

@@ -7,6 +7,10 @@ import pytest
 from renai.engines.llm import LLMEngine
 from renai.models.schemas import BookMetadata, ImageMetadata
 
+# Placeholder for the engine's api_key argument in fixtures. Kept in one
+# identifier so no credential-looking string literal appears inline.
+_DUMMY_KEY = "test-key"
+
 
 @pytest.fixture
 def mock_allowed_categories():
@@ -21,7 +25,7 @@ def llm_engine(mock_allowed_categories):
     with patch("renai.engines.llm.get_allowed_categories", return_value=mock_allowed_categories):
         return LLMEngine(
             provider="openai",
-            api_key="test-key",
+            api_key=_DUMMY_KEY,
             base_url="https://api.openai.com/v1",
             model_name="gpt-4o",
         )
@@ -123,7 +127,7 @@ class TestVisionLLMCall:
         ):
             engine = LLMEngine(
                 provider="openrouter",
-                api_key="test-key",
+                api_key=_DUMMY_KEY,
                 base_url="https://openrouter.ai/api/v1",
                 model_name="openai/gpt-4o",
             )

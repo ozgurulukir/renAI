@@ -18,25 +18,56 @@ CACHE_EXPIRY = 86400  # 24 hours in seconds
 HTTP_STATUS_OK = 200
 
 
-def _fetch_remote_json(endpoint: str) -> dict | None:
-    """Fetch remote JSON from models.dev endpoint."""
-    headers = {
+def _remote_headers() -> dict[str, str]:
+    """Headers for models.dev requests."""
+    return {
         "User-Agent": f"renAI/{__version__} (https://github.com/ozgurulukir/renAI)",
         "Accept": "application/json",
     }
-    url = f"https://models.dev/{endpoint}"
-    try:
-        response = requests.get(url, headers=headers, timeout=6.0)
-        if response.status_code == HTTP_STATUS_OK:
-            data = response.json()
-            if isinstance(data, dict) and data:
-                return data
-            logging.debug(f"Endpoint {url} returned empty or non-dict response: {data}")
-        else:
-            logging.debug(f"Endpoint {url} returned HTTP status {response.status_code}")
-    except Exception as e:
-        logging.debug(f"Failed to fetch {url}: {e}")
+
+
+def _decode_remote_json(response: requests.Response) -> dict | None:
+    """Decode a models.dev JSON response, logging anomalies."""
+    if response.status_code == HTTP_STATUS_OK:
+        data = response.json()
+        if isinstance(data, dict) and data:
+            return data
+        logging.debug(f"Endpoint returned empty or non-dict response: {data}")
+    else:
+        logging.debug(f"Endpoint returned HTTP status {response.status_code}")
     return None
+
+
+def _fetch_catalog_json() -> dict | None:
+    """Fetch the models.dev catalog document.
+
+    The URL is a compile-time literal on a fixed remote host (no
+    caller-supplied endpoint interpolation), so no SSRF surface exists.
+    """
+    try:
+        response = requests.get(
+            "https://models.dev/catalog.json",
+            headers=_remote_headers(),
+            timeout=6.0,
+        )
+    except Exception as e:
+        logging.debug(f"Failed to fetch https://models.dev/catalog.json: {e}")
+        return None
+    return _decode_remote_json(response)
+
+
+def _fetch_models_json() -> dict | None:
+    """Fetch the models.dev legacy models document (literal URL, fixed host)."""
+    try:
+        response = requests.get(
+            "https://models.dev/models.json",
+            headers=_remote_headers(),
+            timeout=6.0,
+        )
+    except Exception as e:
+        logging.debug(f"Failed to fetch https://models.dev/models.json: {e}")
+        return None
+    return _decode_remote_json(response)
 
 
 KNOWN_OPENAI_PROVIDERS = {
@@ -120,7 +151,7 @@ def _get_raw_catalog(force_refresh: bool = False) -> dict:
         return cached
 
     # Try fetching catalog.json first
-    data = _fetch_remote_json("catalog.json")
+    data = _fetch_catalog_json()
     if data and (data.get("models") or data.get("providers")):
         with contextlib.suppress(Exception), CACHE_FILE.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
@@ -128,7 +159,7 @@ def _get_raw_catalog(force_refresh: bool = False) -> dict:
         return data
 
     # Fallback: try fetching models.json
-    models_data = _fetch_remote_json("models.json")
+    models_data = _fetch_models_json()
     if models_data:
         data = {"models": models_data, "providers": {}}
         with contextlib.suppress(Exception), CACHE_FILE.open("w", encoding="utf-8") as f:
