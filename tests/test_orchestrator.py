@@ -9,15 +9,12 @@ from renai.processors.orchestrator import _run_benchmark_mode, run_evaluation_pi
 
 @pytest.mark.asyncio
 async def test_run_benchmark():
-    """Test _run_benchmark_mode function successfully produces benchmark table."""
+    """Benchmark mode must time extraction-only passes, not process_file cache hits."""
     processor = MagicMock()
     processor.ocr_engine = MagicMock()
     processor.target_length = 1000
-
-    # Mock process_file to return a successful ProcessingResult
-    mock_result = MagicMock()
-    mock_result.success = True
-    processor.process_file = AsyncMock(return_value=mock_result)
+    # Alternate success/failure so the success tally is derived per file
+    processor.benchmark_extract = AsyncMock(side_effect=[True, False] * 4)
 
     file_paths = [Path("file1.pdf"), Path("file2.pdf")]
 
@@ -30,8 +27,9 @@ async def test_run_benchmark():
     ):  # Need enough returns for 4 extractors
         await _run_benchmark_mode(processor, file_paths, mock_status_display, mock_live)
 
-        # 4 extractors * 2 files = 8 process_file calls
-        assert processor.process_file.call_count == 8
+        # 4 extractors * 2 files = 8 extraction-only calls — no metadata path
+        assert processor.benchmark_extract.call_count == 8
+        processor.process_file.assert_not_called()
         mock_live.stop.assert_called_once()
 
         # Verify the benchmark table was printed
@@ -44,6 +42,30 @@ async def test_run_benchmark():
                 assert "Benchmark Results" in call_args[0][0].title
                 break
         assert table_found
+
+
+@pytest.mark.asyncio
+async def test_run_benchmark_limits_files_to_sample_count():
+    """benchmark_sample_count must slice the file list before timing."""
+    processor = MagicMock()
+    processor.ocr_engine = MagicMock()
+    processor.target_length = 1000
+    processor.benchmark_extract = AsyncMock(return_value=True)
+
+    file_paths = [Path(f"file{i}.pdf") for i in range(5)]
+    mock_status_display = MagicMock()
+    mock_live = MagicMock()
+
+    with (
+        patch("renai.processors.orchestrator.console.print"),
+        patch("renai.processors.orchestrator.app_settings") as mock_settings,
+        patch("time.perf_counter", side_effect=[0, 1] * 4),
+    ):
+        mock_settings.benchmark_sample_count = 2
+        await _run_benchmark_mode(processor, file_paths, mock_status_display, mock_live)
+
+        # 4 extractors * 2 sampled files, not the full list of 5
+        assert processor.benchmark_extract.call_count == 8
 
 
 @pytest.mark.asyncio

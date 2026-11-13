@@ -358,3 +358,18 @@ class BookProcessor:
                 logging.error(f"Vision LLM fallback failed for {file_path.name}: {e}")
 
         return None, False
+
+    async def benchmark_extract(self, file_path: Path) -> bool:
+        """Run one extraction-only pass for benchmark mode.
+
+        Times must reflect the extractor, not the cache or the LLM: both caches
+        are bypassed (the text cache via ``update_cache=False``, the metadata
+        cache and the LLM by never entering the metadata path), so every
+        extractor pass performs real extraction work on the same files.
+        """
+        text = await self.text_extractor.extract(
+            file_path,
+            fallback=FallbackMode.OCR,
+            update_cache=False,
+        )
+        return bool(text.strip())
