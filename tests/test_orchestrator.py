@@ -134,3 +134,68 @@ async def test_print_final_summary_organize():
         assert orch_msg.Summary.SUCCESS_COUNT.format(2) in rendered
         assert orch_msg.Summary.FAILED_BADGE in rendered
         assert orch_msg.Summary.FAILED_COUNT.format(1) in rendered
+
+
+@pytest.mark.asyncio
+async def test_close_llm_engines_dedupes_shared_engine():
+    """Vision reusing the text engine must collapse to a single aclose call."""
+    from renai.processors.orchestrator import _close_llm_engines
+
+    processor = MagicMock()
+    shared = MagicMock()
+    shared.aclose = AsyncMock()
+    processor.llm_engine = shared
+    processor.visual_processor.llm_engine = shared
+
+    await _close_llm_engines(processor)
+    shared.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_close_llm_engines_survives_failing_close():
+    """A raising aclose is swallowed: teardown must not mask pipeline outcome."""
+    from renai.processors.orchestrator import _close_llm_engines
+
+    processor = MagicMock()
+    engine = MagicMock()
+    engine.aclose = AsyncMock(side_effect=RuntimeError("pool already closed"))
+    processor.llm_engine = engine
+    processor.visual_processor.llm_engine = None
+
+    await _close_llm_engines(processor)  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_closes_engines_on_failure():
+    """Engine teardown runs in a finally: even a processing-loop crash closes clients."""
+    from renai.exceptions import ExtractionError
+    from renai.processors import orchestrator as orch
+
+    processor = MagicMock()
+    engine = MagicMock()
+    engine.aclose = AsyncMock()
+    processor.llm_engine = engine
+    processor.visual_processor.llm_engine = None
+    processor.setup_move_folders = AsyncMock()
+
+    with (
+        patch.object(
+            orch,
+            "setup_engines",
+            new_callable=AsyncMock,
+            return_value=(MagicMock(), engine, processor),
+        ),
+        patch.object(orch, "collect_files", return_value=[]),
+        patch.object(
+            orch,
+            "_execute_processing_loop",
+            new_callable=AsyncMock,
+            side_effect=ExtractionError("boom"),
+        ),
+        patch.object(orch, "console"),
+        patch.object(orch, "_flush_eval_log", new_callable=AsyncMock),
+        pytest.raises(ExtractionError),
+    ):
+        await orch.run_pipeline(Path("docs"), provider="openai")
+
+    engine.aclose.assert_awaited_once()

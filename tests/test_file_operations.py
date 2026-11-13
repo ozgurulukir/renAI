@@ -595,3 +595,32 @@ class TestUndoJournal:
             record_undo_entry(tmp_path / f"o{i}", tmp_path / f"n{i}", cache_dir=tmp_path)
             assert len(jp.read_text().strip().splitlines()) == i + 1
         assert all(json.loads(line) for line in jp.read_text().strip().splitlines())
+
+    def test_load_failure_returns_zero_not_crash(self, tmp_path):
+        """A corrupt journal must yield 0 reverts, never a crash of the undo command."""
+        from unittest.mock import patch
+
+        from renai.file_ops.operations import undo_last_operation
+
+        with patch("renai.file_ops.operations._load_undo_entries", side_effect=OSError("boom")):
+            assert undo_last_operation(cache_dir=tmp_path) == 0
+
+    def test_move_failure_skips_entry_and_reverts_rest(self, tmp_path, monkeypatch):
+        """One bad entry must not abort the whole undo — the rest still revert."""
+        from renai.file_ops.operations import record_undo_entry, undo_last_operation
+
+        ok_new = tmp_path / "ok_new.txt"
+        ok_new.write_text("data")
+        record_undo_entry(tmp_path / "ok_old.txt", ok_new, cache_dir=tmp_path)
+        record_undo_entry(tmp_path / "bad_old.txt", tmp_path / "bad_new.txt", cache_dir=tmp_path)
+
+        real_move = __import__("shutil").move
+
+        def flaky_move(src, dst):
+            if "bad_new" in str(src):
+                raise OSError("permission denied")
+            real_move(src, dst)
+
+        monkeypatch.setattr("renai.file_ops.operations.shutil.move", flaky_move)
+        assert undo_last_operation(cache_dir=tmp_path) == 1
+        assert (tmp_path / "ok_old.txt").exists()

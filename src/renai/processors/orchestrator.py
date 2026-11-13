@@ -362,6 +362,26 @@ def _print_final_summary(results: list[ProcessingResult], is_dry_run: bool = Fal
     )
 
 
+async def _close_llm_engines(processor: BookProcessor) -> None:
+    """Release the HTTP clients of every engine the pipeline built.
+
+    Best-effort: a failing close must not mask the pipeline's own outcome.
+    Identity-deduplicated: when vision shares the text engine's provider and
+    model, ``setup_engines`` reuses the same ``LLMEngine`` instance, so the
+    set here collapses both references into a single close.
+    """
+    vision_engine = getattr(processor.visual_processor, "llm_engine", None)
+    engines = {processor.llm_engine, vision_engine} - {None}
+    for engine in engines:
+        aclose = getattr(engine, "aclose", None)
+        if aclose is None:
+            continue
+        try:
+            await aclose()
+        except Exception as e:  # teardown must not raise
+            logging.debug("Failed to close LLM engine client: %s", e)
+
+
 async def run_pipeline(
     root_dir: Path,
     provider: str,
@@ -385,28 +405,31 @@ async def run_pipeline(
         config,
     )
 
-    await processor.setup_move_folders(
-        root_dir,
-        skip_ocr_checks=config.skip_ocr_checks,
-        move_scan_failures=config.move_scan_failures,
-        dry_run=config.dry_run,
-    )
+    try:
+        await processor.setup_move_folders(
+            root_dir,
+            skip_ocr_checks=config.skip_ocr_checks,
+            move_scan_failures=config.move_scan_failures,
+            dry_run=config.dry_run,
+        )
 
-    # 2. Collection (KeyboardInterrupt propagates to the CLI, which owns exit UX)
-    file_paths = collect_files(root_dir, processor, config.recursive, config.rename_images)
+        # 2. Collection (KeyboardInterrupt propagates to the CLI, which owns exit UX)
+        file_paths = collect_files(root_dir, processor, config.recursive, config.rename_images)
 
-    console.print()
+        console.print()
 
-    # 3. Execution Loop
-    results = await _execute_processing_loop(processor, file_paths, provider, model, config)
+        # 3. Execution Loop
+        results = await _execute_processing_loop(processor, file_paths, provider, model, config)
 
-    await _flush_eval_log()
+        await _flush_eval_log()
 
-    # 4. Final Summary Card (Static, will stay in terminal history)
-    if not config.benchmark and results:
-        _print_final_summary(results, is_dry_run=config.dry_run)
+        # 4. Final Summary Card (Static, will stay in terminal history)
+        if not config.benchmark and results:
+            _print_final_summary(results, is_dry_run=config.dry_run)
 
-    return results
+        return results
+    finally:
+        await _close_llm_engines(processor)
 
 
 async def _run_benchmark_mode(
