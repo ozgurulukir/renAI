@@ -511,7 +511,7 @@ class TestPipelineFolderRules:
                 side_effect=lambda s, d, **kwargs: d,
             ),
         ):
-            result = await processor.process_file(test_file, mode="rename")
+            result = await processor.process_file(test_file)
 
         assert result.success is True
         assert result.metadata["category"] == "Comic"
@@ -544,7 +544,7 @@ class TestPipelineFolderRules:
                 side_effect=lambda s, d, **kwargs: d,
             ),
         ):
-            result = await processor.process_file(test_file, mode="rename")
+            result = await processor.process_file(test_file)
 
         assert result.success is True
         assert result.metadata["category"] == "Comic"
@@ -580,7 +580,7 @@ class TestPipelineFolderRules:
                 side_effect=lambda s, d, **kwargs: d,
             ),
         ):
-            result = await processor.process_file(test_file, mode="rename")
+            result = await processor.process_file(test_file)
 
         assert result.success is True
         assert result.metadata["category"] == "Tez"
@@ -588,6 +588,7 @@ class TestPipelineFolderRules:
     @pytest.mark.asyncio
     async def test_image_rule_mismatch_reextracts_with_image_categories(self, processor, tmp_path):
         """Image mode signs image_categories; a global row must not serve a rule run."""
+        processor.config = processor.config.model_copy(update={"rename_images": True})
         test_file = tmp_path / "photo.jpg"
         test_file.write_bytes(b"jpeg")
         cached = ImageMetadata(description="Global category photo", category="Photo", language="en")
@@ -613,7 +614,7 @@ class TestPipelineFolderRules:
                 side_effect=lambda s, d, **kwargs: d,
             ),
         ):
-            result = await processor.process_file(test_file, mode="rename", rename_images=True)
+            result = await processor.process_file(test_file)
 
         assert result.success is True
         assert result.metadata["description"] == "Rule category photo"
@@ -646,7 +647,7 @@ class TestPipelineFolderRules:
                 side_effect=lambda s, d, **kwargs: d,
             ),
         ):
-            result = await processor.process_file(test_file, mode="rename")
+            result = await processor.process_file(test_file)
 
         assert result.success is True
         assert result.name == "Frank Herbert -- Dune.pdf"

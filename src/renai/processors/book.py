@@ -117,22 +117,21 @@ class BookProcessor:
         )
         self.text_extractor.apply_run_state(run_state)
 
-    async def setup_move_folders(
-        self,
-        root_dir: Path,
-        skip_ocr_checks: bool = False,
-        move_scan_failures: bool = False,
-        dry_run: bool = False,
-    ) -> None:
-        """Delegate to text_extractor and store root_dir for organization."""
+    async def setup_move_folders(self, root_dir: Path) -> None:
+        """Delegate to text_extractor and store root_dir for organization.
+
+        Quarantine policy (``skip_ocr_checks``, ``move_scan_failures``) and
+        ``dry_run`` come from ``self.config`` — populated once at construction —
+        not from per-call kwargs that would mirror config fields.
+        """
         self.root_dir = root_dir
         self.file_organizer.root_dir = root_dir
         await asyncio.to_thread(
             self.text_extractor.setup_move_folders,
             root_dir,
-            skip_ocr_checks,
-            move_scan_failures,
-            dry_run,
+            self.config.skip_ocr_checks,
+            self.config.move_scan_failures,
+            self.config.dry_run,
         )
 
     def _build_metadata_request(
@@ -220,17 +219,19 @@ class BookProcessor:
         )
         return metadata, is_vision_doc
 
-    async def process_file(
-        self,
-        file_path: Path,
-        mode: str = "rename",
-        fallback_mode: FallbackMode = FallbackMode.NONE,
-        rename_images: bool = False,
-        update_metadata: bool = False,
-        add_exif_date: bool = False,
-        dry_run: bool = False,
-    ) -> ProcessingResult:
-        """Unified processing entry point for documents and images asynchronously."""
+    async def process_file(self, file_path: Path) -> ProcessingResult:
+        """Unified processing entry point for documents and images asynchronously.
+
+        Every behavioral knob — ``mode``, ``fallback_mode``, ``rename_images``,
+        ``update_metadata``, ``add_exif_date``, ``dry_run`` — is read from
+        ``self.config`` (the ``ProcessingConfig`` supplied at construction), so
+        per-call kwargs cannot drift from pipeline configuration. ``mode`` lives
+        on the processor's config rather than being passed per file: the
+        orchestrator runs one mode per pipeline.
+        """
+        mode = self.config.mode
+        fallback_mode = self.config.fallback_mode
+        dry_run = self.config.dry_run
         try:
             if file_path.is_symlink():
                 logging.warning(f"Skipping symlink: {file_path.name}")
@@ -247,10 +248,10 @@ class BookProcessor:
                 file_path,
                 file_hash,
                 fallback_mode,
-                rename_images,
+                self.config.rename_images,
                 folder_rule=folder_rule,
-                update_metadata=update_metadata,
-                add_exif_date=add_exif_date,
+                update_metadata=self.config.update_metadata,
+                add_exif_date=self.config.add_exif_date,
             )
 
             metadata, is_vision_doc = await self._resolve_metadata(
@@ -283,7 +284,7 @@ class BookProcessor:
                     file_path,
                     metadata,
                     mode=mode,
-                    add_exif_date=add_exif_date,
+                    add_exif_date=self.config.add_exif_date,
                     file_hash=file_hash,
                     is_vision_doc=is_vision_doc,
                     dry_run=dry_run,

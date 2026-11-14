@@ -45,11 +45,13 @@ def processor(mock_engines):
 async def test_file_processing_integration(processor, tmp_path):
     """Test the complete file processing pipeline asynchronously."""
     # Create a test PDF file
+    processor.config = processor.config.model_copy(update={"mode": "organize"})
+
     test_file = tmp_path / "test_book.pdf"
     test_file.write_bytes(b"fake pdf content")
 
     # Process the book in organize mode to verify movement to category folder
-    result = await processor.process_file(test_file, mode="organize")
+    result = await processor.process_file(test_file)
 
     # Check results
     assert result.success
@@ -75,13 +77,13 @@ async def test_cache_functionality(processor, tmp_path):
         test_file.write_bytes(b"unique fake pdf content for cache test")
 
         # First run - should call LLM
-        result1 = await processor.process_file(test_file, mode="rename")
+        result1 = await processor.process_file(test_file)
         assert result1.success
         assert processor.llm_engine.get_book_metadata.await_count == 1
         assert result1.file_path is not None
 
         # Second run with same file (hash-based cache)
-        result2 = await processor.process_file(result1.file_path, mode="rename")
+        result2 = await processor.process_file(result1.file_path)
         assert result2.success
         # Should NOT call LLM again due to cache
         assert processor.llm_engine.get_book_metadata.await_count == 1
@@ -113,12 +115,14 @@ async def test_organize_with_root_dir(processor, tmp_path):
     # setup_move_folders sets root_dir on the processor
     await processor.setup_move_folders(root_dir)
 
+    processor.config = processor.config.model_copy(update={"mode": "organize"})
+
     # Use private cache dir to avoid collisions with other tests
     with (
         patch("renai.cache.manager.CACHE_DIR", test_cache_dir),
         patch("renai.processors.book.CACHE_DIR", test_cache_dir),
     ):
-        result = await processor.process_file(test_file, mode="organize")
+        result = await processor.process_file(test_file)
 
     assert result.success
     assert "Organized Book" in (result.name or "")
@@ -138,6 +142,7 @@ async def test_path_traversal_blocked_with_root_dir(processor, tmp_path):
     test_file = root_dir / "test.pdf"
     test_file.write_bytes(b"unique content for traversal test")
 
+    processor.config = processor.config.model_copy(update={"mode": "organize"})
     await processor.setup_move_folders(root_dir)
 
     def fake_category(meta, default="Uncategorized"):
@@ -148,7 +153,7 @@ async def test_path_traversal_blocked_with_root_dir(processor, tmp_path):
         patch("renai.processors.book.CACHE_DIR", test_cache_dir),
         patch("renai.file_ops.organizer.extract_category_from_metadata", side_effect=fake_category),
     ):
-        result = await processor.process_file(test_file, mode="organize")
+        result = await processor.process_file(test_file)
 
     # is_relative_to should block the traversal
     assert not result.success

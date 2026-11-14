@@ -64,7 +64,7 @@ async def run_benchmark():
         source_dir, _dest_dir, _files = setup_files(tmp_path, 10, 20)
 
         # Mock engines since we only care about organization speed (hash + move)
-        processor = BookProcessor(Mock(), ProcessingConfig(), Mock())
+        processor = BookProcessor(Mock(), ProcessingConfig(mode="organize"), Mock())
         # Mock extract_document_metadata to avoid LLM/OCR calls. AsyncMock because
         # the middleware awaits it whenever the mocked cache read misses.
         processor._extract_document_metadata = AsyncMock(return_value=None)
@@ -99,7 +99,7 @@ async def run_benchmark():
             source_files = list(source_dir.glob("*.pdf"))
 
             # Process them in organize mode
-            tasks = [processor.process_file(f, mode="organize") for f in source_files]
+            tasks = [processor.process_file(f) for f in source_files]
             await asyncio.gather(*tasks)
 
             elapsed = time.time() - start_time

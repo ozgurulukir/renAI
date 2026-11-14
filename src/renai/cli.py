@@ -198,19 +198,13 @@ def _validate_cli_flags(root_dir: Path) -> None:
 
 
 def _build_processing_config(**kwargs: Any) -> ProcessingConfig:
-    """Build ProcessingConfig instance from CLI parameters using kwargs forwarding."""
-    if "exif" in kwargs:
-        kwargs["add_exif_date"] = kwargs.pop("exif")
-    kwargs.setdefault("skip_ocr_checks", app_settings.skip_needs_ocr)
+    """Forward raw CLI flags to the single population path.
 
-    # Inject decoupled global heuristics
-    kwargs.setdefault("head_ratio", app_settings.head_ratio)
-    kwargs.setdefault("min_sufficient_text", app_settings.min_sufficient_text)
-    kwargs.setdefault("vision_image_max_size", app_settings.vision_image_max_size)
-    kwargs.setdefault("vision_image_quality", app_settings.vision_image_quality)
-    kwargs.setdefault("vision_dpi", app_settings.vision_dpi)
-
-    return ProcessingConfig(**kwargs)
+    Kept as a thin named seam for tests/readability: all config logic lives in
+    ``ProcessingConfig.from_app_settings`` — the ``exif`` -> ``add_exif_date``
+    rename and every settings-derived default happen there, not here.
+    """
+    return ProcessingConfig.from_app_settings(**kwargs)
 
 
 def check_vision_model_guard(
