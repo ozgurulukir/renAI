@@ -301,15 +301,9 @@ async def _execute_processing_loop(
             async with semaphore:
                 status_display.update(orch_msg.Status.SCANNING.format(f_path.name))
 
-                res = await processor.process_file(
-                    f_path,
-                    mode=config.mode,
-                    fallback_mode=config.fallback_mode,
-                    rename_images=config.rename_images,
-                    update_metadata=config.update_metadata,
-                    add_exif_date=config.add_exif_date,
-                    dry_run=config.dry_run,
-                )
+                # BookProcessor reads every behavioral knob from self.config
+                # (populated once at setup); only file_path varies per call.
+                res = await processor.process_file(f_path)
                 if config.mode == "evaluate" and res.success:
                     await log_evaluation_result(f_path, provider, model or "unknown", res.metadata)
 
@@ -395,15 +389,16 @@ async def run_pipeline(
     model: str | None = None,
     config: ProcessingConfig | None = None,
 ) -> list[ProcessingResult]:
-    """Core processing pipeline orchestration."""
+    """Core processing pipeline orchestration.
+
+    Headless-friendly: ``config`` may be a plain ``ProcessingConfig`` — there is
+    no app_settings dependency here. Settings-derived values (including
+    ``max_filename_length``) are populated exclusively by
+    ``ProcessingConfig.from_app_settings``; callers wanting settings defaults
+    build their config through that classmethod.
+    """
     if config is None:
         config = ProcessingConfig()
-
-    # Single population point: always reflect the app singleton so every caller
-    # (process CLI path and evaluate path) gets the same value regardless of how
-    # the ProcessingConfig was constructed. model_copy is a shallow copy of
-    # plain immutable fields, so the caller's original object is not mutated.
-    config = config.model_copy(update={"max_filename_length": app_settings.max_filename_length})
 
     # 1. Setup
     _ocr_engine, _llm_engine, processor = await setup_engines(
@@ -413,12 +408,7 @@ async def run_pipeline(
     )
 
     try:
-        await processor.setup_move_folders(
-            root_dir,
-            skip_ocr_checks=config.skip_ocr_checks,
-            move_scan_failures=config.move_scan_failures,
-            dry_run=config.dry_run,
-        )
+        await processor.setup_move_folders(root_dir)
 
         # 2. Collection (KeyboardInterrupt propagates to the CLI, which owns exit UX)
         file_paths = collect_files(root_dir, processor, config.recursive, config.rename_images)
@@ -533,6 +523,9 @@ async def run_evaluation_pipeline(
                 workers=workers,
                 recursive=False,
                 fallback_mode=FallbackMode.OCR,
+                # Evaluate must never quarantine files, regardless of settings:
+                # from_app_settings derives skip_ocr_checks from skip_needs_ocr.
+                skip_ocr_checks=False,
             ),
         )
         all_eval_results[f"{provider}/{model_name}"] = results

@@ -133,9 +133,11 @@ async def test_ocr_skip_functionality():
                 mock_mu_instance.name = "pymupdf"
                 mock_get_extractor.return_value = mock_mu_instance
 
-                processor = BookProcessor(mock_ocr_engine, ProcessingConfig(), mock_llm_engine)
+                processor = BookProcessor(
+                    mock_ocr_engine, ProcessingConfig(skip_ocr_checks=True), mock_llm_engine
+                )
                 # Need to use the async version of folder setup if applicable
-                await processor.setup_move_folders(tmp_path, skip_ocr_checks=True)
+                await processor.setup_move_folders(tmp_path)
 
                 result = await processor.text_extractor.extract(
                     test_file, fallback=FallbackMode.MOVE_TO_FOLDER
@@ -167,8 +169,8 @@ async def test_ocr_skip_disabled():
             mock_get_extractor.return_value = mock_mu_instance
 
             processor = BookProcessor(mock_ocr_engine, ProcessingConfig(), mock_llm_engine)
-            # OCR skip is disabled by default or via setup_move_folders
-            await processor.setup_move_folders(tmp_path, skip_ocr_checks=False)
+            # OCR skip is disabled by default (config skip_ocr_checks=False)
+            await processor.setup_move_folders(tmp_path)
 
             mock_ocr_engine.extract_text = AsyncMock(return_value="OCR extracted text")
 

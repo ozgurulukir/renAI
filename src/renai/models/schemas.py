@@ -55,21 +55,47 @@ class ProcessingConfig(BaseModel):
     def from_app_settings(cls, **overrides: Any) -> "ProcessingConfig":
         """Build a config from app_settings defaults, with explicit overrides on top.
 
-        Maps the settings-derived processing knobs (extractor, text heuristics,
-        vision sizing) in one place so callers that start from settings — like
-        the evaluate pipeline — don't hand-copy them field by field. Deliberately
-        does NOT map skip_ocr_checks: the CLI derives it from skip_needs_ocr
-        while evaluate mode intentionally leaves it False.
+        This is the SINGLE population path translating app_settings + overrides
+        into a ProcessingConfig: every settings-derived knob (extractor, text
+        heuristics, vision sizing, filename length limit, OCR-skip derivation)
+        is mapped here exactly once, so adding a new setting touches only this
+        method. Callers pass raw CLI flags (or pipeline-specific values) as
+        ``overrides``; anything not overridden comes from app_settings.
+
+        Two deliberate derivations live here:
+        - ``exif`` overrides are renamed to ``add_exif_date`` (the CLI flag and
+          the settings field are both named ``exif``; the config field is not).
+        - ``skip_ocr_checks`` is derived from ``skip_needs_ocr``. Callers that
+          must keep it off regardless of settings (evaluate mode) pass
+          ``skip_ocr_checks=False`` explicitly.
         """
         from renai.config import app_settings  # lazy: avoid config <-> models import cycle
 
+        if "exif" in overrides:
+            overrides.setdefault("add_exif_date", overrides.pop("exif"))
+
         s = app_settings
         fields: dict[str, Any] = {
+            "workers": s.workers,
+            "recursive": s.recursive,
+            "ocr_enhanced": s.ocr_enhanced,
+            "debug_ocr": s.debug_ocr,
+            "use_mutool": s.use_mutool,
+            "mutool_path": s.mutool_path,
             "extractor": s.extractor,
             "text_length": s.text_length,
             "text_extraction": s.text_extraction,
             "extraction_pages": s.extraction_pages,
+            "skip_ocr_checks": s.skip_needs_ocr,
+            "move_scan_failures": s.move_scan_failures,
+            "fallback_mode": FallbackMode(s.fallback_mode),
+            "rename_images": s.rename_images,
+            "add_exif_date": s.exif,
             "vision_max_pages": s.vision_max_pages,
+            "vision_provider": s.vision_provider,
+            "vision_model": s.vision_model,
+            "max_filename_length": s.max_filename_length,
+            # Decoupled heuristics configuration
             "head_ratio": s.head_ratio,
             "min_sufficient_text": s.min_sufficient_text,
             "vision_image_max_size": s.vision_image_max_size,
