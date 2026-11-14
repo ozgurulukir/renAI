@@ -466,10 +466,9 @@ def process_cmd(
     """Process files in a directory."""
     # Reject only the explicit CLI flag; settings/env "none" stays an accepted
     # internal sentinel that BookProcessor remaps to OCR.
-    _validate_cli_flags(Path(directory).resolve(), fallback_mode)
     final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
     root_dir = Path(directory).resolve()
-    _validate_cli_flags(root_dir)
+    _validate_cli_flags(root_dir, fallback_mode)
 
     # Check Vision Model Guard before running pipeline
     check_vision_model_guard(final_fallback, rename_images, vision_provider, vision_model)
