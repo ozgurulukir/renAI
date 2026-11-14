@@ -2,6 +2,7 @@ import asyncio
 import logging
 import shutil
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
@@ -23,19 +24,50 @@ from renai.utils import (
     read_text_limited,
 )
 
-# Supported extensions
-OFFICE_EXTENSIONS: set[str] = {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
+# Single registry of extractable extensions (issue #195). Per-kind sets are
+# derived here and reused everywhere; ``SUPPORTED_EXTENSIONS`` is their union.
+#
+# Note: legacy ``.doc`` / ``.ppt`` / ``.xls`` were removed deliberately — the
+# extractor has never been able to read them (MarkItDown path aside, they were
+# never in ``SUPPORTED_EXTENSIONS``), so listing them in ``OFFICE_EXTENSIONS``
+# was unreachable dead config.
+DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".epub", ".mobi"}
+OFFICE_EXTENSIONS: set[str] = {".docx", ".pptx", ".xlsx"}
 PLAIN_TEXT_EXTENSIONS: set[str] = {".txt", ".md"}
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".pdf",
-    ".epub",
-    ".mobi",
-    ".docx",
-    ".pptx",
-    ".xlsx",
-    ".txt",
-    ".md",
-}
+SUPPORTED_EXTENSIONS: set[str] = DOCUMENT_EXTENSIONS | OFFICE_EXTENSIONS | PLAIN_TEXT_EXTENSIONS
+
+NEEDS_SCAN_DIR_NAME = "Needs_Scan"
+SCAN_FAILURES_DIR_NAME = "Scan_Failures"
+
+
+@dataclass
+class Quarantine:
+    """Value object owning the quarantine directories used for fallback moves.
+
+    The whole concept lives here instead of being coordinated by string
+    literals scattered across modules. ``contains`` answers "is this path one
+    of the quarantine dirs or inside one of them" by comparing resolved paths,
+    so a user directory whose *name* merely contains the quarantine folder
+    name (e.g. ``Needs_Scan_archive``) is correctly treated as regular input.
+    """
+
+    needs_scan_dir: Path | None = None
+    scan_failures_dir: Path | None = None
+
+    def _dirs(self) -> tuple[Path, ...]:
+        return tuple(d for d in (self.needs_scan_dir, self.scan_failures_dir) if d is not None)
+
+    def contains(self, path: Path) -> bool:
+        """True if ``path`` is a quarantine dir itself or lives inside one."""
+        try:
+            resolved = path.resolve()
+        except OSError:
+            return False
+        for qdir in self._dirs():
+            root = qdir.resolve()
+            if resolved == root or root in resolved.parents:
+                return True
+        return False
 
 
 class TextExtractorRunState(NamedTuple):
@@ -45,9 +77,8 @@ class TextExtractorRunState(NamedTuple):
     backend rebuilds instead of silently resetting the fallback policy.
     """
 
-    needs_scan_dir: Path | None
+    quarantine: Quarantine
     skip_scan_files: bool
-    scan_failures_dir: Path | None
     move_scan_failures: bool
     fallback_base_dir: Path | None
     move_lock: asyncio.Lock
@@ -60,8 +91,7 @@ class TextExtractor:
     Handles caching, format detection, and extraction fallback strategies.
     """
 
-    needs_scan_dir: Path | None
-    scan_failures_dir: Path | None
+    quarantine: Quarantine
 
     def __init__(
         self,
@@ -97,9 +127,8 @@ class TextExtractor:
         self.min_sufficient_text = min_sufficient_text
         self.office_extensions = OFFICE_EXTENSIONS
         self.plain_text_extensions = PLAIN_TEXT_EXTENSIONS
-        self.needs_scan_dir = None
+        self.quarantine = Quarantine()
         self.skip_scan_files = False
-        self.scan_failures_dir = None
         self.move_scan_failures = False
         self.fallback_base_dir: Path | None = None
         # Serializes fallback moves so same-basename files from different subfolders
@@ -193,17 +222,19 @@ class TextExtractor:
     ) -> str:
         """Route and execute fallback strategy when text extraction is insufficient."""
         if fallback == FallbackMode.MOVE_TO_FOLDER:
-            logging.debug(f"Primary text insufficient, moving {file_path.name} to Needs_Scan")
-            return await self._quarantine(file_path, "Needs_Scan", dry_run)
+            logging.debug(
+                f"Primary text insufficient, moving {file_path.name} to {NEEDS_SCAN_DIR_NAME}"
+            )
+            return await self._quarantine(file_path, NEEDS_SCAN_DIR_NAME, dry_run)
 
         if fallback == FallbackMode.OCR:
             if self.skip_scan_files:
                 # skip_needs_ocr: never OCR these files -- quarantine them instead
                 logging.debug(
                     f"Primary text insufficient for {file_path.name}, "
-                    "moving to Needs_Scan (OCR skipped)"
+                    f"moving to {NEEDS_SCAN_DIR_NAME} (OCR skipped)"
                 )
-                return await self._quarantine(file_path, "Needs_Scan", dry_run)
+                return await self._quarantine(file_path, NEEDS_SCAN_DIR_NAME, dry_run)
             logging.debug(f"Primary text insufficient for {file_path.name}, falling back to OCR")
             return await self._fallback_to_ocr(file_path, target_length, dry_run)
 
@@ -315,12 +346,16 @@ class TextExtractor:
 
         if self.move_scan_failures:
             # --move-scan-failures: quarantine files where OCR also failed
-            return await self._quarantine(file_path, "Scan_Failures", dry_run)
+            return await self._quarantine(file_path, SCAN_FAILURES_DIR_NAME, dry_run)
         return ""
 
     def _quarantine_dir_path(self, folder_name: str, create: bool) -> Path | None:
         """Resolve (and optionally create) a quarantine folder under the run root."""
-        cached = self.needs_scan_dir if folder_name == "Needs_Scan" else self.scan_failures_dir
+        cached = (
+            self.quarantine.needs_scan_dir
+            if folder_name == NEEDS_SCAN_DIR_NAME
+            else self.quarantine.scan_failures_dir
+        )
         if cached:
             return cached
         if not self.fallback_base_dir:
@@ -328,10 +363,10 @@ class TextExtractor:
         dest = self.fallback_base_dir / folder_name
         if create:
             dest.mkdir(parents=True, exist_ok=True)
-            if folder_name == "Needs_Scan":
-                self.needs_scan_dir = dest
+            if folder_name == NEEDS_SCAN_DIR_NAME:
+                self.quarantine.needs_scan_dir = dest
             else:
-                self.scan_failures_dir = dest
+                self.quarantine.scan_failures_dir = dest
         return dest
 
     async def _quarantine(self, file_path: Path, folder_name: str, dry_run: bool = False) -> str:
@@ -368,9 +403,8 @@ class TextExtractor:
     def capture_run_state(self) -> TextExtractorRunState:
         """Snapshot quarantine run-state (see :class:`TextExtractorRunState`)."""
         return TextExtractorRunState(
-            needs_scan_dir=self.needs_scan_dir,
+            quarantine=self.quarantine,
             skip_scan_files=self.skip_scan_files,
-            scan_failures_dir=self.scan_failures_dir,
             move_scan_failures=self.move_scan_failures,
             fallback_base_dir=self.fallback_base_dir,
             move_lock=self._move_lock,
@@ -378,9 +412,8 @@ class TextExtractor:
 
     def apply_run_state(self, state: TextExtractorRunState) -> None:
         """Restore run-state captured by :meth:`capture_run_state`."""
-        self.needs_scan_dir = state.needs_scan_dir
+        self.quarantine = state.quarantine
         self.skip_scan_files = state.skip_scan_files
-        self.scan_failures_dir = state.scan_failures_dir
         self.move_scan_failures = state.move_scan_failures
         self.fallback_base_dir = state.fallback_base_dir
         # Share the original lock: a swap between files must not break the
@@ -398,13 +431,13 @@ class TextExtractor:
         self.fallback_base_dir = base_dir
 
         if skip_ocr_checks:
-            self.needs_scan_dir = base_dir / "Needs_Scan"
+            self.quarantine.needs_scan_dir = base_dir / NEEDS_SCAN_DIR_NAME
             if not dry_run:
-                self.needs_scan_dir.mkdir(parents=True, exist_ok=True)
+                self.quarantine.needs_scan_dir.mkdir(parents=True, exist_ok=True)
             self.skip_scan_files = True
 
         if move_scan_failures:
-            self.scan_failures_dir = base_dir / "Scan_Failures"
+            self.quarantine.scan_failures_dir = base_dir / SCAN_FAILURES_DIR_NAME
             if not dry_run:
-                self.scan_failures_dir.mkdir(parents=True, exist_ok=True)
+                self.quarantine.scan_failures_dir.mkdir(parents=True, exist_ok=True)
             self.move_scan_failures = True

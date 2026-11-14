@@ -394,9 +394,9 @@ class TestBookProcessor:
         processor.swap_extractor("pdfplumber")
 
         rebuilt = processor.text_extractor
-        assert rebuilt.needs_scan_dir == tmp_path / "Needs_Scan"
+        assert rebuilt.quarantine.needs_scan_dir == tmp_path / "Needs_Scan"
         assert rebuilt.skip_scan_files is True
-        assert rebuilt.scan_failures_dir == tmp_path / "Scan_Failures"
+        assert rebuilt.quarantine.scan_failures_dir == tmp_path / "Scan_Failures"
         assert rebuilt.move_scan_failures is True
         assert rebuilt.fallback_base_dir == tmp_path
         assert rebuilt._move_lock is original_lock
@@ -408,9 +408,9 @@ class TestBookProcessor:
         processor.swap_extractor("pdfplumber")
 
         rebuilt = processor.text_extractor
-        assert rebuilt.needs_scan_dir is None
+        assert rebuilt.quarantine.needs_scan_dir is None
         assert rebuilt.skip_scan_files is False
-        assert rebuilt.scan_failures_dir is None
+        assert rebuilt.quarantine.scan_failures_dir is None
         assert rebuilt.move_scan_failures is False
         assert rebuilt.fallback_base_dir is None
 

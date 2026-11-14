@@ -140,7 +140,15 @@ async def setup_engines(
 def collect_files(
     root_dir: Path, processor: BookProcessor, recursive: bool, rename_images: bool = False
 ) -> list[Path]:
-    """Collect supported files from directory."""
+    """Collect supported files from directory, excluding quarantine folders.
+
+    Quarantine exclusion uses resolved-path comparison (see
+    :class:`~renai.processors.text_extractor.Quarantine`), so user directories
+    whose names merely contain a quarantine folder name (e.g.
+    ``Needs_Scan_archive``) are still processed. The ``getattr`` fallback keeps
+    test doubles that only stub ``supported_extensions`` usable.
+    """
+    quarantine = getattr(processor.text_extractor, "quarantine", None)
     file_paths = []
     iterator = root_dir.rglob("*") if recursive else root_dir.iterdir()
     for entry in iterator:
@@ -150,8 +158,7 @@ def collect_files(
                 entry.suffix.lower() in processor.supported_extensions
                 or (rename_images and entry.suffix.lower() in get_image_extensions())
             )
-            and "Needs_Scan" not in str(entry)
-            and "Scan_Failures" not in str(entry)
+            and not (quarantine is not None and quarantine.contains(entry))
         ):
             file_paths.append(entry)
     return file_paths

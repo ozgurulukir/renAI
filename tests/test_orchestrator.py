@@ -199,3 +199,54 @@ async def test_run_pipeline_closes_engines_on_failure():
         await orch.run_pipeline(Path("docs"), provider="openai")
 
     engine.aclose.assert_awaited_once()
+
+
+def test_collect_files_does_not_skip_substring_named_dirs(tmp_path):
+    """A directory whose name merely CONTAINS a quarantine name must be processed (#195).
+
+    Regression: collect_files used a substring check ("Needs_Scan" not in
+    str(entry)), so any user path that merely contained the substring — e.g. a
+    folder named ``Needs_Scan_archive`` — was silently skipped. Exclusion is
+    now resolved-path based via the Quarantine value object.
+    """
+    from renai.processors.orchestrator import collect_files
+    from renai.processors.text_extractor import Quarantine
+
+    archive_dir = tmp_path / "Needs_Scan_archive"
+    archive_dir.mkdir()
+    keep_file = archive_dir / "book.pdf"
+    keep_file.write_bytes(b"%PDF-")
+
+    failures_dir = tmp_path / "Scan_Failures"
+    failures_dir.mkdir()
+    quarantined = failures_dir / "broken.pdf"
+    quarantined.write_bytes(b"%PDF-")
+
+    processor = MagicMock()
+    processor.supported_extensions = {".pdf"}
+    processor.text_extractor.quarantine = Quarantine(
+        needs_scan_dir=tmp_path / "Needs_Scan",
+        scan_failures_dir=failures_dir,
+    )
+
+    collected = collect_files(tmp_path, processor, recursive=True)
+
+    assert keep_file in collected
+    assert quarantined not in collected
+
+
+def test_quarantine_contains_resolved_paths(tmp_path):
+    """Quarantine.contains matches the dirs themselves, their contents, and nothing else."""
+    from renai.processors.text_extractor import Quarantine
+
+    needs_scan = tmp_path / "Needs_Scan"
+    needs_scan.mkdir()
+    quarantine = Quarantine(needs_scan_dir=needs_scan, scan_failures_dir=None)
+
+    assert quarantine.contains(needs_scan)
+    assert quarantine.contains(needs_scan / "nested" / "file.pdf")
+    assert not quarantine.contains(tmp_path / "Needs_Scan_archive")
+    assert not quarantine.contains(tmp_path / "book.pdf")
+
+    # Empty quarantine contains nothing.
+    assert not Quarantine().contains(needs_scan)
