@@ -22,7 +22,7 @@ from .processors import (
     VisualProcessor,
 )
 
-__version__ = "2.3.2"
+__version__ = "2.4.0"
 
 
 __all__ = [

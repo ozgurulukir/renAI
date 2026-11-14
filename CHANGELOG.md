@@ -7,11 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+## [2.4.0] - 2026-11-14
+
+### Changed
 
 - **`--fallback-mode none` Is Now Internal-Only (#196)**: The `none` fallback semantics disagreed across layers (CLI help advertised it, the docstring promised "no fallback", `BookProcessor` silently remapped it to OCR). `FallbackMode.NONE` is now a documented internal-only sentinel: the document pipeline remaps it to OCR (`BookProcessor._extract_document_metadata`) and `benchmark_extract` uses it to bypass fallback side effects. The CLI help no longer lists `none` as a selectable choice, and an explicit `--fallback-mode none` on the command line is rejected with a clear error. The `RENAI_FALLBACK_MODE` env/settings value `none` remains accepted as the sentinel and flows through unchanged.
+- **Single LLM Call Policy (#191)**: Retry/backoff behavior and fallback category handling are unified in an injected `LLMCallPolicy`, replacing scattered per-call retry ladders in `LLMEngine`. All LLM calls now share one consistent retry ladder.
+
+### Fixed
 
 - **Vision Cache Provenance (#193)**: Metadata cache rows are now validated against the identity of the engine that actually *produced* them, not the engine the cache namespace was requested for. Under `--fallback vision`, a record produced by the text LLM is stored with its producing identity (`_prod_provider`/`_prod_model`) and stays a valid hit when only the vision model changes, while a change to the text model correctly invalidates it (previously a text-produced record was keyed/validated under the vision provider/model, so a text-model change served stale hits and a vision-model change spuriously re-extracted). The cache key itself no longer embeds provider/model (it is `doc/img` + file hash + vision suffix), and the request-flag ↔ instance-attribute duplication of the provider/model choice between `BookProcessor._build_metadata_request` and the cache middleware is gone — both engine identities now ride the `MetadataRequest` contract.
+- **LLM HTTP Client Lifecycle (#190)**: Shared vision engines are no longer duplicated in teardown, HTTP clients are closed properly on shutdown, and schema-validation failures are surfaced in logs instead of vanishing.
+- **Benchmark Times Extraction Only (#189)**: `renai evaluate` benchmark runs no longer count metadata-cache hits as extraction time, so benchmark numbers reflect real extraction work. The legacy benchmark contract is preserved and hardened.
+- **Previously Unwired Settings Now Take Effect (#188)**: `ocr_lang`, `max_text_read_size`, and `subprocess_timeout` are wired through to `AppSettings` with typed settings accessors and `ocr_lang` validation. `BookMetadata.from_app_settings` overrides now actually override mapped fields.
+- **Quarantine State Survives Extractor Swap (#182, #195)**: Insufficient-text quarantine decisions keep their run-state when the extractor is swapped mid-run, and file-extension handling is consolidated into a single registry with a `Quarantine` value object.
+- Fixed a duplicated `_validate_cli_flags` call in `process_cmd`, and repaired the `benchmark_organize` script's patch targets after the middleware seam refactor (#183).
 
 ### Migration
 
@@ -20,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - **Structured Cache Keys (#192)**: The path-as-key pseudo-API (`get_text_cache_path`/`get_metadata_cache_path` returning `Path` objects that callers passed back into read/write functions) was replaced with structured key types (`TextCacheKey`, `MetadataCacheKey`) and a single key-grammar owner in `cache/manager.py` (`_encode_text_key`, `_encode_metadata_key`, `_encode_legacy_metadata_key`). `read_metadata_cache_with_source` is renamed to `read_metadata_cache(key, model_class, cache_dir=None)`, and `MetadataRequest.cache_path` becomes `cache_key`. The metadata key grammar stays identity-free per #193 — provider/model ride the key only for legacy reads and row observability, never in the lookup key.
+- **Single ProcessingConfig Path (#194)**: `ProcessingConfig` is populated once in `process_cmd`, and `BookProcessor` reads `self.config` instead of chasing scattered getters — removing a duplicated config-population path.
+- **Unified stdlib Logging Paradigm (#199)**: Logging is consolidated on the standard-library logging paradigm across the codebase.
+- **Page Rendering Seam (#186, #185)**: A `PageRenderer` seam now sits across the mutool and pymupdf backends; abandoned mutool temp files are cleaned on outer failure, cancellation leak windows in the mutool backend are closed, and vision sampling degrades per page when a batch render fails instead of losing the whole batch.
+- **Refactor Sweeps (#179–#184)**: Shared refinement gate extracted into `LLMEngine._maybe_refine`; `BookProcessor` owns `TextExtractor` swapping; CLI builds `ProcessingConfig` once; the production-dead `read_metadata_cache` and write-only file-ops fields were deleted, keeping a single cache reader.
+
+### Chores & Docs
+
+- **Dependency Cleanup (#206, #197)**: Dropped `mypy`, `tomli`, and `requests`; the models.dev catalog fetcher uses `httpx`.
+- **Repo Hygiene (#200, #208)**: Untracked scratch/plan artifacts, retired `okubeni.md`, consolidated history docs.
+- **Docs (#198, #207, #213)**: All environment variables and API-key precedence are documented; fallback `none` wording aligned with the new internal-sentinel behavior.
+- **CI (#212)**: Test job installs `mupdf-tools` so `mutool` characterization tests actually run.
 
 ## [2.3.2] - 2026-11-05
 
