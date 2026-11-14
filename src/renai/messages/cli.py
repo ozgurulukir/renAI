@@ -70,6 +70,11 @@ class Error:
         "requires a vision model."
     )
     VISION_REASON_NOT_SUPPORTED = "Selected vision model '{}' does not support vision modalities."
+    FALLBACK_NONE_REJECTED = (
+        "[bold red]Error:[/bold red] '--fallback-mode none' is not a selectable option.\n"
+        "'none' is an internal-only sentinel (remapped to OCR for documents).\n"
+        "Choose one of: ocr, vision, move."
+    )
 
 
 class Help:
@@ -98,7 +103,10 @@ class Help:
     EXTRACTION_PAGES = "Pages for text extraction"
     RECURSIVE = "Process subdirectories"
     UPDATE_METADATA = "Ignore cache"
-    FALLBACK_MODE = "Fallback: none, ocr, vision, move"
+    FALLBACK_MODE = (
+        "Fallback strategy when text extraction is insufficient: ocr, vision or move.\n"
+        "'none' is reserved for internal use and is rejected on the command line."
+    )
     MOVE_SCAN_FAILURES = "Move failed files to Scan_Failures"
     RENAME_IMAGES = "Enable vision-based image renaming"
     EXIF = "Use EXIF date in filenames"

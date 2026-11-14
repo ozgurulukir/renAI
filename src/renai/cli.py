@@ -190,10 +190,16 @@ def _print_process_header(root_dir: Path, mode: str, provider: str, model: str |
     )
 
 
-def _validate_cli_flags(root_dir: Path) -> None:
+def _validate_cli_flags(root_dir: Path, fallback_mode: FallbackMode | None = None) -> None:
     """Validate directory existence and CLI inputs."""
     if not root_dir.is_dir():
         console.print(msg.Info.DIR_NOT_FOUND.format(root_dir))
+        raise typer.Exit(code=1)
+
+    # FallbackMode.NONE is an internal sentinel remapped to OCR by BookProcessor;
+    # it must not be selectable from the command line.
+    if fallback_mode == FallbackMode.NONE:
+        console.print(msg.Error.FALLBACK_NONE_REJECTED)
         raise typer.Exit(code=1)
 
 
@@ -458,6 +464,9 @@ def process_cmd(
     ] = False,
 ) -> None:
     """Process files in a directory."""
+    # Reject only the explicit CLI flag; settings/env "none" stays an accepted
+    # internal sentinel that BookProcessor remaps to OCR.
+    _validate_cli_flags(Path(directory).resolve(), fallback_mode)
     final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
     root_dir = Path(directory).resolve()
     _validate_cli_flags(root_dir)
