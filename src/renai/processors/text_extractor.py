@@ -213,6 +213,10 @@ class TextExtractor:
             )
             return ""
 
+        # The NONE sentinel is remapped to OCR by the document pipeline in
+        # BookProcessor, while benchmark mode passes NONE deliberately so that
+        # extraction runs without any fallback side effects. Returning the
+        # trimmed text here is therefore intentional, never a "no fallback" gap.
         return full_text[:target_length]
 
     async def _extract_from_office(

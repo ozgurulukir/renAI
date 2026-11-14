@@ -121,7 +121,7 @@ def test_process_cmd_keyboard_interrupt(tmp_path):
                 extraction_pages=5,
                 recursive=False,
                 update_metadata=False,
-                fallback_mode=FallbackMode.NONE,
+                fallback_mode=FallbackMode.OCR,
                 move_scan_failures=False,
                 rename_images=False,
                 exif=False,
@@ -163,7 +163,7 @@ def test_process_cmd_configuration_error(tmp_path):
                 extraction_pages=5,
                 recursive=False,
                 update_metadata=False,
-                fallback_mode=FallbackMode.NONE,
+                fallback_mode=FallbackMode.OCR,
                 move_scan_failures=False,
                 rename_images=False,
                 exif=False,
@@ -174,6 +174,85 @@ def test_process_cmd_configuration_error(tmp_path):
         mock_console.print.assert_any_call(
             msg.Error.SETUP_FAILED.format("Unknown provider: 'bogus'.")
         )
+
+
+def test_process_cmd_rejects_none_fallback_mode(tmp_path):
+    """Verify the CLI rejects the internal-only NONE sentinel as an explicit flag."""
+    from renai.messages import cli as msg
+
+    with patch("renai.cli.console") as mock_console:
+        with pytest.raises(typer.Exit) as exc_info:
+            process_cmd(
+                directory=str(tmp_path),
+                mode="rename",
+                provider="openai",
+                model="gpt-4",
+                workers=2,
+                ocr_enhanced=False,
+                debug_ocr=False,
+                use_mutool=False,
+                mutool_path="",
+                extractor="pymupdf",
+                text_length=1000,
+                text_extraction="regular",
+                extraction_pages=5,
+                recursive=False,
+                update_metadata=False,
+                fallback_mode=FallbackMode.NONE,
+                move_scan_failures=False,
+                rename_images=False,
+                exif=False,
+                benchmark=False,
+                vision_max_pages=3,
+            )
+        assert exc_info.value.exit_code == 1
+        assert msg.Error.FALLBACK_NONE_REJECTED in str(mock_console.print.call_args[0][0])
+
+
+def test_process_cmd_settings_none_fallback_is_accepted(tmp_path):
+    """RENAI_FALLBACK_MODE=none (settings) stays an accepted sentinel: it flows through
+    as FallbackMode.NONE and BookProcessor remaps it to OCR -- no CLI rejection, no crash."""
+    with (
+        patch("renai.cli.run_pipeline", new_callable=AsyncMock) as mock_run_pipeline,
+        patch("renai.cli.display_warnings"),
+        patch("renai.cli._print_process_header"),
+        patch("renai.cli.app_settings") as mock_settings,
+        patch("renai.cli.console"),
+    ):
+        mock_settings.fallback_mode = "none"
+        mock_settings.skip_needs_ocr = False
+        mock_settings.head_ratio = 0.7
+        mock_settings.min_sufficient_text = 200
+        mock_settings.vision_image_max_size = 1024
+        mock_settings.vision_image_quality = 85
+        mock_settings.vision_dpi = 150
+
+        process_cmd(
+            directory=str(tmp_path),
+            mode="rename",
+            provider="openai",
+            model="gpt-4",
+            workers=2,
+            ocr_enhanced=False,
+            debug_ocr=False,
+            use_mutool=False,
+            mutool_path="",
+            extractor="pymupdf",
+            text_length=1000,
+            text_extraction="regular",
+            extraction_pages=5,
+            recursive=False,
+            update_metadata=False,
+            fallback_mode=None,
+            move_scan_failures=False,
+            rename_images=False,
+            exif=False,
+            benchmark=False,
+            vision_max_pages=3,
+        )
+
+        config = mock_run_pipeline.call_args[1]["config"]
+        assert config.fallback_mode == FallbackMode.NONE
 
 
 def test_check_vision_model_guard_missing_model_aborts():

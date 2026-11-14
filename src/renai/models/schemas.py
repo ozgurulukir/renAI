@@ -8,7 +8,10 @@ from pydantic import BaseModel, Field, field_validator
 class FallbackMode(StrEnum):
     """Modes for handling failed text extraction."""
 
-    NONE = "none"  # No fallback, return empty string
+    # Internal-only sentinel. NOT a user-selectable CLI choice: the document pipeline
+    # remaps it to OCR (BookProcessor._extract_document_metadata, processors/book.py),
+    # while benchmark_extract passes it to TextExtractor to bypass fallback side effects.
+    NONE = "none"
     OCR = "ocr"  # Fallback to OCR engine
     MOVE_TO_FOLDER = "move"  # Move to Needs_Scan folder
     VISION = "vision"  # Fallback to vision model (handled by BookProcessor)

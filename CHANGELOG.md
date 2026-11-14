@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`--fallback-mode none` Is Now Internal-Only (#196)**: The `none` fallback semantics disagreed across layers (CLI help advertised it, the docstring promised "no fallback", `BookProcessor` silently remapped it to OCR). `FallbackMode.NONE` is now a documented internal-only sentinel: the document pipeline remaps it to OCR (`BookProcessor._extract_document_metadata`) and `benchmark_extract` uses it to bypass fallback side effects. The CLI help no longer lists `none` as a selectable choice, and an explicit `--fallback-mode none` on the command line is rejected with a clear error. The `RENAI_FALLBACK_MODE` env/settings value `none` remains accepted as the sentinel and flows through unchanged.
+
 ## [2.3.2] - 2026-11-05
 
 ### Changed
