@@ -8,13 +8,9 @@ default categories, and configuration file locations.
 import logging
 import os
 import sys
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib  # type: ignore[no-redef]
 
 from platformdirs import user_data_dir
 
