@@ -3,13 +3,20 @@ import base64
 import json
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncOpenAI,
+    RateLimitError,
+)
 from openai.types.chat import ChatCompletionMessageParam
 
-from ..config import app_settings, get_allowed_categories, get_image_categories
+from ..config import get_allowed_categories, get_image_categories
 from ..config.folder_rules import resolve_allowed_bucket, resolve_fallback_category
 from ..exceptions import LLMError
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
@@ -38,6 +45,59 @@ _METADATA_PLACEHOLDERS = frozenset(
 # 5xx) from fail-fast client errors (< threshold, i.e. 4xx other than 429).
 _RETRYABLE_STATUS_THRESHOLD = 500
 
+# Fallback category map used by ``resolve_fallback_category`` when no per-folder
+# restriction applies. Wrapped in the same ``dict[str, list[str]]`` shape so a
+# single owner (folder_rules) decides fallback-category semantics.
+_GLOBAL_FALLBACK_CATEGORIES: dict[str, list[str]] = {"tr": ["Diğer"], "en": ["Other"]}
+
+
+@dataclass(frozen=True)
+class LLMCallPolicy:
+    """Behavioral knobs for LLM calls, injected at construction time.
+
+    Translated from the global settings singleton by ``orchestrator.setup_engines`` so the
+    engine never reads the global settings singleton at call time. Frozen:
+    configuration is fixed per engine; two engines may safely differ.
+
+    Field defaults mirror the settings defaults, so constructing
+    ``LLMEngine`` without an explicit policy (tests, scripts) preserves the
+    documented default behavior. Production always passes a policy built by
+    ``setup_engines``.
+    """
+
+    max_tokens: int = 1024
+    temperature: float = 0.3
+    temperature_retry: float = 0.5
+    max_retries: int = 2
+    refine_mode: str = "auto"
+
+
+def _filter_model_fields(
+    raw_data: dict[str, Any], model_class: type[BaseMetadata]
+) -> dict[str, Any]:
+    """Drop keys not present on the Pydantic model (SSoT field filtering)."""
+    model_fields = model_class.model_fields.keys()
+    return {k: v for k, v in raw_data.items() if k in model_fields}
+
+
+def _classify_llm_error(err: Exception) -> tuple[bool, str]:
+    """Classify an LLM API error as (retryable, label).
+
+    ``label`` feeds both the retry warning and the "retries exhausted" error
+    message. Retryable: RateLimitError (HTTP 429), timeouts/connection errors,
+    and server-side HTTP 5xx. Non-retryable: other client errors (HTTP 4xx) and
+    unexpected exceptions.
+    """
+    if isinstance(err, RateLimitError):
+        return True, "Rate limit"
+    if isinstance(err, (APITimeoutError, APIConnectionError)):
+        return True, "Connection/timeout"
+    if isinstance(err, APIStatusError):
+        if err.status_code >= _RETRYABLE_STATUS_THRESHOLD:
+            return True, "Server error"
+        return False, f"Non-retryable API error (HTTP {err.status_code})"
+    return False, "LLM call failure"
+
 
 class LLMEngine:
     def __init__(
@@ -47,11 +107,13 @@ class LLMEngine:
         base_url: str,
         model_name: str,
         rate_limiter: AsyncRateLimiter | None = None,
+        call_policy: LLMCallPolicy | None = None,
     ) -> None:
         self.provider = provider
         self.model_name = model_name
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.rate_limiter = rate_limiter
+        self.call_policy = call_policy or LLMCallPolicy()
         self.allowed_categories = get_allowed_categories()
         # Path to the prompts directory within the package
         self.prompts_dir = Path(__file__).parent.parent / "prompts"
@@ -202,7 +264,7 @@ class LLMEngine:
         or on "auto" when the initial metadata is incomplete; otherwise returns
         the initial model untouched.
         """
-        mode = app_settings.refine_metadata
+        mode = self.call_policy.refine_mode
         if mode == "always" or (mode == "auto" and not self._is_metadata_complete(initial_model)):
             return await self._refine_metadata(initial_model, allowed_categories)
         return initial_model
@@ -410,8 +472,7 @@ class LLMEngine:
         as ``retry_list`` so the caller can surface the forbidden value.
         """
         try:
-            model_fields = model_class.model_fields.keys()
-            filtered_data = {k: v for k, v in raw_data.items() if k in model_fields}
+            filtered_data = _filter_model_fields(raw_data, model_class)
             validated_model = model_class(**filtered_data)
         except Exception as e:
             logging.warning(f"Schema validation failed for {context_name}: {e}")
@@ -447,15 +508,15 @@ class LLMEngine:
         if not last_parsed_data:
             return None
         try:
-            model_fields = model_class.model_fields.keys()
-            filtered_data = {k: v for k, v in last_parsed_data.items() if k in model_fields}
+            filtered_data = _filter_model_fields(last_parsed_data, model_class)
             if categories_override:
                 filtered_data["category"] = resolve_fallback_category(
                     filtered_data.get("language", "en"), categories_override
                 )
             else:
-                lang = filtered_data.get("language", "en").lower()
-                filtered_data["category"] = "Diğer" if lang == "tr" else "Other"
+                filtered_data["category"] = resolve_fallback_category(
+                    filtered_data.get("language", "en"), _GLOBAL_FALLBACK_CATEGORIES
+                )
             return model_class(**filtered_data)
         except Exception as e:
             logging.debug(
@@ -476,20 +537,15 @@ class LLMEngine:
 
         Retries on RateLimitError (HTTP 429), timeouts, connection errors, and
         server-side HTTP 5xx errors; non-retryable client errors (HTTP 4xx other
-        than 429) fail fast with LLMError.
+        than 429) fail fast with LLMError. Error classification lives in
+        :func:`_classify_llm_error` so retry behavior is testable without
+        patching globals or sleeping.
         """
-        from openai import (
-            APIConnectionError,
-            APIStatusError,
-            APITimeoutError,
-            RateLimitError,
-        )
-
         backoff_sec = 2.0
         max_backoff_sec = 60.0
-        rate_limit_attempts = 5
+        max_attempts = 5
 
-        for rl_attempt in range(rate_limit_attempts):
+        for attempt in range(max_attempts):
             try:
                 if self.rate_limiter:
                     await self.rate_limiter.acquire()
@@ -497,83 +553,36 @@ class LLMEngine:
                 completion = await self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    max_tokens=app_settings.llm_max_tokens,
+                    max_tokens=self.call_policy.max_tokens,
                     temperature=temperature,
                     extra_headers=headers,
                 )
                 return completion.choices[0].message.content
-            except RateLimitError as rle:
-                if rl_attempt == rate_limit_attempts - 1:
+            except Exception as err:
+                retryable, label = _classify_llm_error(err)
+                if not retryable:
+                    logging.error("%s for %s: %s", label, context_name, err)
+                    raise LLMError(f"{label} for {context_name}: {err}") from err
+                if attempt == max_attempts - 1:
                     logging.error(
-                        "Rate limit retries exhausted (%d attempts) for %s.",
-                        rate_limit_attempts,
+                        "%s retries exhausted (%d attempts) for %s.",
+                        label,
+                        max_attempts,
                         context_name,
                     )
                     raise LLMError(
-                        f"Rate limit retries exhausted ({rate_limit_attempts} attempts) "
-                        f"for {context_name}: {rle}"
-                    ) from rle
+                        f"{label} retries exhausted ({max_attempts} attempts) "
+                        f"for {context_name}: {err}"
+                    ) from err
                 logging.warning(
-                    "Rate limit exceeded (HTTP 429) for %s. Retrying in %.1fs... Error: %s",
+                    "%s for %s. Retrying in %.1fs... Error: %s",
+                    label,
                     context_name,
                     backoff_sec,
-                    rle,
+                    err,
                 )
                 await asyncio.sleep(backoff_sec)
                 backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
-            except (APITimeoutError, APIConnectionError) as conn_err:
-                if rl_attempt == rate_limit_attempts - 1:
-                    logging.error(
-                        "Connection/timeout retries exhausted (%d attempts) for %s.",
-                        rate_limit_attempts,
-                        context_name,
-                    )
-                    raise LLMError(
-                        f"Connection/timeout retries exhausted ({rate_limit_attempts} attempts) "
-                        f"for {context_name}: {conn_err}"
-                    ) from conn_err
-                logging.warning(
-                    "Timeout/connection error for %s. Retrying in %.1fs... Error: %s",
-                    context_name,
-                    backoff_sec,
-                    conn_err,
-                )
-                await asyncio.sleep(backoff_sec)
-                backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
-            except APIStatusError as status_err:
-                if status_err.status_code < _RETRYABLE_STATUS_THRESHOLD:
-                    logging.error(
-                        "Non-retryable API error (HTTP %d) for %s: %s",
-                        status_err.status_code,
-                        context_name,
-                        status_err,
-                    )
-                    raise LLMError(
-                        f"Non-retryable LLM API error (HTTP {status_err.status_code}) "
-                        f"for {context_name}: {status_err}"
-                    ) from status_err
-                if rl_attempt == rate_limit_attempts - 1:
-                    logging.error(
-                        "Server error retries exhausted (%d attempts) for %s.",
-                        rate_limit_attempts,
-                        context_name,
-                    )
-                    raise LLMError(
-                        f"Server error retries exhausted ({rate_limit_attempts} attempts) "
-                        f"for {context_name}: {status_err}"
-                    ) from status_err
-                logging.warning(
-                    "Server error (HTTP %d) for %s. Retrying in %.1fs... Error: %s",
-                    status_err.status_code,
-                    context_name,
-                    backoff_sec,
-                    status_err,
-                )
-                await asyncio.sleep(backoff_sec)
-                backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
-            except Exception as e:
-                logging.error("LLM call failure for %s: %s", context_name, e)
-                raise LLMError(f"LLM call failed for {context_name}: {e}") from e
         raise LLMError(f"LLM call returned no completion for {context_name}")
 
     async def _generate_json_completion(
@@ -587,12 +596,12 @@ class LLMEngine:
         headers = self._prepare_completion_headers()
         last_parsed_data: dict[str, Any] | None = None
 
-        for attempt in range(app_settings.llm_max_retries):
+        for attempt in range(self.call_policy.max_retries):
             try:
                 temperature = (
-                    app_settings.llm_temperature
+                    self.call_policy.temperature
                     if attempt == 0
-                    else app_settings.llm_temperature_retry
+                    else self.call_policy.temperature_retry
                 )
 
                 content = await self._execute_completion_with_backoff(

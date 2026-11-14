@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -133,8 +134,6 @@ async def test_call_llm_openai_error_retry(llm_engine):
 @pytest.mark.asyncio
 async def test_call_llm_final_fallback_uses_last_parsed_data(llm_engine):
     """Test that final fallback constructs model from last_parsed_data with forced 'Other' category."""
-    from renai.config.settings import app_settings
-
     bad_response = MagicMock()
     bad_response.choices[
         0
@@ -147,7 +146,9 @@ async def test_call_llm_final_fallback_uses_last_parsed_data(llm_engine):
     assert isinstance(result, BookMetadata)
     assert result.title == "Test Book"
     assert result.category == "Other"
-    assert llm_engine.client.chat.completions.create.await_count == app_settings.llm_max_retries
+    assert (
+        llm_engine.client.chat.completions.create.await_count == llm_engine.call_policy.max_retries
+    )
 
 
 @pytest.mark.asyncio
@@ -295,48 +296,40 @@ class TestRefinementCostGate:
 
     @pytest.mark.asyncio
     async def test_flag_never_makes_exactly_one_call(self, llm_engine):
-        from renai.config.settings import app_settings
-
         llm_engine.client.chat.completions.create = AsyncMock(
             return_value=self._mock_book_response()
         )
-        with patch.object(app_settings, "refine_metadata", "never"):
-            result = await llm_engine.get_book_metadata("text")
+        llm_engine.call_policy = replace(llm_engine.call_policy, refine_mode="never")
+        result = await llm_engine.get_book_metadata("text")
         assert result is not None
         assert llm_engine.client.chat.completions.create.await_count == 1
 
     @pytest.mark.asyncio
     async def test_auto_with_complete_metadata_makes_one_call(self, llm_engine):
-        from renai.config.settings import app_settings
-
         llm_engine.client.chat.completions.create = AsyncMock(
             return_value=self._mock_book_response()
         )
-        with patch.object(app_settings, "refine_metadata", "auto"):
-            await llm_engine.get_book_metadata("text")
+        llm_engine.call_policy = replace(llm_engine.call_policy, refine_mode="auto")
+        await llm_engine.get_book_metadata("text")
         assert llm_engine.client.chat.completions.create.await_count == 1
 
     @pytest.mark.asyncio
     async def test_auto_with_incomplete_metadata_makes_two_calls(self, llm_engine):
-        from renai.config.settings import app_settings
-
         llm_engine.client.chat.completions.create = AsyncMock(
             side_effect=[self._mock_book_response(author="Unknown"), self._mock_book_response()]
         )
-        with patch.object(app_settings, "refine_metadata", "auto"):
-            result = await llm_engine.get_book_metadata("text")
+        llm_engine.call_policy = replace(llm_engine.call_policy, refine_mode="auto")
+        result = await llm_engine.get_book_metadata("text")
         assert result.author == "Test Author"
         assert llm_engine.client.chat.completions.create.await_count == 2
 
     @pytest.mark.asyncio
     async def test_always_makes_two_calls_even_when_complete(self, llm_engine):
-        from renai.config.settings import app_settings
-
         llm_engine.client.chat.completions.create = AsyncMock(
             return_value=self._mock_book_response()
         )
-        with patch.object(app_settings, "refine_metadata", "always"):
-            await llm_engine.get_book_metadata("text")
+        llm_engine.call_policy = replace(llm_engine.call_policy, refine_mode="always")
+        await llm_engine.get_book_metadata("text")
         assert llm_engine.client.chat.completions.create.await_count == 2
 
 

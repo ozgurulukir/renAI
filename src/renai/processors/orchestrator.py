@@ -32,7 +32,7 @@ from renai.config.constants import (
     MAX_DISPLAY_NAME_LENGTH,
     MAX_RECENT_ACTIVITIES,
 )
-from renai.engines.llm import LLMEngine
+from renai.engines.llm import LLMCallPolicy, LLMEngine
 from renai.engines.ocr import OCREngine
 from renai.exceptions import ConfigurationError
 from renai.messages import orchestrator as orch_msg
@@ -80,6 +80,17 @@ async def setup_engines(
     # Initialize Rate Limiter
     rate_limiter = AsyncRateLimiter(rpm=app_settings.llm_rpm_limit)
 
+    # Config-to-engine translation happens here: engines read behavioral knobs
+    # from an injected LLMCallPolicy, never from the settings singleton at
+    # call time.
+    call_policy = LLMCallPolicy(
+        max_tokens=app_settings.llm_max_tokens,
+        temperature=app_settings.llm_temperature,
+        temperature_retry=app_settings.llm_temperature_retry,
+        max_retries=app_settings.llm_max_retries,
+        refine_mode=app_settings.refine_metadata,
+    )
+
     # Initialize Text LLM engine
     llm_engine = LLMEngine(
         provider=provider,
@@ -87,6 +98,7 @@ async def setup_engines(
         base_url=provider_config.base_url,
         model_name=model_name,
         rate_limiter=rate_limiter,
+        call_policy=call_policy,
     )
 
     # Determine vision provider & model
@@ -116,6 +128,7 @@ async def setup_engines(
                     base_url=v_prov_config.base_url,
                     model_name=vision_model_name,
                     rate_limiter=rate_limiter,
+                    call_policy=call_policy,
                 )
             elif vision_required:
                 raise ConfigurationError(orch_msg.Error.API_KEY_MISSING.format(vision_provider))

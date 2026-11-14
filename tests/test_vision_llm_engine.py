@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -172,8 +173,6 @@ class TestVisionLLMCall:
     @pytest.mark.asyncio
     async def test_vision_llm_json_decode_error_exhausts_retries(self, llm_engine):
         """Test that persistent JSONDecodeError returns None after exhausting retries."""
-        from renai.config.settings import app_settings
-
         img_data = b"\x89PNG\r\n\x1a\n"
 
         bad_response = MagicMock()
@@ -183,7 +182,10 @@ class TestVisionLLMCall:
         result = await llm_engine.get_book_metadata_from_image(Path("test.pdf"), img_data)
 
         assert result is None
-        assert llm_engine.client.chat.completions.create.await_count == app_settings.llm_max_retries
+        assert (
+            llm_engine.client.chat.completions.create.await_count
+            == llm_engine.call_policy.max_retries
+        )
 
     @pytest.mark.asyncio
     async def test_vision_llm_json_decode_error_with_markdown_wrapping(self, llm_engine):
@@ -228,46 +230,38 @@ class TestVisionRefinementCostGate:
 
     @pytest.mark.asyncio
     async def test_flag_never_makes_exactly_one_call(self, llm_engine):
-        from renai.config.settings import app_settings
-
         llm_engine.client.chat.completions.create = AsyncMock(
             return_value=self._mock_book_response()
         )
-        with patch.object(app_settings, "refine_metadata", "never"):
-            result = await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
+        llm_engine.call_policy = replace(llm_engine.call_policy, refine_mode="never")
+        result = await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
         assert result is not None
         assert llm_engine.client.chat.completions.create.await_count == 1
 
     @pytest.mark.asyncio
     async def test_auto_with_complete_metadata_makes_one_call(self, llm_engine):
-        from renai.config.settings import app_settings
-
         llm_engine.client.chat.completions.create = AsyncMock(
             return_value=self._mock_book_response()
         )
-        with patch.object(app_settings, "refine_metadata", "auto"):
-            await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
+        llm_engine.call_policy = replace(llm_engine.call_policy, refine_mode="auto")
+        await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
         assert llm_engine.client.chat.completions.create.await_count == 1
 
     @pytest.mark.asyncio
     async def test_auto_with_incomplete_metadata_makes_two_calls(self, llm_engine):
-        from renai.config.settings import app_settings
-
         llm_engine.client.chat.completions.create = AsyncMock(
             side_effect=[self._mock_book_response(author="Unknown"), self._mock_book_response()]
         )
-        with patch.object(app_settings, "refine_metadata", "auto"):
-            result = await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
+        llm_engine.call_policy = replace(llm_engine.call_policy, refine_mode="auto")
+        result = await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
         assert result.author == "Test Author"
         assert llm_engine.client.chat.completions.create.await_count == 2
 
     @pytest.mark.asyncio
     async def test_always_makes_two_calls_even_when_complete(self, llm_engine):
-        from renai.config.settings import app_settings
-
         llm_engine.client.chat.completions.create = AsyncMock(
             return_value=self._mock_book_response()
         )
-        with patch.object(app_settings, "refine_metadata", "always"):
-            await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
+        llm_engine.call_policy = replace(llm_engine.call_policy, refine_mode="always")
+        await llm_engine.get_book_metadata_from_image(Path("test.pdf"), self.IMG)
         assert llm_engine.client.chat.completions.create.await_count == 2
