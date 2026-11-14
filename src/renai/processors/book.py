@@ -19,7 +19,7 @@ from ..file_ops.organizer import FileOrganizer
 from ..models import ProcessingResult
 from ..models.schemas import BookMetadata, ImageMetadata, ProcessingConfig
 from ..utils import get_file_hash
-from .text_extractor import FallbackMode, TextExtractor
+from .text_extractor import SUPPORTED_EXTENSIONS, FallbackMode, TextExtractor
 from .visual import VisualProcessor
 
 
@@ -84,16 +84,8 @@ class BookProcessor:
         # Tracking for reporting/failure handling
         self.root_dir: Path | None = None
         self.scan_failed_files: set[Path] = set()
-        self.supported_extensions = {
-            ".pdf",
-            ".epub",
-            ".mobi",
-            ".docx",
-            ".pptx",
-            ".xlsx",
-            ".txt",
-            ".md",
-        }
+        # Single registry of extractable extensions (owned by text_extractor).
+        self.supported_extensions = SUPPORTED_EXTENSIONS
 
     def swap_extractor(self, extractor_name: str) -> None:
         """Swap the text extractor backend, rebuilding TextExtractor from config.
