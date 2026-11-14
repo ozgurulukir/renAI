@@ -24,3 +24,22 @@ We take the security of renAI seriously. If you believe you have found a securit
 - Your preferred name/handle for credit in the changelog (if desired).
 
 We aim to acknowledge your report within 48 hours and provide a fix or mitigation strategy within 7 days for CRITICAL vulnerabilities.
+
+## API Key Handling
+
+### Where API keys may live
+
+renAI reads provider API keys from, in order of precedence (highest first):
+
+1. **Environment variables**: `DEEPINFRA_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, and `CUSTOM_API_KEY` (for the `custom` provider).
+2. **`secrets.toml`** in your user config directory (see `provider.api_key` entries and `deepinfra_api_key` / `openrouter_api_key` / `openai_api_key` / `custom_api_key` fields), written by the `renai init` wizard.
+
+Keys may also be set via `providers.toml` entries (`api_key` field) for registered custom providers.
+
+- `CUSTOM_API_KEY` has a default sentinel value of `not-required`, intended for keyless local servers (Ollama, LM Studio, etc.). If your custom endpoint requires authentication, always set a real key — the sentinel is **not** a credential.
+
+### Never commit keys
+
+- Do **not** put API keys in `settings.toml`, `settings.default.toml`, or any file inside the repository.
+- `secrets.toml` lives in your user config directory (outside the repo) and must never be committed, shared, or copied into dotfiles you sync publicly.
+- If a key is accidentally committed, revoke and rotate it immediately at the provider, then purge it from git history (e.g., with `git filter-repo` or BFG Repo-Cleaner).

@@ -179,22 +179,58 @@ Get keys from: [DeepInfra](https://deepinfra.com) | [OpenRouter](https://openrou
 
 ### Environment Variables
 
-You can also configure renAI using environment variables (prefixed with `RENAI_`):
+Every `AppSettings` field can be overridden with an environment variable using the `RENAI_` prefix: pydantic-settings maps `RENAI_<FIELD>` (upper snake case) to the `<field>` defined in `settings.default.toml` — e.g. `RENAI_OCR_LANG` overrides `ocr_lang`, `RENAI_VISION_PROVIDER` overrides `vision_provider`. See [`settings.default.toml`](src/renai/config/settings.default.toml) for the authoritative list of fields and their defaults.
 
-- `RENAI_PROVIDER`: e.g., `openai`
-- `RENAI_MODEL`: e.g., `gpt-4o`
-- `RENAI_WORKERS`: e.g., `8`
+Precedence (highest wins):
+
+1. **CLI flags** (e.g., `--workers`, `--provider`)
+2. **Environment variables** (`RENAI_*` and the plain variables below)
+3. **User config**: `settings.toml` / `secrets.toml` in your user config directory
+4. **Factory defaults**: `settings.default.toml`
+5. **Internal hardcoded defaults**
+
+#### General
+
+| Variable         | Description                                                                                                              | Default            |
+| :--------------- | :----------------------------------------------------------------------------------------------------------------------- | :----------------- |
+| `TESSERACT_PATH` | Full path to the Tesseract executable. Checked before `PATH` lookup and platform-specific defaults.                      | auto-detected      |
+| `RENAI_LOG_LEVEL`| Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).                                                         | `INFO`             |
+
+#### Provider API Keys & Endpoints
+
+These plain (unprefixed) variables are read as fallbacks when no key is configured via `secrets.toml` / `providers.toml`:
+
+| Variable              | Description                                                        | Default                    |
+| :-------------------- | :----------------------------------------------------------------- | :------------------------- |
+| `DEEPINFRA_API_KEY`   | DeepInfra API key                                                  | unset (required for use)   |
+| `OPENROUTER_API_KEY`  | OpenRouter API key                                                 | unset (required for use)   |
+| `OPENAI_API_KEY`      | OpenAI API key                                                     | unset (required for use)   |
+| `CUSTOM_API_KEY`      | Custom provider API key. **See the sentinel warning below.**       | `not-required`             |
+| `CUSTOM_API_BASE_URL` | Base URL of your OpenAI-compatible custom server                   | `http://localhost:8000/v1` |
+| `CUSTOM_MODEL`        | Model name for the custom provider                                 | `llama3`                   |
+
+> **Warning — the `not-required` sentinel:** `CUSTOM_API_KEY` defaults to the sentinel value `not-required` (also baked into `settings.default.toml`). This means that with the `custom` provider, a missing key does **not** fail fast — renAI silently proceeds and sends requests with the literal string `not-required` as the API key. Local servers (Ollama, LM Studio, LocalAI) usually ignore the key, so this works there; but if your custom endpoint requires authentication, you **must** set `CUSTOM_API_KEY` (or `custom_api_key` in `secrets.toml`) to a real key. The sentinel exists purely to allow keyless local usage out of the box.
+
+#### Useful `RENAI_*` Field Overrides
+
+Any field from `settings.default.toml` works; the most commonly used:
+
+| Variable                     | Field            | Description                                              | Default     |
+| :--------------------------- | :--------------- | :------------------------------------------------------- | :---------- |
+| `RENAI_PROVIDER`             | `provider`       | LLM provider (`deepinfra`, `openrouter`, `openai`, `custom`) | `deepinfra` |
+| `RENAI_MODEL`                | `model`          | Default model name                                       | provider default |
+| `RENAI_VISION_PROVIDER`      | `vision_provider`| Provider used for vision fallback                        | unset       |
+| `RENAI_WORKERS`              | `workers`        | Number of concurrent workers                             | `4`         |
+| `RENAI_OCR_LANG`             | `ocr_lang`       | Tesseract language string                                | `tur+eng`   |
+| `RENAI_FALLBACK_MODE`        | `fallback_mode`  | Extraction-failure strategy: `ocr`, `vision`, `move`     | `none`      |
+| `RENAI_EXTRACTOR`            | `extractor`      | PDF text extractor (`pymupdf`, `pdfplumber`, `pypdf`, `pypdfium2`) | `pymupdf` |
+| `RENAI_TEXT_LENGTH`          | `text_length`    | Target text length sent to the LLM                       | `10000`     |
+
+`RENAI_FALLBACK_MODE` accepts `ocr` (OCR the file), `vision` (send pages as images to the vision LLM), or `move` (move the file to the `Scan_Failures` folder); the empty/`none` value disables fallback.
 
 ### Zero-Code Defaults
 
 renAI follows a "Zero-Code Defaults" philosophy. You don't _need_ to edit configuration files to start. Baseline factory defaults are included within the package, allowing it to "just work" after simple initialization.
-
-Override options are available via:
-
-1. Environment variables (prefixed with `RENAI_`)
-2. `settings.toml` in your user config directory
-3. `settings.default.toml` (Global baseline)
-4. CLI flags (highest priority)
 
 ---
 
@@ -358,7 +394,7 @@ The default `head-tail` mode reads pages procedurally from the start (head) and 
 | :-------------------- | :------------------------------------- | :------------------------- |
 | `CUSTOM_API_BASE_URL` | Base URL of your local API server      | `http://localhost:8000/v1` |
 | `CUSTOM_MODEL`        | Model name to use                      | `llama3`                   |
-| `CUSTOM_API_KEY`      | API key (usually not needed for local) | `not-required`             |
+| `CUSTOM_API_KEY`      | API key (usually not needed for local; see the `not-required` sentinel warning above) | `not-required` |
 
 #### Common Local Server URLs
 
