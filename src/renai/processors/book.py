@@ -145,19 +145,20 @@ class BookProcessor:
         relies on instead of a set of bare keyword arguments. The governing
         folder rule rides the same contract: its category overrides feed the
         engines and its signature makes the cache rule-scoped.
+
+        This is the single place that decides the cache namespace (the
+        ``use_vision_cache`` flag): both engine identities ride the request and
+        the middleware picks the producing one from the extraction outcome, so
+        the request-flag/instance-attribute duplication is gone.
         """
         is_image = file_path.suffix.lower() in get_image_extensions()
         cache_mode = "img" if (is_image and rename_images) else "doc"
         use_vision_cache = (is_image and rename_images) or (
             fallback_mode == FallbackMode.VISION and file_path.suffix.lower() == ".pdf"
         )
-        cache_provider = self.vision_provider if use_vision_cache else self.provider
-        cache_model = self.vision_model if use_vision_cache else self.model
 
         cache_path = get_metadata_cache_path(
             file_hash,
-            cache_provider,
-            cache_model,
             mode=cache_mode,
             cache_dir=CACHE_DIR,
             use_vision=use_vision_cache,
@@ -169,6 +170,10 @@ class BookProcessor:
             file_path=file_path,
             cache_path=cache_path,
             model_class=model_class,
+            provider=self.provider,
+            model=self.model,
+            vision_provider=self.vision_provider,
+            vision_model=self.vision_model,
             use_vision_cache=use_vision_cache,
             fallback_mode=fallback_mode,
             rename_images=rename_images,

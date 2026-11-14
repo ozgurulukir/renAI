@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`--fallback-mode none` Is Now Internal-Only (#196)**: The `none` fallback semantics disagreed across layers (CLI help advertised it, the docstring promised "no fallback", `BookProcessor` silently remapped it to OCR). `FallbackMode.NONE` is now a documented internal-only sentinel: the document pipeline remaps it to OCR (`BookProcessor._extract_document_metadata`) and `benchmark_extract` uses it to bypass fallback side effects. The CLI help no longer lists `none` as a selectable choice, and an explicit `--fallback-mode none` on the command line is rejected with a clear error. The `RENAI_FALLBACK_MODE` env/settings value `none` remains accepted as the sentinel and flows through unchanged.
 
+- **Vision Cache Provenance (#193)**: Metadata cache rows are now validated against the identity of the engine that actually *produced* them, not the engine the cache namespace was requested for. Under `--fallback vision`, a record produced by the text LLM is stored with its producing identity (`_prod_provider`/`_prod_model`) and stays a valid hit when only the vision model changes, while a change to the text model correctly invalidates it (previously a text-produced record was keyed/validated under the vision provider/model, so a text-model change served stale hits and a vision-model change spuriously re-extracted). The cache key itself no longer embeds provider/model (it is `doc/img` + file hash + vision suffix), and the request-flag ↔ instance-attribute duplication of the provider/model choice between `BookProcessor._build_metadata_request` and the cache middleware is gone — both engine identities now ride the `MetadataRequest` contract.
+
+### Migration
+
+- Metadata cache entries written by earlier versions are still readable: rows under the old provider/model-embedded key format are found via a legacy-key fallback and keep the old single-identity validation. Rows written from this version onward carry the producing-engine identity; no one-time invalidation is required when upgrading.
+
 ## [2.3.2] - 2026-11-05
 
 ### Changed

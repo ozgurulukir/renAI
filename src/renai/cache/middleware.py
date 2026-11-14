@@ -24,11 +24,22 @@ class MetadataRequest:
     by name and broke silently with ``KeyError``/``TypeError`` at call time if a
     parameter name drifted. Wrapping every call in one discoverable, editable
     dataclass collapses the implicit schema into a single source of truth.
+
+    The four identity fields carry BOTH engine identities from the single
+    decision point that builds the request (``BookProcessor.
+    _build_metadata_request``): ``provider``/``model`` for the text engine,
+    ``vision_provider``/``vision_model`` for the vision engine. The middleware
+    picks the producing identity from the observed extraction outcome instead
+    of duplicating the request-flag-vs-instance-attribute decision.
     """
 
     file_path: Path
     cache_path: Path
     model_class: type[BaseModel]
+    provider: str
+    model: str
+    vision_provider: str
+    vision_model: str
     use_vision_cache: bool
     fallback_mode: Any
     rename_images: bool
@@ -38,18 +49,6 @@ class MetadataRequest:
     doc_categories: dict[str, list] | None = None
     image_categories: dict[str, list] | None = None
     rule_signature: str | None = None
-
-
-def _fallback_provider(self: Any, use_vision_cache: bool = False) -> str:
-    """Resolve the cache provider from the wrapped instance."""
-    attr = "vision_provider" if use_vision_cache else "provider"
-    return getattr(self, attr, "unknown")
-
-
-def _fallback_model(self: Any, use_vision_cache: bool = False) -> str:
-    """Resolve the cache model from the wrapped instance."""
-    attr = "vision_model" if use_vision_cache else "model"
-    return getattr(self, attr, "unknown")
 
 
 _NUM_REQUIRED_PARAMS = 2  # self + request
@@ -111,10 +110,30 @@ def _validate_request_contract(func: Callable[..., Any]) -> None:
             )
 
 
-def with_metadata_cache(
-    provider_resolver: Callable[[Any, bool], str] = _fallback_provider,
-    model_resolver: Callable[[Any, bool], str] = _fallback_model,
-) -> Callable[
+def _producing_identity(request: MetadataRequest, is_vision_doc: bool | None) -> tuple[str, str]:
+    """Identity of the engine expected to have produced a record for this request.
+
+    Image requests are always served by the vision engine. Document requests
+    under a vision cache namespace were produced by the vision engine only when
+    the persisted ``is_vision_doc`` marker says so (``None`` = legacy record,
+    reconstructed as vision — the historical behavior for vision-request rows);
+    otherwise the text LLM succeeded first.
+    """
+    is_image = request.file_path.suffix.lower() in get_image_extensions()
+    if is_image and request.rename_images:
+        return request.vision_provider, request.vision_model
+    if request.use_vision_cache and is_vision_doc is not False:
+        return request.vision_provider, request.vision_model
+    return request.provider, request.model
+
+
+def _produced_by_vision(request: MetadataRequest, is_vision_fallback: bool) -> bool:
+    """Whether the engine that produced ``is_vision_fallback`` output was the vision engine."""
+    is_image = request.file_path.suffix.lower() in get_image_extensions()
+    return (is_image and request.rename_images) or bool(is_vision_fallback)
+
+
+def with_metadata_cache() -> Callable[
     [Callable[..., Coroutine[Any, Any, tuple[Any, bool]]]],
     Callable[..., Coroutine[Any, Any, tuple[Any, bool]]],
 ]:
@@ -125,11 +144,12 @@ def with_metadata_cache(
     was used). The contract is validated at decoration time by
     :func:`_validate_request_contract`.
 
-    The provider and model used for cache keying are resolved lazily from the
-    instance at call time via the ``provider_resolver`` and ``model_resolver``
-    callables. By default they read the instance's ``provider``/``model``
-    attributes (or ``vision_provider``/``vision_model`` when the vision cache
-    is used), so the wrapper does not depend on a specific ``config`` object.
+    Cache identity is provenance-based: rows are keyed by file + mode only, and
+    each row records which engine produced it (``CacheSource.produced_by_*``).
+    On read, a row is a hit only when its producing identity still matches the
+    current identity of that same engine, taken from the request contract — no
+    instance attributes are consulted, so the provenance decision lives in
+    exactly one place (the code that builds the ``MetadataRequest``).
     """
 
     def decorator(
@@ -143,15 +163,19 @@ def with_metadata_cache(
             request: MetadataRequest,
             **extra: Any,
         ) -> tuple[BaseModel | None, bool]:
-            provider = provider_resolver(self, request.use_vision_cache)
-            model = model_resolver(self, request.use_vision_cache)
+            # Legacy rows were keyed (and identity-stamped) by the *requested*
+            # engine: the vision engine for vision-cache requests, else text.
+            legacy_provider = (
+                request.vision_provider if request.use_vision_cache else request.provider
+            )
+            legacy_model = request.vision_model if request.use_vision_cache else request.model
 
             if not request.update_metadata:
                 cached_data, source = await asyncio.to_thread(
                     read_metadata_cache_with_source,
                     request.cache_path,
-                    provider,
-                    model,
+                    legacy_provider,
+                    legacy_model,
                     model_class=request.model_class,
                 )
                 if cached_data:
@@ -174,14 +198,23 @@ def with_metadata_cache(
                                 else ("legacy" if stored_sig is None else "global")
                             ),
                         )
-                    else:
+                    elif (
+                        source is None
+                        or source.produced_by_provider is None
+                        or source.produced_by_model is None
+                        or (source.produced_by_provider, source.produced_by_model)
+                        == _producing_identity(request, source.is_vision_doc)
+                    ):
+                        is_vision_doc = source.is_vision_doc if source else None
                         logger.debug(
                             "Metadata cache hit",
                             file=request.file_path.name,
-                            provider=provider,
-                            model=model,
+                            produced_by=(
+                                f"{source.produced_by_provider}/{source.produced_by_model}"
+                                if source and source.produced_by_provider
+                                else f"{legacy_provider}/{legacy_model} (legacy)"
+                            ),
                         )
-                        is_vision_doc = source.is_vision_doc if source else None
                         if is_vision_doc is None:
                             # Legacy record predating the persisted source marker:
                             # reconstruct from request flags (previous behavior).
@@ -190,10 +223,32 @@ def with_metadata_cache(
                                 is_image and request.rename_images
                             )
                         return cached_data, is_vision_doc
+                    else:
+                        # Info, not debug: a mismatch means a real paid LLM
+                        # re-extraction the user did not ask for (the engine
+                        # that produced the row changed), which deserves
+                        # visibility.
+                        logger.info(
+                            "Metadata cache producing-engine mismatch; re-extracting",
+                            file=request.file_path.name,
+                            produced_by=(
+                                f"{source.produced_by_provider}/{source.produced_by_model}"
+                            ),
+                            expected="/".join(_producing_identity(request, source.is_vision_doc)),
+                        )
 
             metadata, is_vision_fallback = await func(self, request, **extra)
 
             if metadata:
+                # Key the row by the identity of the engine that actually
+                # produced it, so a text-LLM record under a vision-request
+                # namespace validates against the text engine, and vice versa.
+                if _produced_by_vision(request, is_vision_fallback):
+                    provider = request.vision_provider
+                    model = request.vision_model
+                else:
+                    provider = request.provider
+                    model = request.model
                 await asyncio.to_thread(
                     write_metadata_cache,
                     request.cache_path,
