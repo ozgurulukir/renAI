@@ -43,29 +43,84 @@ from renai.models.schemas import BookMetadata  # noqa: E402
 
 
 def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
-    """Test cache invalidation when provider or model doesn't match."""
+    """Legacy rows (pre-provenance) keep the compare-and-invalidate behavior."""
     cache_path = tmp_path / "test_metadata.json"
-    metadata = BookMetadata(
-        title="Test Book",
-        author="Test Author",
-        category="Other",
-        language="en",
-        subtitle=None,
-        edition=None,
-        year=None,
-    )
     provider = "test_provider"
     model = "test_model"
 
-    # Write initial cache (supports both models and dicts)
-    write_metadata_cache(cache_path, metadata, provider, model)
+    # Seed a legacy-format row (no _prod_* markers) directly.
+    from renai.cache.manager import _get_db_connection
 
-    # Test provider mismatch
+    with _get_db_connection(cache_path.parent) as conn, conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json)"
+            " VALUES (?, ?, ?, ?)",
+            (
+                cache_path.name,
+                provider,
+                model,
+                '{"title": "Legacy Book", "language": "en", "category": "Other"}',
+            ),
+        )
+
+    # Identity mismatch on a legacy row invalidates it.
     with caplog.at_level(logging.DEBUG):
         result, _ = read_metadata_cache_with_source(cache_path, "different_provider", model)
         assert result is None
         assert "Cache invalidated" in caplog.text
         assert "was test_provider/test_model" in caplog.text
+
+
+def test_provenance_rows_are_identity_agnostic_at_manager_level(tmp_path):
+    """Rows carrying a producing identity are returned regardless of the
+    requested identity: validation against the producing engine is the
+    middleware's job (it knows which engine slot produced the record)."""
+    cache_path = tmp_path / "prov_metadata.json"
+    metadata = BookMetadata(
+        title="Provenance Book",
+        author="A",
+        category="Other",
+        language="en",
+    )
+    write_metadata_cache(cache_path, metadata, "producing_p", "producing_m")
+
+    result, source = read_metadata_cache_with_source(
+        cache_path, "requested_p", "requested_m", model_class=BookMetadata
+    )
+    assert isinstance(result, BookMetadata)
+    assert source is not None
+    assert source.produced_by_provider == "producing_p"
+    assert source.produced_by_model == "producing_m"
+
+
+def test_legacy_key_format_still_readable(tmp_path):
+    """Rows written under the pre-provenance key (provider/model embedded) are
+    found via the legacy-key fallback so old caches survive the upgrade."""
+    from renai.cache.manager import _get_db_connection, _legacy_cache_key
+
+    cache_path = tmp_path / "metadata" / "doc_abc123_vision.json"
+    db_dir = cache_path.parent.parent  # _get_db_dir maps metadata/ -> its parent
+    legacy_key = _legacy_cache_key(cache_path.name, "p", "m")
+
+    with _get_db_connection(db_dir) as conn, conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json)"
+            " VALUES (?, ?, ?, ?)",
+            (
+                legacy_key,
+                "p",
+                "m",
+                '{"title": "Old Key Book", "language": "en", "category": "Other"}',
+            ),
+        )
+
+    result, source = read_metadata_cache_with_source(cache_path, "p", "m", model_class=BookMetadata)
+    assert isinstance(result, BookMetadata)
+    assert result.title == "Old Key Book"
+    # No producing identity was stored -> legacy semantics.
+    assert source is not None
+    assert source.produced_by_provider is None
+    assert source.produced_by_model is None
 
 
 def test_read_metadata_cache_success(tmp_path):
@@ -113,6 +168,9 @@ def test_metadata_cache_source_marker_roundtrip(tmp_path):
     assert source is not None
     assert source.is_vision_doc is False
     assert source.rule_signature == "abc123"
+    # The producing-engine identity round-trips too (#193).
+    assert source.produced_by_provider == "p1"
+    assert source.produced_by_model == "m1"
 
     # The dict path (model_class=None) strips the reserved keys too.
     raw, _ = read_metadata_cache_with_source(cache_path, provider, model)
@@ -207,22 +265,25 @@ def test_read_metadata_cache_exception(tmp_path, caplog):
 
 
 def test_get_metadata_cache_path():
-    """Test generating metadata cache path with mode awareness."""
+    """Test generating metadata cache path with mode awareness.
+
+    The key is identity-free (#193): provider/model must not appear in it.
+    """
     file_hash = "abc123"
-    provider = "openai"
-    model = "gpt-4"
     cache_dir = Path("/tmp/cache")
 
     # Test default mode (doc)
-    path = get_metadata_cache_path(file_hash, provider, model, cache_dir=cache_dir)
-    assert "doc_abc123_" in path.name
-    assert ".json" in path.name
+    path = get_metadata_cache_path(file_hash, cache_dir=cache_dir)
+    assert path.name == "doc_abc123.json"
     assert path.parent.name == "metadata"
 
     # Test image mode
-    path = get_metadata_cache_path(file_hash, provider, model, mode="img", cache_dir=cache_dir)
-    assert "img_abc123_" in path.name
-    assert ".json" in path.name
+    path = get_metadata_cache_path(file_hash, mode="img", cache_dir=cache_dir)
+    assert path.name == "img_abc123.json"
+
+    # Test vision namespace suffix
+    path = get_metadata_cache_path(file_hash, use_vision=True, cache_dir=cache_dir)
+    assert path.name == "doc_abc123_vision.json"
 
 
 def test_invalidate_cache_for_provider_model_basic(tmp_path):

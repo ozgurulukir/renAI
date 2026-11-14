@@ -16,12 +16,20 @@ def _make_request(
     model_class: type[BaseModel],
     update_metadata: bool = False,
     use_vision_cache: bool = False,
+    provider: str = "test_provider",
+    model: str = "test_model",
+    vision_provider: str = "vision_provider",
+    vision_model: str = "vision_model",
     **extra: Any,
 ) -> MetadataRequest:
     base: dict[str, Any] = {
         "file_path": Path("test.pdf"),
         "cache_path": cache_path,
         "model_class": model_class,
+        "provider": provider,
+        "model": model,
+        "vision_provider": vision_provider,
+        "vision_model": vision_model,
         "use_vision_cache": use_vision_cache,
         "fallback_mode": "none",
         "rename_images": False,
@@ -34,7 +42,7 @@ def _make_request(
 
 
 class DummyProcessor:
-    """Processor exposing provider/model attributes like BookProcessor."""
+    """Processor with provider/model attributes like BookProcessor (unused for keying)."""
 
     def __init__(self):
         self.provider = "test_provider"
@@ -83,8 +91,10 @@ async def test_middleware_update_metadata_skips_read(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_middleware_missing_provider_model_uses_unknown(tmp_path: Path):
+async def test_middleware_identities_come_from_request_not_instance(tmp_path: Path):
     class NoProviderProcessor:
+        """No provider/model attributes at all — the request carries the identities."""
+
         def __init__(self):
             self.call_count = 0
 
@@ -96,9 +106,12 @@ async def test_middleware_missing_provider_model_uses_unknown(tmp_path: Path):
     processor = NoProviderProcessor()
     test_cache_path = tmp_path / "metadata" / "unknown.json"
 
-    # No provider/model attributes: still caches under the "unknown" key
+    # No provider/model instance attributes: identities ride the request and
+    # the cache still round-trips.
     for _ in range(3):
-        await processor.extract(_make_request(test_cache_path, DummyMetadata))
+        await processor.extract(
+            _make_request(test_cache_path, DummyMetadata, provider="unknown", model="unknown")
+        )
 
     assert processor.call_count == 1
 
@@ -145,29 +158,34 @@ async def test_middleware_vision_and_text_caches_are_separate(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_middleware_custom_resolvers(tmp_path: Path):
-    """Resolvers can be overridden to key caches by custom attributes."""
+async def test_middleware_identity_mismatch_reextracts(tmp_path: Path):
+    """A row produced by a different engine identity than the request carries is a miss.
 
-    class CustomProcessor:
+    Instance attributes are deliberately misleading: the middleware must key and
+    validate purely on the request's identity fields.
+    """
+
+    class MisleadingProcessor:
         def __init__(self):
-            self.api_config = {"provider": "custom_provider", "model": "custom_model"}
+            self.provider = "totally_wrong"
+            self.model = "also_wrong"
             self.call_count = 0
 
-        @with_metadata_cache(
-            provider_resolver=lambda self, use_vision: self.api_config["provider"],
-            model_resolver=lambda self, use_vision: self.api_config["model"],
-        )
+        @with_metadata_cache()
         async def extract(self, request: MetadataRequest) -> tuple[DummyMetadata, bool]:
             self.call_count += 1
             return DummyMetadata(title="Extracted Title"), False
 
-    processor: Any = CustomProcessor()
+    processor: Any = MisleadingProcessor()
     test_cache_path = tmp_path / "metadata" / "custom.json"
 
     await processor.extract(_make_request(test_cache_path, DummyMetadata))
     await processor.extract(_make_request(test_cache_path, DummyMetadata))
-
     assert processor.call_count == 1
+
+    # A different producing identity in the request invalidates the row.
+    await processor.extract(_make_request(test_cache_path, DummyMetadata, model="other_model"))
+    assert processor.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -327,3 +345,132 @@ async def test_middleware_decorated_method_can_be_invoked_with_request():
     result, is_vision = await processor.extract(_make_request(Path("out.json"), DummyMetadata))
     assert result.title == "Extracted Title"
     assert is_vision is False
+
+
+@pytest.mark.asyncio
+async def test_text_produced_record_survives_vision_model_change(tmp_path: Path):
+    """Acceptance (#193): under a vision-cache request, a record produced by the
+    TEXT LLM stays a hit when only the vision model changes.
+
+    The key is identity-free and the row validates against the producing
+    (text) engine, so the vision-model swap must not touch it.
+    """
+    vision_cache = tmp_path / "metadata" / "text_success_under_vision.json"
+
+    class TextPathProcessor(VisionDummyProcessor):
+        @with_metadata_cache()
+        async def extract(self, request: MetadataRequest) -> tuple[DummyMetadata, bool]:
+            self.call_count += 1
+            return DummyMetadata(title="From Text Path"), False
+
+    processor = TextPathProcessor()
+    # Cold run: text path succeeds (is_vision_fallback=False) under a
+    # vision-cache request keyed for vision_model=v1.
+    request_v1 = _make_request(
+        vision_cache, DummyMetadata, use_vision_cache=True, vision_model="v1"
+    )
+    _result, cold_is_vision = await processor.extract(request_v1)
+    assert cold_is_vision is False
+    assert processor.call_count == 1
+
+    # Vision model changes v1 -> v2: same key (identity-free), text-produced
+    # row still validates against the unchanged text engine.
+    request_v2 = _make_request(
+        vision_cache,
+        DummyMetadata,
+        use_vision_cache=True,
+        vision_model="v2",
+    )
+    _result, warm_is_vision = await processor.extract(request_v2)
+    assert warm_is_vision is False
+    assert processor.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_text_model_change_invalidates_text_produced_record(tmp_path: Path):
+    """Acceptance (#193): changing the text model re-extracts a text-produced row."""
+    processor = VisionDummyProcessor()
+    vision_cache = tmp_path / "metadata" / "text_model_change.json"
+
+    class TextPathProcessor(VisionDummyProcessor):
+        @with_metadata_cache()
+        async def extract(self, request: MetadataRequest) -> tuple[DummyMetadata, bool]:
+            self.call_count += 1
+            return DummyMetadata(title="From Text Path"), False
+
+    processor = TextPathProcessor()
+    request_old = _make_request(vision_cache, DummyMetadata, use_vision_cache=True, model="text_m1")
+    await processor.extract(request_old)
+    assert processor.call_count == 1
+
+    # Same vision model, new text model: the text-produced row is stale.
+    request_new = _make_request(vision_cache, DummyMetadata, use_vision_cache=True, model="text_m2")
+    await processor.extract(request_new)
+    assert processor.call_count == 2
+
+    # And the rewritten row is keyed to the new text engine.
+    await processor.extract(request_new)
+    assert processor.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_vision_produced_record_invalidated_by_vision_model_change(tmp_path: Path):
+    """A vision-engine row validates against the vision engine: a vision model
+    change is a miss, while a text model change does not affect it."""
+    processor = VisionDummyProcessor()
+    vision_cache = tmp_path / "metadata" / "vision_produced.json"
+
+    request_v1 = _make_request(
+        vision_cache, DummyMetadata, use_vision_cache=True, vision_model="v1"
+    )
+    await processor.extract(request_v1)  # VisionDummyProcessor returns use_vision_cache -> True
+    assert processor.call_count == 1
+
+    # Text model change does not invalidate a vision-produced row.
+    request_text_change = _make_request(
+        vision_cache, DummyMetadata, use_vision_cache=True, vision_model="v1", model="other_text"
+    )
+    await processor.extract(request_text_change)
+    assert processor.call_count == 1
+
+    # Vision model change does.
+    request_v2 = _make_request(
+        vision_cache, DummyMetadata, use_vision_cache=True, vision_model="v2"
+    )
+    await processor.extract(request_v2)
+    assert processor.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_middleware_legacy_row_without_producing_identity_still_reads(tmp_path: Path):
+    """A true legacy row (no _prod_* markers, pre-provenance key format) is still
+    served when its stored identity matches the requested engine identity."""
+    import json as json_lib
+
+    from renai.cache.manager import _get_db_connection
+
+    processor = VisionDummyProcessor()
+    # Build the exact pre-provenance key: doc_<hash>_<pmk>_vision.json
+    from renai.utils import get_provider_model_key
+
+    pmk = get_provider_model_key("vision_provider", "vision_model")
+    legacy_key = f"doc_hash123_{pmk}_vision.json"
+
+    test_cache_path = tmp_path / "metadata" / "doc_hash123_vision.json"
+    db_dir = tmp_path  # _get_db_dir maps metadata/ -> its parent
+    payload = {"title": "Legacy Row"}
+    with _get_db_connection(db_dir) as conn, conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json)"
+            " VALUES (?, ?, ?, ?)",
+            (legacy_key, "vision_provider", "vision_model", json_lib.dumps(payload)),
+        )
+    # Also make sure no current-format row shadows it.
+    assert test_cache_path.name != legacy_key
+
+    request = _make_request(test_cache_path, DummyMetadata, use_vision_cache=True)
+    result, is_vision = await processor.extract(request)
+    assert processor.call_count == 0
+    assert result is not None and result.title == "Legacy Row"
+    # Legacy vision-request reconstruction: vision template.
+    assert is_vision is True
