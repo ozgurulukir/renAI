@@ -23,7 +23,7 @@ def test_get_models_catalog_cache_valid(tmp_path):
 
     with (
         patch("renai.utils.models_dev.CACHE_FILE", cache_file),
-        patch("requests.get") as mock_get,
+        patch("httpx.get") as mock_get,
     ):
         models = get_models_catalog()
         assert models == mock_data["models"]
@@ -50,7 +50,7 @@ def test_get_models_catalog_fetch_remote(tmp_path):
 
     with (
         patch("renai.utils.models_dev.CACHE_FILE", cache_file),
-        patch("requests.get", return_value=mock_response) as mock_get,
+        patch("httpx.get", return_value=mock_response) as mock_get,
     ):
         result = get_full_catalog()
         assert result == mock_data
@@ -81,7 +81,7 @@ def test_get_models_catalog_force_refresh_and_empty_cache(tmp_path):
 
     with (
         patch("renai.utils.models_dev.CACHE_FILE", cache_file),
-        patch("requests.get", return_value=mock_response) as mock_get,
+        patch("httpx.get", return_value=mock_response) as mock_get,
     ):
         # Empty cache should trigger fresh fetch
         result = get_models_catalog()

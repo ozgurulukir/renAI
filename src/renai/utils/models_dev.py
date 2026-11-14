@@ -8,7 +8,7 @@ import json
 import logging
 from pathlib import Path
 
-import requests
+import httpx
 
 from renai import __version__
 from renai.config.constants import APP_DATA_DIR
@@ -26,7 +26,7 @@ def _remote_headers() -> dict[str, str]:
     }
 
 
-def _decode_remote_json(response: requests.Response) -> dict | None:
+def _decode_remote_json(response: httpx.Response) -> dict | None:
     """Decode a models.dev JSON response, logging anomalies."""
     if response.status_code == HTTP_STATUS_OK:
         data = response.json()
@@ -45,7 +45,7 @@ def _fetch_catalog_json() -> dict | None:
     caller-supplied endpoint interpolation), so no SSRF surface exists.
     """
     try:
-        response = requests.get(
+        response = httpx.get(
             "https://models.dev/catalog.json",
             headers=_remote_headers(),
             timeout=6.0,
@@ -59,7 +59,7 @@ def _fetch_catalog_json() -> dict | None:
 def _fetch_models_json() -> dict | None:
     """Fetch the models.dev legacy models document (literal URL, fixed host)."""
     try:
-        response = requests.get(
+        response = httpx.get(
             "https://models.dev/models.json",
             headers=_remote_headers(),
             timeout=6.0,
