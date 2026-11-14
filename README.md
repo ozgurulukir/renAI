@@ -75,7 +75,6 @@ _Example: `Sunset -- [2024-07-15] -- (en).jpg`_
 - **`organize`**: Moves renamed files into category folders
 - **`copy`**: Writes the renamed copy next to the original and keeps the source file untouched (non-destructive)
 - **`evaluate`**: Tests multiple providers and models for accuracy
-- **`--fallback-mode none`**: No fallback; returns empty string on extraction failure.
 - **`--fallback-mode ocr`**: Tries text extraction first. If it fails, falls back to Tesseract OCR.
 - **`--fallback-mode vision`**: Tries text extraction first (no OCR). If it fails, falls back to vision-capable LLM for PDFs.
 - **`--fallback-mode move`**: Moves files where text extraction fails to `Needs_Scan/` folder.
@@ -226,7 +225,7 @@ Any field from `settings.default.toml` works; the most commonly used:
 | `RENAI_EXTRACTOR`            | `extractor`      | PDF text extractor (`pymupdf`, `pdfplumber`, `pypdf`, `pypdfium2`) | `pymupdf` |
 | `RENAI_TEXT_LENGTH`          | `text_length`    | Target text length sent to the LLM                       | `10000`     |
 
-`RENAI_FALLBACK_MODE` accepts `ocr` (OCR the file), `vision` (send pages as images to the vision LLM), or `move` (move the file to the `Scan_Failures` folder); the empty/`none` value disables fallback.
+`RENAI_FALLBACK_MODE` accepts `ocr` (OCR the file), `vision` (send pages as images to the vision LLM), or `move` (move the file to the `Scan_Failures` folder). The internal `none` sentinel is accepted for backward compatibility but is remapped to OCR by the document pipeline; the `--fallback-mode none` CLI flag is rejected.
 
 ### Zero-Code Defaults
 
@@ -549,7 +548,6 @@ When using `--mode organize`:
 
 - **`--fallback-mode move`**: Moves files with insufficient text to `Needs_Scan` folder (skips fallback processing)
 - **`--move-scan-failures`**: Moves files that fail both standard and fallback extraction to `Scan_Failures` folder
-- **`--fallback-mode none`**: No fallback processing; extraction failures are reported but not retried
 - **`--benchmark`**: Run a benchmark comparing PDF extractors on a sample of files (default: first 3)
 
 ---
@@ -713,7 +711,7 @@ Behavior notes:
 | `--text-extraction`    | Extraction mode (`head-tail` or `regular`) (default: `head-tail`)                                      |
 | `--extraction-pages`   | Pages to process per document                                                                          |
 | `--update-metadata`    | Force refresh metadata cache                                                                           |
-| `--fallback-mode`      | Strategy when extraction fails (`none`, `ocr`, `vision`, `move`)                                       |
+| `--fallback-mode`      | Strategy when extraction fails (`ocr`, `vision`, `move`)                                               |
 | `--move-scan-failures` | Move failed files to `Scan_Failures` folder                                                            |
 | `--benchmark`          | Benchmark PDF extractors on a sample of files (default: first 3)                                       |
 | `--vision-max-pages`   | Max pages to sample for vision PDF extraction (default: 3)                                             |
