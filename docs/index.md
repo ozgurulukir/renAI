@@ -9,7 +9,6 @@ Welcome to the official documentation for **renAI**, the AI-powered document and
 - [Home](index.md)
 - [Caching Strategy](CACHING_STRATEGY.md)
 - [Privacy Policy](PRIVACY.md)
-- [Project Readme (Türkçe)](../okubeni.md)
 - [Project Readme (English)](../README.md)
 
 ---

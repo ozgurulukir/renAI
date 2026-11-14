@@ -104,3 +104,16 @@ scratch/
 .rubik/
 .zcode/
 cache.db
+
+# =============================================================================
+# Local working artifacts (issue #200)
+# =============================================================================
+_plan/
+.commandcode/
+.mimosa/
+TECH_DEBT_AUDIT.md
+docs/audit/
+# docs/history/ itself is tracked (archived docs from tracked files, issue #200);
+# only its local-only subcontent is ignored:
+docs/history/artifacts/
+docs/history/p0-fixes-report.md
