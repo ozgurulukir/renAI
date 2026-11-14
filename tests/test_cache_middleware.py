@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
+from renai.cache.manager import MetadataCacheKey
 from renai.cache.middleware import MetadataRequest, with_metadata_cache
 
 
@@ -11,8 +12,19 @@ class DummyMetadata(BaseModel):
     title: str
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_cache_dir(tmp_path: Path, monkeypatch):
+    """Point the cache manager's default CACHE_DIR at a temp dir.
+
+    Keys no longer carry their storage location, so tests redirect the
+    manager's default instead of encoding a temp dir into a fake path.
+    """
+    monkeypatch.setattr("renai.cache.manager.CACHE_DIR", tmp_path)
+    return tmp_path
+
+
 def _make_request(
-    cache_path: Path,
+    cache_key: MetadataCacheKey,
     model_class: type[BaseModel],
     update_metadata: bool = False,
     use_vision_cache: bool = False,
@@ -24,7 +36,7 @@ def _make_request(
 ) -> MetadataRequest:
     base: dict[str, Any] = {
         "file_path": Path("test.pdf"),
-        "cache_path": cache_path,
+        "cache_key": cache_key,
         "model_class": model_class,
         "provider": provider,
         "model": model,
@@ -58,16 +70,18 @@ class DummyProcessor:
 @pytest.mark.asyncio
 async def test_middleware_cache_miss_and_hit(tmp_path: Path):
     processor = DummyProcessor()
-    test_cache_path = tmp_path / "metadata" / "test.json"
+    test_cache_key = MetadataCacheKey(
+        file_hash="test", provider="test_provider", model="test_model"
+    )
 
     # First call - cache miss, result written to cache
-    result, is_vision = await processor.extract(_make_request(test_cache_path, DummyMetadata))
+    result, is_vision = await processor.extract(_make_request(test_cache_key, DummyMetadata))
     assert result.title == "Extracted Title"
     assert is_vision is False
     assert processor.call_count == 1
 
     # Second call - cache hit, engine not invoked again
-    result2, is_vision2 = await processor.extract(_make_request(test_cache_path, DummyMetadata))
+    result2, is_vision2 = await processor.extract(_make_request(test_cache_key, DummyMetadata))
     assert result2.title == "Extracted Title"
     assert is_vision2 is False
     assert processor.call_count == 1
@@ -76,17 +90,19 @@ async def test_middleware_cache_miss_and_hit(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_middleware_update_metadata_skips_read(tmp_path: Path):
     processor = DummyProcessor()
-    test_cache_path = tmp_path / "metadata" / "refresh.json"
+    test_cache_key = MetadataCacheKey(
+        file_hash="refresh", provider="test_provider", model="test_model"
+    )
 
-    await processor.extract(_make_request(test_cache_path, DummyMetadata))
+    await processor.extract(_make_request(test_cache_key, DummyMetadata))
     assert processor.call_count == 1
 
     # update_metadata=True forces re-extraction (cache read skipped)
-    await processor.extract(_make_request(test_cache_path, DummyMetadata, update_metadata=True))
+    await processor.extract(_make_request(test_cache_key, DummyMetadata, update_metadata=True))
     assert processor.call_count == 2
 
     # Without update_metadata the refreshed entry is served from cache
-    await processor.extract(_make_request(test_cache_path, DummyMetadata))
+    await processor.extract(_make_request(test_cache_key, DummyMetadata))
     assert processor.call_count == 2
 
 
@@ -104,13 +120,13 @@ async def test_middleware_identities_come_from_request_not_instance(tmp_path: Pa
             return DummyMetadata(title="Extracted Title"), False
 
     processor = NoProviderProcessor()
-    test_cache_path = tmp_path / "metadata" / "unknown.json"
+    test_cache_key = MetadataCacheKey(file_hash="unknown", provider="unknown", model="unknown")
 
     # No provider/model instance attributes: identities ride the request and
     # the cache still round-trips.
     for _ in range(3):
         await processor.extract(
-            _make_request(test_cache_path, DummyMetadata, provider="unknown", model="unknown")
+            _make_request(test_cache_key, DummyMetadata, provider="unknown", model="unknown")
         )
 
     assert processor.call_count == 1
@@ -135,24 +151,31 @@ class VisionDummyProcessor:
 @pytest.mark.asyncio
 async def test_middleware_vision_and_text_caches_are_separate(tmp_path: Path):
     processor = VisionDummyProcessor()
-    text_cache = tmp_path / "metadata" / "text.json"
-    vision_cache = tmp_path / "metadata" / "vision.json"
+    text_cache_key = MetadataCacheKey(
+        file_hash="text", provider="text_provider", model="text_model"
+    )
+    vision_cache_key = MetadataCacheKey(
+        file_hash="vision",
+        provider="vision_provider",
+        model="vision_model",
+        use_vision=True,
+    )
 
     # Vision cache miss + hit
     _result, is_vision = await processor.extract(
-        _make_request(vision_cache, DummyMetadata, use_vision_cache=True)
+        _make_request(vision_cache_key, DummyMetadata, use_vision_cache=True)
     )
     assert is_vision is True
     assert processor.call_count == 1
 
     _result, is_vision = await processor.extract(
-        _make_request(vision_cache, DummyMetadata, use_vision_cache=True)
+        _make_request(vision_cache_key, DummyMetadata, use_vision_cache=True)
     )
     assert is_vision is True
     assert processor.call_count == 1
 
     # Text cache is a different namespace -> miss
-    _result, is_vision = await processor.extract(_make_request(text_cache, DummyMetadata))
+    _result, is_vision = await processor.extract(_make_request(text_cache_key, DummyMetadata))
     assert is_vision is False
     assert processor.call_count == 2
 
@@ -177,14 +200,17 @@ async def test_middleware_identity_mismatch_reextracts(tmp_path: Path):
             return DummyMetadata(title="Extracted Title"), False
 
     processor: Any = MisleadingProcessor()
-    test_cache_path = tmp_path / "metadata" / "custom.json"
+    test_cache_key = MetadataCacheKey(
+        file_hash="custom", provider="test_provider", model="test_model"
+    )
 
-    await processor.extract(_make_request(test_cache_path, DummyMetadata))
-    await processor.extract(_make_request(test_cache_path, DummyMetadata))
+    await processor.extract(_make_request(test_cache_key, DummyMetadata))
+    await processor.extract(_make_request(test_cache_key, DummyMetadata))
+
     assert processor.call_count == 1
 
     # A different producing identity in the request invalidates the row.
-    await processor.extract(_make_request(test_cache_path, DummyMetadata, model="other_model"))
+    await processor.extract(_make_request(test_cache_key, DummyMetadata, model="other_model"))
     assert processor.call_count == 2
 
 
@@ -236,8 +262,13 @@ async def test_middleware_persists_source_stable_across_cache_hits(tmp_path: Pat
             return DummyMetadata(title="From Text Path"), False
 
     processor = TextPathProcessor()
-    vision_cache = tmp_path / "metadata" / "text_success_under_vision.json"
-    request = _make_request(vision_cache, DummyMetadata, use_vision_cache=True)
+    vision_cache_key = MetadataCacheKey(
+        file_hash="text_success_under_vision",
+        provider="vision_provider",
+        model="vision_model",
+        use_vision=True,
+    )
+    request = _make_request(vision_cache_key, DummyMetadata, use_vision_cache=True)
 
     _result, cold_is_vision = await processor.extract(request)
     assert cold_is_vision is False
@@ -254,19 +285,16 @@ async def test_middleware_persists_source_stable_across_cache_hits(tmp_path: Pat
 async def test_middleware_legacy_record_without_marker_reconstructs(tmp_path: Path):
     """Records written before the marker existed keep the old reconstruction."""
     processor = VisionDummyProcessor()
-    vision_cache = tmp_path / "metadata" / "legacy.json"
+    vision_cache_key = MetadataCacheKey(
+        file_hash="legacy", provider="vision_provider", model="vision_model", use_vision=True
+    )
 
     # Write a record the old way: no is_vision_doc marker.
     from renai.cache.manager import write_metadata_cache
 
-    write_metadata_cache(
-        vision_cache,
-        DummyMetadata(title="Legacy"),
-        "vision_provider",
-        "vision_model",
-    )
+    write_metadata_cache(vision_cache_key, DummyMetadata(title="Legacy"))
 
-    request = _make_request(vision_cache, DummyMetadata, use_vision_cache=True)
+    request = _make_request(vision_cache_key, DummyMetadata, use_vision_cache=True)
     result, is_vision = await processor.extract(request)
     assert result is not None and result.title == "Legacy"
     # Legacy reconstruction: use_vision_cache=True and not an image request.
@@ -282,20 +310,20 @@ async def test_middleware_rule_signature_mismatch_reextracts(tmp_path: Path):
     replaces it atomically.
     """
     processor = DummyProcessor()
-    test_cache_path = tmp_path / "metadata" / "rule_scoped.json"
+    test_cache_key = MetadataCacheKey(
+        file_hash="rule_scoped", provider="test_provider", model="test_model"
+    )
 
     # Seed the cache the old way (global categories -> empty signature).
     from renai.cache.manager import write_metadata_cache
 
     write_metadata_cache(
-        test_cache_path,
+        test_cache_key,
         DummyMetadata(title="Global Universe"),
-        "test_provider",
-        "test_model",
         is_vision_doc=False,
     )
 
-    request = _make_request(test_cache_path, DummyMetadata, rule_signature="rule-sig-1")
+    request = _make_request(test_cache_key, DummyMetadata, rule_signature="rule-sig-1")
     result, _ = await processor.extract(request)
     assert processor.call_count == 1  # mismatch -> re-extraction ran
     assert result is not None and result.title == "Extracted Title"
@@ -305,36 +333,34 @@ async def test_middleware_rule_signature_mismatch_reextracts(tmp_path: Path):
     assert processor.call_count == 1
 
     # A global run (no rule) now mismatches the rule-scoped row -> miss.
-    global_request = _make_request(test_cache_path, DummyMetadata)
+    global_request = _make_request(test_cache_key, DummyMetadata)
     await processor.extract(global_request)
     assert processor.call_count == 2
 
 
 @pytest.mark.asyncio
 async def test_middleware_rule_signature_match_serves_cache(tmp_path: Path):
-    from renai.cache.manager import read_metadata_cache_with_source, write_metadata_cache
+    from renai.cache.manager import read_metadata_cache, write_metadata_cache
 
     processor = DummyProcessor()
-    test_cache_path = tmp_path / "metadata" / "rule_match.json"
+    test_cache_key = MetadataCacheKey(
+        file_hash="rule_match", provider="test_provider", model="test_model"
+    )
 
     write_metadata_cache(
-        test_cache_path,
+        test_cache_key,
         DummyMetadata(title="Rule Universe"),
-        "test_provider",
-        "test_model",
         is_vision_doc=False,
         rule_signature="rule-sig-1",
     )
 
-    request = _make_request(test_cache_path, DummyMetadata, rule_signature="rule-sig-1")
+    request = _make_request(test_cache_key, DummyMetadata, rule_signature="rule-sig-1")
     result, _ = await processor.extract(request)
     assert processor.call_count == 0
     assert result is not None and result.title == "Rule Universe"
 
     # Sanity: the stored source really carries the signature.
-    _meta, source = read_metadata_cache_with_source(
-        test_cache_path, "test_provider", "test_model", model_class=DummyMetadata
-    )
+    _meta, source = read_metadata_cache(test_cache_key, DummyMetadata)
     assert source is not None and source.rule_signature == "rule-sig-1"
 
 
@@ -342,7 +368,12 @@ async def test_middleware_rule_signature_match_serves_cache(tmp_path: Path):
 async def test_middleware_decorated_method_can_be_invoked_with_request():
     """A correctly-typed method accepts a MetadataRequest and behaves normally."""
     processor = DummyProcessor()
-    result, is_vision = await processor.extract(_make_request(Path("out.json"), DummyMetadata))
+    result, is_vision = await processor.extract(
+        _make_request(
+            MetadataCacheKey(file_hash="out", provider="test_provider", model="test_model"),
+            DummyMetadata,
+        )
+    )
     assert result.title == "Extracted Title"
     assert is_vision is False
 
@@ -355,7 +386,12 @@ async def test_text_produced_record_survives_vision_model_change(tmp_path: Path)
     The key is identity-free and the row validates against the producing
     (text) engine, so the vision-model swap must not touch it.
     """
-    vision_cache = tmp_path / "metadata" / "text_success_under_vision.json"
+    vision_cache = MetadataCacheKey(
+        file_hash="text_success_under_vision",
+        provider="vision_provider",
+        model="vision_model",
+        use_vision=True,
+    )
 
     class TextPathProcessor(VisionDummyProcessor):
         @with_metadata_cache()
@@ -390,7 +426,12 @@ async def test_text_produced_record_survives_vision_model_change(tmp_path: Path)
 async def test_text_model_change_invalidates_text_produced_record(tmp_path: Path):
     """Acceptance (#193): changing the text model re-extracts a text-produced row."""
     processor = VisionDummyProcessor()
-    vision_cache = tmp_path / "metadata" / "text_model_change.json"
+    vision_cache = MetadataCacheKey(
+        file_hash="text_model_change",
+        provider="vision_provider",
+        model="vision_model",
+        use_vision=True,
+    )
 
     class TextPathProcessor(VisionDummyProcessor):
         @with_metadata_cache()
@@ -418,7 +459,12 @@ async def test_vision_produced_record_invalidated_by_vision_model_change(tmp_pat
     """A vision-engine row validates against the vision engine: a vision model
     change is a miss, while a text model change does not affect it."""
     processor = VisionDummyProcessor()
-    vision_cache = tmp_path / "metadata" / "vision_produced.json"
+    vision_cache = MetadataCacheKey(
+        file_hash="vision_produced",
+        provider="vision_provider",
+        model="vision_model",
+        use_vision=True,
+    )
 
     request_v1 = _make_request(
         vision_cache, DummyMetadata, use_vision_cache=True, vision_model="v1"
@@ -447,28 +493,25 @@ async def test_middleware_legacy_row_without_producing_identity_still_reads(tmp_
     served when its stored identity matches the requested engine identity."""
     import json as json_lib
 
-    from renai.cache.manager import _get_db_connection
+    from renai.cache.manager import _encode_legacy_metadata_key, _get_db_connection
 
     processor = VisionDummyProcessor()
     # Build the exact pre-provenance key: doc_<hash>_<pmk>_vision.json
-    from renai.utils import get_provider_model_key
+    test_cache_key = MetadataCacheKey(
+        file_hash="hash123", provider="vision_provider", model="vision_model", use_vision=True
+    )
+    legacy_key = _encode_legacy_metadata_key(test_cache_key)
 
-    pmk = get_provider_model_key("vision_provider", "vision_model")
-    legacy_key = f"doc_hash123_{pmk}_vision.json"
-
-    test_cache_path = tmp_path / "metadata" / "doc_hash123_vision.json"
-    db_dir = tmp_path  # _get_db_dir maps metadata/ -> its parent
+    db_dir = tmp_path  # _hermetic_cache_dir points the manager's CACHE_DIR here
     payload = {"title": "Legacy Row"}
+    insert_sql = "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json) VALUES (?, ?, ?, ?)"
     with _get_db_connection(db_dir) as conn, conn:
         conn.execute(
-            "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json)"
-            " VALUES (?, ?, ?, ?)",
+            insert_sql,
             (legacy_key, "vision_provider", "vision_model", json_lib.dumps(payload)),
         )
-    # Also make sure no current-format row shadows it.
-    assert test_cache_path.name != legacy_key
 
-    request = _make_request(test_cache_path, DummyMetadata, use_vision_cache=True)
+    request = _make_request(test_cache_key, DummyMetadata, use_vision_cache=True)
     result, is_vision = await processor.extract(request)
     assert processor.call_count == 0
     assert result is not None and result.title == "Legacy Row"

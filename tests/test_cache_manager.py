@@ -31,10 +31,15 @@ from pathlib import Path  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
 from renai.cache.manager import (  # noqa: E402
+    MetadataCacheKey,
+    TextCacheKey,
+    _encode_legacy_metadata_key,
+    _encode_metadata_key,
+    _encode_text_key,
+    _get_db_connection,
     clear_all_cache,
-    get_metadata_cache_path,
     invalidate_cache_for_provider_model,
-    read_metadata_cache_with_source,
+    read_metadata_cache,
     read_text_cache,
     write_metadata_cache,
     write_text_cache,
@@ -42,30 +47,90 @@ from renai.cache.manager import (  # noqa: E402
 from renai.models.schemas import BookMetadata  # noqa: E402
 
 
+def _meta_key(file_hash="hash1", provider="p1", model="m1", mode="doc", use_vision=False):
+    return MetadataCacheKey(
+        file_hash=file_hash,
+        provider=provider,
+        model=model,
+        mode=mode,
+        use_vision=use_vision,
+    )
+
+
+def _book(title="Test Book"):
+    return BookMetadata(
+        title=title,
+        author="Test Author",
+        category="Other",
+        language="en",
+        subtitle=None,
+        edition=None,
+        year=None,
+    )
+
+
+def test_key_encoding_matches_grammar():
+    """The manager owns the on-disk key grammar; pin it exactly.
+
+    The CURRENT metadata key is identity-free (#193 provenance): provider/model
+    must NOT appear. The pre-provenance grammar (which embedded the
+    provider/model sha256 pair) is pinned separately so legacy rows written by
+    earlier versions stay findable.
+    """
+    assert _encode_text_key(TextCacheKey(file_hash="abc123")) == "abc123.txt"
+    assert _encode_text_key(TextCacheKey(file_hash="abc123", ocr=True)) == "abc123_ocr.txt"
+    assert _encode_text_key(TextCacheKey(file_hash="abc123", mutool=True)) == "abc123_mutool.txt"
+    assert (
+        _encode_text_key(TextCacheKey(file_hash="abc123", ocr=True, mutool=True))
+        == "abc123_ocr_mutool.txt"
+    )
+
+    # Current: identity-free. The requested identity must not perturb the key.
+    assert _encode_metadata_key(_meta_key(file_hash="abc123")) == "doc_abc123.json"
+    assert _encode_metadata_key(_meta_key(file_hash="abc123", mode="img", use_vision=True)) == (
+        "img_abc123_vision.json"
+    )
+    assert _encode_metadata_key(_meta_key(file_hash="abc123", provider="p2")) == "doc_abc123.json"
+
+    # Legacy: provider/model pair is embedded via the same sha256("|".join)
+    # scheme the removed get_provider_model_key helper used.
+    import hashlib
+
+    assert _encode_legacy_metadata_key(_meta_key(file_hash="abc123")) == (
+        f"doc_abc123_{hashlib.sha256(b'p1|m1').hexdigest()}.json"
+    )
+    assert (
+        _encode_legacy_metadata_key(_meta_key(file_hash="abc123", mode="img", use_vision=True))
+        == f"img_abc123_{hashlib.sha256(b'p1|m1').hexdigest()}_vision.json"
+    )
+
+
 def test_read_metadata_cache_invalid_provider_model(tmp_path, caplog):
-    """Legacy rows (pre-provenance) keep the compare-and-invalidate behavior."""
-    cache_path = tmp_path / "test_metadata.json"
-    provider = "test_provider"
-    model = "test_model"
+    """Legacy-format rows (no _prod_* markers) keep the compare-and-invalidate
+    behavior: an identity mismatch on the row columns invalidates the row."""
+    key = _meta_key(provider="test_provider", model="test_model")
+    cache_key = _encode_metadata_key(key)
 
-    # Seed a legacy-format row (no _prod_* markers) directly.
-    from renai.cache.manager import _get_db_connection
-
-    with _get_db_connection(cache_path.parent) as conn, conn:
+    # Seed a legacy-format row (no _prod_* markers) under the current key.
+    with _get_db_connection(tmp_path) as conn, conn:
         conn.execute(
             "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json)"
             " VALUES (?, ?, ?, ?)",
             (
-                cache_path.name,
-                provider,
-                model,
+                cache_key,
+                "test_provider",
+                "test_model",
                 '{"title": "Legacy Book", "language": "en", "category": "Other"}',
             ),
         )
 
-    # Identity mismatch on a legacy row invalidates it.
+    # Identity mismatch on a legacy row invalidates it (the key is
+    # identity-free, so the same row is found under the changed identity).
     with caplog.at_level(logging.DEBUG):
-        result, _ = read_metadata_cache_with_source(cache_path, "different_provider", model)
+        result, _ = read_metadata_cache(
+            _meta_key(provider="different_provider", model="test_model"),
+            cache_dir=tmp_path,
+        )
         assert result is None
         assert "Cache invalidated" in caplog.text
         assert "was test_provider/test_model" in caplog.text
@@ -75,17 +140,21 @@ def test_provenance_rows_are_identity_agnostic_at_manager_level(tmp_path):
     """Rows carrying a producing identity are returned regardless of the
     requested identity: validation against the producing engine is the
     middleware's job (it knows which engine slot produced the record)."""
-    cache_path = tmp_path / "prov_metadata.json"
-    metadata = BookMetadata(
-        title="Provenance Book",
-        author="A",
-        category="Other",
-        language="en",
-    )
-    write_metadata_cache(cache_path, metadata, "producing_p", "producing_m")
+    key = _meta_key()
+    metadata = _book("Provenance Book")
 
-    result, source = read_metadata_cache_with_source(
-        cache_path, "requested_p", "requested_m", model_class=BookMetadata
+    write_metadata_cache(
+        key,
+        metadata,
+        cache_dir=tmp_path,
+        produced_provider="producing_p",
+        produced_model="producing_m",
+    )
+
+    result, source = read_metadata_cache(
+        _meta_key(provider="requested_p", model="requested_m"),
+        BookMetadata,
+        cache_dir=tmp_path,
     )
     assert isinstance(result, BookMetadata)
     assert source is not None
@@ -96,16 +165,15 @@ def test_provenance_rows_are_identity_agnostic_at_manager_level(tmp_path):
 def test_legacy_key_format_still_readable(tmp_path):
     """Rows written under the pre-provenance key (provider/model embedded) are
     found via the legacy-key fallback so old caches survive the upgrade."""
-    from renai.cache.manager import _get_db_connection, _legacy_cache_key
+    from renai.cache.manager import _encode_legacy_metadata_key, _get_db_connection
 
-    cache_path = tmp_path / "metadata" / "doc_abc123_vision.json"
-    db_dir = cache_path.parent.parent  # _get_db_dir maps metadata/ -> its parent
-    legacy_key = _legacy_cache_key(cache_path.name, "p", "m")
+    key = _meta_key(file_hash="abc123", provider="p", model="m", use_vision=True)
+    legacy_key = _encode_legacy_metadata_key(key)
 
-    with _get_db_connection(db_dir) as conn, conn:
+    insert_sql = "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json) VALUES (?, ?, ?, ?)"
+    with _get_db_connection(tmp_path) as conn, conn:
         conn.execute(
-            "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json)"
-            " VALUES (?, ?, ?, ?)",
+            insert_sql,
             (
                 legacy_key,
                 "p",
@@ -114,7 +182,7 @@ def test_legacy_key_format_still_readable(tmp_path):
             ),
         )
 
-    result, source = read_metadata_cache_with_source(cache_path, "p", "m", model_class=BookMetadata)
+    result, source = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
     assert isinstance(result, BookMetadata)
     assert result.title == "Old Key Book"
     # No producing identity was stored -> legacy semantics.
@@ -125,44 +193,61 @@ def test_legacy_key_format_still_readable(tmp_path):
 
 def test_read_metadata_cache_success(tmp_path):
     """Test successful metadata cache read with model validation."""
-    cache_path = tmp_path / "success_metadata.json"
-    metadata = BookMetadata(
-        title="Success Book",
-        author="Success Author",
-        category="Other",
-        language="en",
-        subtitle=None,
-        edition=None,
-        year=None,
-    )
-    provider = "p1"
-    model = "m1"
+    key = _meta_key()
+    metadata = _book("Success Book")
 
-    write_metadata_cache(cache_path, metadata, provider, model)
+    assert write_metadata_cache(key, metadata, cache_dir=tmp_path) is True
 
-    # Test reading with model validation - SSoT focus
-    result, _ = read_metadata_cache_with_source(
-        cache_path, provider, model, model_class=BookMetadata
-    )
+    result, source = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
     assert isinstance(result, BookMetadata)
     assert result.title == "Success Book"
+    assert source is not None
+    # No provenance markers written -> legacy semantics.
+    assert source.is_vision_doc is None
+    assert source.rule_signature == ""
+
+
+def test_metadata_cache_isolated_by_key_components(tmp_path):
+    """Structural key components (hash, mode, vision namespace) isolate rows.
+
+    Requested identity (provider/model) deliberately does NOT isolate: the
+    key is identity-free (#193 provenance) and producing-engine mismatch is
+    judged at the middleware level against the persisted producing identity.
+    """
+    metadata = _book("Component Book")
+    write_metadata_cache(_meta_key(), metadata, cache_dir=tmp_path)
+
+    for variant in [
+        _meta_key(file_hash="other"),
+        _meta_key(mode="img"),
+        _meta_key(use_vision=True),
+    ]:
+        result, _ = read_metadata_cache(variant, BookMetadata, cache_dir=tmp_path)
+        assert result is None, f"expected miss for {variant}"
+
+    # Requested-identity variants still find the row (identity-free key) and
+    # surface the row's persisted producing identity.
+    for variant in [_meta_key(provider="p2"), _meta_key(model="m2")]:
+        result, source = read_metadata_cache(variant, BookMetadata, cache_dir=tmp_path)
+        assert result is not None, f"expected hit for {variant}"
+        assert source is not None
+        assert source.produced_by_provider == "p1"
+        assert source.produced_by_model == "m1"
+
+    result, _ = read_metadata_cache(_meta_key(), BookMetadata, cache_dir=tmp_path)
+    assert result is not None
 
 
 def test_metadata_cache_source_marker_roundtrip(tmp_path):
     """The persisted _is_vision_doc marker round-trips and stays out of the model."""
-    cache_path = tmp_path / "marker_metadata.json"
-    metadata = BookMetadata(title="Marker Book", author="A", category="Other", language="en")
-    provider = "p1"
-    model = "m1"
+    key = _meta_key()
+    metadata = _book("Marker Book")
 
     write_metadata_cache(
-        cache_path, metadata, provider, model, is_vision_doc=False, rule_signature="abc123"
+        key, metadata, is_vision_doc=False, rule_signature="abc123", cache_dir=tmp_path
     )
 
-    # The source-aware reader returns the provenance alongside the metadata.
-    result, source = read_metadata_cache_with_source(
-        cache_path, provider, model, model_class=BookMetadata
-    )
+    result, source = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
     assert isinstance(result, BookMetadata)
     assert result.title == "Marker Book"
     assert source is not None
@@ -173,23 +258,18 @@ def test_metadata_cache_source_marker_roundtrip(tmp_path):
     assert source.produced_by_model == "m1"
 
     # The dict path (model_class=None) strips the reserved keys too.
-    raw, _ = read_metadata_cache_with_source(cache_path, provider, model)
+    raw, _ = read_metadata_cache(key, cache_dir=tmp_path)
     assert raw == metadata.model_dump()
 
 
 def test_metadata_cache_without_marker_reports_none_source(tmp_path):
     """Records written without the marker read back as None (legacy semantics)."""
-    cache_path = tmp_path / "unmarked_metadata.json"
-    metadata = BookMetadata(title="Unmarked", author="A", category="Other", language="en")
+    key = _meta_key()
+    write_metadata_cache(key, _book("Unmarked"), cache_dir=tmp_path)
 
-    write_metadata_cache(cache_path, metadata, "p1", "m1")
-
-    result, source = read_metadata_cache_with_source(
-        cache_path, "p1", "m1", model_class=BookMetadata
-    )
+    result, source = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
     assert isinstance(result, BookMetadata)
     assert source is not None
-    # No vision marker -> None; rule signature is always explicit ("" = global).
     assert source.is_vision_doc is None
     assert source.rule_signature == ""
 
@@ -200,90 +280,100 @@ def test_read_metadata_cache_non_object_json_degrades_to_miss(tmp_path, caplog):
     Regression guard: an unguarded dict-only operation (e.g. .pop) on such a row
     used to raise out of the reader and fail the whole file.
     """
-    cache_path = tmp_path / "corrupt_metadata.json"
-    db_dir = cache_path.parent
-    db_dir.mkdir(parents=True, exist_ok=True)
+    cache_key = _encode_metadata_key(_meta_key(file_hash="corrupt", provider="p", model="m"))
 
-    from renai.cache.manager import _get_db_connection
-
-    with _get_db_connection(db_dir) as conn, conn:
+    with _get_db_connection(tmp_path) as conn, conn:
         conn.execute(
             "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json) "
             "VALUES (?, ?, ?, ?)",
-            (cache_path.name, "p", "m", "[1, 2, 3]"),
+            (cache_key, "p", "m", "[1, 2, 3]"),
         )
 
+    key = _meta_key(file_hash="corrupt", provider="p", model="m")
     with caplog.at_level(logging.WARNING):
-        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
-        with_source = read_metadata_cache_with_source(
-            cache_path, "p", "m", model_class=BookMetadata
-        )
+        result, _ = read_metadata_cache(key, cache_dir=tmp_path)
+        with_source = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
 
     assert result is None
     assert with_source == (None, None)
     assert any("expected a JSON object" in r.message for r in caplog.records)
 
     # The corrupt row is dropped so subsequent reads fall through cleanly.
-    with _get_db_connection(db_dir) as conn:
+    with _get_db_connection(tmp_path) as conn:
         row = conn.execute(
-            "SELECT COUNT(*) FROM metadata_cache WHERE cache_key = ?", (cache_path.name,)
+            "SELECT COUNT(*) FROM metadata_cache WHERE cache_key = ?", (cache_key,)
         ).fetchone()
     assert row[0] == 0
 
 
 def test_read_metadata_cache_nonexistent(tmp_path):
-    """Test reading from non-existent cache file."""
-    cache_path = tmp_path / "nonexistent.json"
-    result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
+    """Test reading from an empty cache directory."""
+    result, _ = read_metadata_cache(_meta_key(file_hash="missing"), cache_dir=tmp_path)
     assert result is None
 
 
+def test_read_metadata_cache_legacy_json_file_fallback(tmp_path):
+    """A legacy JSON file (pre-SQLite store) is still readable."""
+    key = _meta_key(file_hash="legacy", provider="p", model="m")
+    legacy_dir = tmp_path / "metadata"
+    legacy_dir.mkdir()
+    (legacy_dir / _encode_legacy_metadata_key(key)).write_text(
+        '{"title": "Legacy Book", "language": "en", "category": "Other", '
+        '"_provider": "p", "_model": "m"}',
+        encoding="utf-8",
+    )
+
+    result, _ = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
+    assert isinstance(result, BookMetadata)
+    assert result.title == "Legacy Book"
+
+
+def test_read_metadata_cache_legacy_json_stale_provider_deleted(tmp_path, caplog):
+    """A legacy JSON file whose payload disagrees with the key is removed."""
+    key = _meta_key(file_hash="stale", provider="p", model="m")
+    legacy_path = tmp_path / "metadata" / _encode_legacy_metadata_key(key)
+    legacy_path.parent.mkdir()
+    legacy_path.write_text(
+        '{"title": "Stale", "language": "en", "category": "Other", '
+        '"_provider": "other", "_model": "m"}',
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        result, _ = read_metadata_cache(key, cache_dir=tmp_path)
+    assert result is None
+    assert "Cache invalidated" in caplog.text
+    assert not legacy_path.exists()
+
+
 def test_read_metadata_cache_invalid_json(tmp_path, caplog):
-    """Test reading cache file with invalid JSON."""
-    cache_path = tmp_path / "invalid.json"
-    cache_path.write_text("invalid json content", encoding="utf-8")
+    """Test reading legacy cache file with invalid JSON."""
+    key = _meta_key(file_hash="invalid", provider="p", model="m")
+    legacy_path = tmp_path / "metadata" / _encode_legacy_metadata_key(key)
+    legacy_path.parent.mkdir()
+    legacy_path.write_text("invalid json content", encoding="utf-8")
 
     with caplog.at_level(logging.WARNING):
-        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
+        result, _ = read_metadata_cache(key, cache_dir=tmp_path)
         assert result is None
         assert "Failed to read metadata cache" in caplog.text
 
 
 def test_read_metadata_cache_exception(tmp_path, caplog):
     """Test reading cache when an exception occurs."""
-    cache_path = tmp_path / "error.json"
-    cache_path.write_text("{}", encoding="utf-8")
+    key = _meta_key(file_hash="error", provider="p", model="m")
+    legacy_path = tmp_path / "metadata" / _encode_legacy_metadata_key(key)
+    legacy_path.parent.mkdir()
+    legacy_path.write_text("{}", encoding="utf-8")
 
     with (
         patch.object(Path, "read_text", side_effect=Exception("Read error")),
         caplog.at_level(logging.WARNING),
     ):
-        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
+        result, _ = read_metadata_cache(key, cache_dir=tmp_path)
         assert result is None
         assert "Failed to read metadata cache" in caplog.text
         assert "Read error" in caplog.text
-
-
-def test_get_metadata_cache_path():
-    """Test generating metadata cache path with mode awareness.
-
-    The key is identity-free (#193): provider/model must not appear in it.
-    """
-    file_hash = "abc123"
-    cache_dir = Path("/tmp/cache")
-
-    # Test default mode (doc)
-    path = get_metadata_cache_path(file_hash, cache_dir=cache_dir)
-    assert path.name == "doc_abc123.json"
-    assert path.parent.name == "metadata"
-
-    # Test image mode
-    path = get_metadata_cache_path(file_hash, mode="img", cache_dir=cache_dir)
-    assert path.name == "img_abc123.json"
-
-    # Test vision namespace suffix
-    path = get_metadata_cache_path(file_hash, use_vision=True, cache_dir=cache_dir)
-    assert path.name == "doc_abc123_vision.json"
 
 
 def test_invalidate_cache_for_provider_model_basic(tmp_path):
@@ -352,63 +442,58 @@ def test_clear_all_cache(tmp_path):
         assert not debug_dir.exists()
 
 
-def test_read_text_cache_success(tmp_path, caplog):
-    """Test reading existing text cache returns content."""
-    cache_file = tmp_path / "cached.txt"
-    cache_file.write_text("cached text content", encoding="utf-8")
+def test_read_text_cache_success(tmp_path):
+    """Test writing then reading a text cache entry round-trips via SQLite."""
+    key = TextCacheKey(file_hash="abc123")
+    content = "cached text content"
 
-    with caplog.at_level(logging.WARNING):
-        result = read_text_cache(cache_file)
+    assert write_text_cache(key, content, cache_dir=tmp_path) is True
+    assert read_text_cache(key, cache_dir=tmp_path) == content
 
-    assert result == "cached text content"
-    assert "Failed to read" not in caplog.text
+
+def test_read_text_cache_legacy_file_fallback(tmp_path):
+    """A legacy text cache file on disk (pre-SQLite store) is still readable."""
+    key = TextCacheKey(file_hash="abc123", ocr=True)
+    legacy_dir = tmp_path / "text"
+    legacy_dir.mkdir()
+    (legacy_dir / _encode_text_key(key)).write_text("legacy text", encoding="utf-8")
+
+    assert read_text_cache(key, cache_dir=tmp_path) == "legacy text"
 
 
 def test_read_text_cache_nonexistent(tmp_path):
-    """Test reading non-existent cache file returns None."""
-    missing = tmp_path / "does_not_exist.txt"
-    result = read_text_cache(missing)
+    """Test reading non-existent cache returns None."""
+    result = read_text_cache(TextCacheKey(file_hash="does_not_exist"), cache_dir=tmp_path)
     assert result is None
 
 
 def test_read_text_cache_io_error(tmp_path, caplog):
     """Test that IO errors during read are caught and return None."""
-    cache_file = tmp_path / "bad.txt"
-    cache_file.write_text("content", encoding="utf-8")
+    key = TextCacheKey(file_hash="bad")
+    legacy_dir = tmp_path / "text"
+    legacy_dir.mkdir()
+    (legacy_dir / _encode_text_key(key)).write_text("content", encoding="utf-8")
 
     with (
         patch.object(Path, "read_text", side_effect=OSError("Permission denied")),
         caplog.at_level(logging.WARNING),
     ):
-        result = read_text_cache(cache_file)
+        result = read_text_cache(key, cache_dir=tmp_path)
 
     assert result is None
     assert "Failed to read text cache" in caplog.text
     assert "Permission denied" in caplog.text
 
 
-def test_write_text_cache_success(tmp_path, caplog):
-    """Test writing text cache succeeds and returns True."""
-    cache_file = tmp_path / "output" / "cached.txt"
-    content = "new cached content"
-
-    with caplog.at_level(logging.WARNING):
-        result = write_text_cache(cache_file, content)
-
-    assert result is True
-    assert read_text_cache(cache_file) == content
-    assert "Failed to write" not in caplog.text
-
-
 def test_write_text_cache_io_error(tmp_path, caplog):
     """Test that IO errors during write are caught and return False."""
-    cache_file = tmp_path / "readonly" / "cached.txt"
+    key = TextCacheKey(file_hash="readonly")
 
     with (
         patch.object(Path, "mkdir", side_effect=OSError("Disk full")),
         caplog.at_level(logging.WARNING),
     ):
-        result = write_text_cache(cache_file, "content")
+        result = write_text_cache(key, "content", cache_dir=tmp_path)
 
     assert result is False
     assert "Failed to write text cache" in caplog.text
@@ -416,19 +501,22 @@ def test_write_text_cache_io_error(tmp_path, caplog):
 
 
 def test_read_metadata_cache_sqlite_error(tmp_path, caplog):
-    """Test that SQLite errors during metadata read are logged and fallback occurs."""
-    cache_path = tmp_path / "metadata" / "test.json"
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(
-        '{"title": "Fallback Book", "_provider": "p", "_model": "m"}', encoding="utf-8"
+    """Test that generic SQLite errors during metadata read fall back to legacy files."""
+    key = _meta_key(file_hash="fallback", provider="p", model="m")
+    legacy_path = tmp_path / "metadata" / _encode_legacy_metadata_key(key)
+    legacy_path.parent.mkdir()
+    legacy_path.write_text(
+        '{"title": "Fallback Book", "language": "en", "category": "Other", '
+        '"_provider": "p", "_model": "m"}',
+        encoding="utf-8",
     )
 
     with (
         patch("renai.cache.manager._get_db_connection", side_effect=Exception("DB lock error")),
         caplog.at_level(logging.WARNING),
     ):
-        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
-        assert result == {"title": "Fallback Book"}
+        result, _ = read_metadata_cache(key, cache_dir=tmp_path)
+        assert result == {"title": "Fallback Book", "language": "en", "category": "Other"}
         assert "Failed to read metadata cache" in caplog.text
         assert "DB lock error" in caplog.text
 
@@ -440,10 +528,13 @@ def test_read_metadata_cache_corrupt_db_skips_legacy_fallback(tmp_path, caplog):
     level, naming cache.db so the user can act on the right artifact), degrade
     to a miss, and do NOT serve records from the superseded legacy store.
     """
-    cache_path = tmp_path / "metadata" / "test.json"
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(
-        '{"title": "Stale Legacy Book", "_provider": "p", "_model": "m"}', encoding="utf-8"
+    key = _meta_key(file_hash="corruptdb", provider="p", model="m")
+    legacy_path = tmp_path / "metadata" / _encode_legacy_metadata_key(key)
+    legacy_path.parent.mkdir()
+    legacy_path.write_text(
+        '{"title": "Stale Legacy Book", "language": "en", "category": "Other", '
+        '"_provider": "p", "_model": "m"}',
+        encoding="utf-8",
     )
 
     with (
@@ -453,7 +544,7 @@ def test_read_metadata_cache_corrupt_db_skips_legacy_fallback(tmp_path, caplog):
         ),
         caplog.at_level(logging.ERROR),
     ):
-        result, _ = read_metadata_cache_with_source(cache_path, "p", "m")
+        result, _ = read_metadata_cache(key, cache_dir=tmp_path)
 
     assert result is None
     assert "corrupt or unreadable" in caplog.text
@@ -466,8 +557,7 @@ def test_write_metadata_cache_corrupt_db_is_loud_but_not_fatal(tmp_path, caplog)
     Caching is best-effort: extraction already succeeded, so the run must
     continue — but the failure must not look like a routine miss.
     """
-    cache_path = tmp_path / "metadata" / "test.json"
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    key = _meta_key(file_hash="wfail", provider="p", model="m")
 
     with (
         patch(
@@ -476,7 +566,7 @@ def test_write_metadata_cache_corrupt_db_is_loud_but_not_fatal(tmp_path, caplog)
         ),
         caplog.at_level(logging.ERROR),
     ):
-        result = write_metadata_cache(cache_path, {"title": "Uncached Book"}, "p", "m")
+        result = write_metadata_cache(key, {"title": "Uncached Book"}, cache_dir=tmp_path)
 
     assert result is False
     assert "corrupt or unreadable" in caplog.text
@@ -485,12 +575,11 @@ def test_write_metadata_cache_corrupt_db_is_loud_but_not_fatal(tmp_path, caplog)
 
 def test_read_metadata_cache_validation_error(tmp_path, caplog):
     """Test that metadata schema validation failure logs warning and returns None."""
-    cache_path = tmp_path / "metadata" / "invalid_schema.json"
-    # Write invalid data for BookMetadata (missing required fields)
-    write_metadata_cache(cache_path, {"invalid_field": 123}, "p", "m")
+    key = _meta_key(file_hash="invalid")
+    write_metadata_cache(key, {"invalid_field": 123}, cache_dir=tmp_path)
 
     with caplog.at_level(logging.WARNING):
-        result, _ = read_metadata_cache_with_source(cache_path, "p", "m", model_class=BookMetadata)
+        result, _ = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
         assert result is None
         assert "Failed to validate cached metadata against BookMetadata" in caplog.text
 
@@ -540,33 +629,32 @@ def test_legacy_rows_without_rule_sig_read_as_legacy_provenance(tmp_path):
     pre-marker row (no reserved keys at all) and a #175-era row (_is_vision_doc
     set, no _rule_sig) must surface rule_signature=None, not "".
     """
-    from renai.cache.manager import _get_db_connection
-
-    db_dir = tmp_path
+    key_a = _meta_key(file_hash="pre-marker", provider="p", model="m")
+    key_b = _meta_key(file_hash="175-era", provider="p", model="m")
     rows = {
-        "pre-marker.json": '{"title": "Legacy Book", "language": "en", "category": "Fiction"}',
-        "175-era.json": '{"title": "175-era Book", "language": "en", "category": "Fiction", '
-        '"_is_vision_doc": true}',
+        _encode_legacy_metadata_key(
+            key_a
+        ): '{"title": "Legacy Book", "language": "en", "category": "Other"}',
+        _encode_legacy_metadata_key(
+            key_b
+        ): '{"title": "175-era Book", "language": "en", "category": '
+        '"Other", "_is_vision_doc": true}',
     }
-    for name, metadata_json in rows.items():
-        with _get_db_connection(db_dir) as conn, conn:
+    for cache_key, metadata_json in rows.items():
+        with _get_db_connection(tmp_path) as conn, conn:
             conn.execute(
                 "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json)"
                 " VALUES (?, ?, ?, ?)",
-                (name, "p", "m", metadata_json),
+                (cache_key, "p", "m", metadata_json),
             )
 
-    result, source = read_metadata_cache_with_source(
-        tmp_path / "pre-marker.json", "p", "m", model_class=BookMetadata
-    )
+    result, source = read_metadata_cache(key_a, BookMetadata, cache_dir=tmp_path)
     assert isinstance(result, BookMetadata)
     assert source is not None
     assert source.is_vision_doc is None
     assert source.rule_signature is None
 
-    result_era, source_era = read_metadata_cache_with_source(
-        tmp_path / "175-era.json", "p", "m", model_class=BookMetadata
-    )
+    result_era, source_era = read_metadata_cache(key_b, BookMetadata, cache_dir=tmp_path)
     assert isinstance(result_era, BookMetadata)
     assert source_era is not None
     assert source_era.is_vision_doc is True

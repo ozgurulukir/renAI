@@ -8,7 +8,6 @@ from renai.utils import (
     ensure_secure_dir,
     generate_cache_key,
     get_file_hash,
-    get_provider_model_key,
     head_tail_trim,
     read_text_limited,
     sanitize_filename,
@@ -88,14 +87,6 @@ def test_generate_cache_key():
 
     # Single value
     assert generate_cache_key("only") == hashlib.sha256(b"only").hexdigest()
-
-
-def test_get_provider_model_key():
-    """Test provider-model key generation."""
-    provider = "openai"
-    model = "gpt-4o"
-    expected = generate_cache_key(provider, model)
-    assert get_provider_model_key(provider, model) == expected
 
 
 @pytest.mark.parametrize(

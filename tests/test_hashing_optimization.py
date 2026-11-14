@@ -1,8 +1,9 @@
 from pathlib import Path
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from renai.cache.manager import TextCacheKey
 from renai.processors.text_extractor import TextExtractor
 
 
@@ -21,7 +22,7 @@ class TestHashingOptimization:
         with (
             patch("renai.processors.text_extractor.get_file_hash") as mock_get_hash,
             patch("renai.processors.text_extractor.read_text_cache") as mock_read_cache,
-            patch("renai.processors.text_extractor.get_text_cache_path") as mock_get_cache_path,
+            patch("renai.processors.text_extractor.write_text_cache"),
         ):
             mock_read_cache.return_value = "cached text"
 
@@ -29,11 +30,8 @@ class TestHashingOptimization:
 
             assert result == "cached text"
             mock_get_hash.assert_not_called()
-            mock_get_cache_path.assert_called_once_with(
-                provided_hash,
-                ocr_enabled=False,
-                use_mutool=False,
-                cache_dir=ANY,
+            mock_read_cache.assert_called_once_with(
+                TextCacheKey(file_hash=provided_hash, ocr=False, mutool=False)
             )
 
     @pytest.mark.asyncio
@@ -49,7 +47,7 @@ class TestHashingOptimization:
         with (
             patch("renai.processors.text_extractor.get_file_hash") as mock_get_hash,
             patch("renai.processors.text_extractor.read_text_cache") as mock_read_cache,
-            patch("renai.processors.text_extractor.get_text_cache_path") as mock_get_cache_path,
+            patch("renai.processors.text_extractor.write_text_cache"),
         ):
             mock_get_hash.return_value = computed_hash
             mock_read_cache.return_value = "cached text"
@@ -58,9 +56,6 @@ class TestHashingOptimization:
 
             assert result == "cached text"
             mock_get_hash.assert_called_once_with(file_path)
-            mock_get_cache_path.assert_called_once_with(
-                computed_hash,
-                ocr_enabled=False,
-                use_mutool=False,
-                cache_dir=ANY,
+            mock_read_cache.assert_called_once_with(
+                TextCacheKey(file_hash=computed_hash, ocr=False, mutool=False)
             )
