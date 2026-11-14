@@ -31,19 +31,6 @@ def generate_cache_key(*args: str | None) -> str:
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 
-def get_provider_model_key(provider: str, model: str) -> str:
-    """Generate a cache key for provider-model pairing.
-
-    Args:
-        provider: LLM provider name (e.g., 'deepinfra', 'openai', 'custom')
-        model: Model name (e.g., 'gpt-4o-mini', 'llama3')
-
-    Returns:
-        A hex string hash combining provider and model
-    """
-    return generate_cache_key(provider, model)
-
-
 def sanitize_filename(filename: str, max_length: int = 200) -> str:
     """
     Replace invalid characters and remove all control characters.

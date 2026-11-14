@@ -67,10 +67,9 @@ async def test_cache_functionality(processor, tmp_path):
     test_cache_dir = tmp_path / "cache"
 
     patch_mgr = "renai.cache.manager.CACHE_DIR"
-    patch_book = "renai.processors.book.CACHE_DIR"
 
-    # Patch CACHE_DIR globally in the relevant modules
-    with patch(patch_mgr, test_cache_dir), patch(patch_book, test_cache_dir):
+    # Patch CACHE_DIR in the cache manager (the single storage owner)
+    with patch(patch_mgr, test_cache_dir):
         test_file = tmp_path / "test_book.pdf"
         test_file.write_bytes(b"unique fake pdf content for cache test")
 
@@ -116,7 +115,6 @@ async def test_organize_with_root_dir(processor, tmp_path):
     # Use private cache dir to avoid collisions with other tests
     with (
         patch("renai.cache.manager.CACHE_DIR", test_cache_dir),
-        patch("renai.processors.book.CACHE_DIR", test_cache_dir),
     ):
         result = await processor.process_file(test_file, mode="organize")
 
@@ -145,7 +143,6 @@ async def test_path_traversal_blocked_with_root_dir(processor, tmp_path):
 
     with (
         patch("renai.cache.manager.CACHE_DIR", test_cache_dir),
-        patch("renai.processors.book.CACHE_DIR", test_cache_dir),
         patch("renai.file_ops.organizer.extract_category_from_metadata", side_effect=fake_category),
     ):
         result = await processor.process_file(test_file, mode="organize")

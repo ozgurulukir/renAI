@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Metadata cache entries written by earlier versions are still readable: rows under the old provider/model-embedded key format are found via a legacy-key fallback and keep the old single-identity validation. Rows written from this version onward carry the producing-engine identity; no one-time invalidation is required when upgrading.
 
+### Internal
+
+- **Structured Cache Keys (#192)**: The path-as-key pseudo-API (`get_text_cache_path`/`get_metadata_cache_path` returning `Path` objects that callers passed back into read/write functions) was replaced with structured key types (`TextCacheKey`, `MetadataCacheKey`) and a single key-grammar owner in `cache/manager.py` (`_encode_text_key`, `_encode_metadata_key`, `_encode_legacy_metadata_key`). `read_metadata_cache_with_source` is renamed to `read_metadata_cache(key, model_class, cache_dir=None)`, and `MetadataRequest.cache_path` becomes `cache_key`. The metadata key grammar stays identity-free per #193 — provider/model ride the key only for legacy reads and row observability, never in the lookup key.
+
 ## [2.3.2] - 2026-11-05
 
 ### Changed

@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import json
 import logging
 import shutil
@@ -11,24 +12,87 @@ from typing import Any, NamedTuple, overload
 from pydantic import BaseModel
 
 from renai.config import CACHE_DIR, DEBUG_DIR
-from renai.utils import (
-    get_provider_model_key,
-)
 
 # Thread-safe lock for all cache database operations
 _cache_lock = threading.Lock()
 
 
-def _get_db_dir(cache_path: Path | None = None, cache_dir: Path | None = None) -> Path:
-    """Determine the database directory given a cache path or explicit cache dir."""
-    if cache_dir is not None:
-        return cache_dir
-    if cache_path is not None:
-        parent = cache_path.parent
-        if parent.name in ("text", "metadata"):
-            return parent.parent
-        return parent
-    return CACHE_DIR
+class TextCacheKey(NamedTuple):
+    """Structured identity of a cached text-extraction result.
+
+    Mirrors every component the on-disk key grammar encodes
+    (``{hash}_ocr_mutool.txt``): the file hash plus the two OCR fallback flags
+    that change the produced text.
+    """
+
+    file_hash: str
+    ocr: bool = False
+    mutool: bool = False
+
+
+class MetadataCacheKey(NamedTuple):
+    """Structured identity of a cached metadata record.
+
+    ``provider``/``model`` are the identity of the engine REQUESTED for this
+    lookup. They deliberately do NOT participate in the current key grammar
+    (``{mode}_{hash}{_vision}.json``): since provenance (#193), the key is
+    identity-free and the engine that actually PRODUCED a record is persisted
+    inside the row (``_prod_provider``/``_prod_model``) and validated on read.
+    The provider/model pair stays on the key so the pre-provenance key format
+    (which embedded it) remains reconstructable for legacy reads, and so the
+    row columns can be populated for observability.
+    """
+
+    file_hash: str
+    provider: str
+    model: str
+    mode: str = "doc"
+    use_vision: bool = False
+
+
+def _provider_model_key(provider: str, model: str) -> str:
+    """Encode a provider/model pair for the legacy cache-key grammar."""
+    combined = "|".join(str(arg) for arg in (provider, model) if arg)
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
+
+
+def _encode_text_key(key: TextCacheKey) -> str:
+    """Encode a :class:`TextCacheKey` to its on-disk/cache-row key."""
+    ocr_suffix = "_ocr" if key.ocr else ""
+    mutool_suffix = "_mutool" if key.mutool else ""
+    suffix = f"{ocr_suffix}{mutool_suffix}" if ocr_suffix or mutool_suffix else ""
+    return f"{key.file_hash}{suffix}.txt"
+
+
+def _encode_metadata_key(key: MetadataCacheKey) -> str:
+    """Encode a :class:`MetadataCacheKey` to its current (identity-free) key.
+
+    The key is deliberately independent of provider/model: the identity of the
+    engine that actually produced a record is persisted *inside* the row
+    (``_prod_provider``/``_prod_model``) and validated on read. Keying by the
+    requested mode instead of the requested engine is what lets a text-LLM
+    record survive a vision-model change under ``--fallback vision`` (and vice
+    versa) while a change to the producing engine itself still invalidates.
+    """
+    vision_suffix = "_vision" if key.use_vision else ""
+    return f"{key.mode}_{key.file_hash}{vision_suffix}.json"
+
+
+def _encode_legacy_metadata_key(key: MetadataCacheKey) -> str:
+    """Encode the pre-provenance key, which embedded provider/model.
+
+    Old keys had the form ``{mode}_{file_hash}_{provider_model}{vision}.json``;
+    the current key omits the ``{provider_model}`` segment. Used only to keep
+    reading rows written by earlier versions.
+    """
+    provider_model_key = _provider_model_key(key.provider, key.model)
+    vision_suffix = "_vision" if key.use_vision else ""
+    return f"{key.mode}_{key.file_hash}_{provider_model_key}{vision_suffix}.json"
+
+
+def _resolve_cache_dir(cache_dir: Path | None) -> Path:
+    """Default the storage root to the package CACHE_DIR when not given."""
+    return CACHE_DIR if cache_dir is None else cache_dir
 
 
 @contextlib.contextmanager
@@ -67,74 +131,11 @@ def _init_db(conn: sqlite3.Connection) -> None:
         """)
 
 
-def get_text_cache_path(
-    file_hash: str,
-    *,
-    ocr_enabled: bool = False,
-    use_mutool: bool = False,
-    cache_dir: Path | None = None,
-) -> Path:
-    """Get the cache file path key for extracted text."""
-    if cache_dir is None:
-        cache_dir = CACHE_DIR
-
-    ocr_suffix = "_ocr" if ocr_enabled else ""
-    mutool_suffix = "_mutool" if use_mutool else ""
-    suffix = f"{ocr_suffix}{mutool_suffix}" if ocr_suffix or mutool_suffix else ""
-
-    cache_key = f"{file_hash}{suffix}.txt"
-    return cache_dir / "text" / cache_key
-
-
-def get_metadata_cache_path(
-    file_hash: str,
-    *,
-    mode: str = "doc",
-    cache_dir: Path | None = None,
-    use_vision: bool = False,
-) -> Path:
-    """Get the cache file path key for metadata.
-
-    The key is deliberately independent of provider/model: the identity of the
-    engine that actually produced a record is persisted *inside* the row
-    (``_prod_provider``/``_prod_model``) and validated on read. Keying by the
-    requested mode instead of the requested engine is what lets a text-LLM
-    record survive a vision-model change under ``--fallback vision`` (and vice
-    versa) while a change to the producing engine itself still invalidates.
-    """
-    if cache_dir is None:
-        cache_dir = CACHE_DIR
-
-    vision_suffix = "_vision" if use_vision else ""
-
-    cache_key = f"{mode}_{file_hash}{vision_suffix}.json"
-    return cache_dir / "metadata" / cache_key
-
-
-def _legacy_cache_key(cache_key: str, provider: str, model: str) -> str:
-    """Reconstruct the pre-provenance cache key, which embedded provider/model.
-
-    Old keys had the form ``{mode}_{file_hash}_{provider_model}{vision_suffix}.json``;
-    the current key omits the ``{provider_model}`` segment. Used only to keep
-    reading rows written by earlier versions.
-    """
-    stem = cache_key.removesuffix(".json")
-    mode, _, rest = stem.partition("_")
-    if rest.endswith("_vision"):
-        file_hash = rest[: -len("_vision")]
-        vision_suffix = "_vision"
-    else:
-        file_hash = rest
-        vision_suffix = ""
-    provider_model_key = get_provider_model_key(provider, model)
-    return f"{mode}_{file_hash}_{provider_model_key}{vision_suffix}.json"
-
-
-def read_text_cache(file_path: Path) -> str | None:
+def read_text_cache(key: TextCacheKey, cache_dir: Path | None = None) -> str | None:
     """Read cached text content from SQLite (with legacy file fallback)."""
     with _cache_lock:
-        db_dir = _get_db_dir(cache_path=file_path)
-        cache_key = file_path.name
+        db_dir = _resolve_cache_dir(cache_dir)
+        cache_key = _encode_text_key(key)
         try:
             with _get_db_connection(db_dir) as conn:
                 cursor = conn.cursor()
@@ -143,22 +144,23 @@ def read_text_cache(file_path: Path) -> str | None:
                 if row:
                     return row[0]
         except Exception as e:
-            logging.warning(f"Failed to read text cache {file_path}: {e}")
+            logging.warning(f"Failed to read text cache {cache_key}: {e}")
 
         # Fallback to legacy file reading if present
+        legacy_path = db_dir / "text" / cache_key
         try:
-            if file_path.exists():
-                return file_path.read_text(encoding="utf-8")
+            if legacy_path.exists():
+                return legacy_path.read_text(encoding="utf-8")
         except Exception as e:
-            logging.warning(f"Failed to read text cache {file_path}: {e}")
+            logging.warning(f"Failed to read text cache {legacy_path}: {e}")
     return None
 
 
-def write_text_cache(file_path: Path, content: str) -> bool:
+def write_text_cache(key: TextCacheKey, content: str, cache_dir: Path | None = None) -> bool:
     """Write text content to SQLite cache atomically."""
     with _cache_lock:
-        db_dir = _get_db_dir(cache_path=file_path)
-        cache_key = file_path.name
+        db_dir = _resolve_cache_dir(cache_dir)
+        cache_key = _encode_text_key(key)
         try:
             with _get_db_connection(db_dir) as conn, conn:
                 conn.execute(
@@ -170,15 +172,15 @@ def write_text_cache(file_path: Path, content: str) -> bool:
                 )
             return True
         except Exception as e:
-            logging.warning(f"Failed to write text cache {file_path}: {e}")
+            logging.warning(f"Failed to write text cache {cache_key}: {e}")
             return False
 
 
-def _read_from_legacy_file(cache_path: Path, provider: str, model: str) -> dict[str, Any] | None:
+def _read_from_legacy_file(legacy_path: Path, provider: str, model: str) -> dict[str, Any] | None:
     """Helper to read and validate stale/legacy metadata cache file."""
-    if not cache_path.exists():
+    if not legacy_path.exists():
         return None
-    cache_content = cache_path.read_text(encoding="utf-8")
+    cache_content = legacy_path.read_text(encoding="utf-8")
     cache_data = json.loads(cache_content)
 
     cached_provider = cache_data.get("_provider", "")
@@ -192,8 +194,8 @@ def _read_from_legacy_file(cache_path: Path, provider: str, model: str) -> dict[
     msg = f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
     logging.debug(msg)
     with contextlib.suppress(Exception):
-        cache_path.unlink()
-        logging.debug(f"Removed stale cache file: {cache_path}")
+        legacy_path.unlink()
+        logging.debug(f"Removed stale cache file: {legacy_path}")
     return None
 
 
@@ -257,7 +259,9 @@ def _parse_metadata_row(
 
 
 def _read_provenance_cache_data(
-    cache_path: Path,
+    cache_dir: Path,
+    cache_keys: list[str],
+    legacy_path: Path,
     provider: str,
     model: str,
 ) -> tuple[dict[str, Any], tuple[str, str] | None] | None:
@@ -271,13 +275,11 @@ def _read_provenance_cache_data(
     Reserved keys other than the producing identity (e.g. ``_is_vision_doc``)
     are left in the dict for the caller.
     """
-    db_dir = _get_db_dir(cache_path=cache_path)
-    keys = [cache_path.name, _legacy_cache_key(cache_path.name, provider, model)]
     db_result: tuple[dict[str, Any], tuple[str, str] | None] | None = None
 
     try:
-        with _get_db_connection(db_dir) as conn:
-            for cache_key in keys:
+        with _get_db_connection(cache_dir) as conn:
+            for cache_key in cache_keys:
                 cursor = conn.cursor()
                 cursor.execute(
                     "SELECT provider, model, metadata_json FROM metadata_cache WHERE cache_key = ?",
@@ -297,20 +299,20 @@ def _read_provenance_cache_data(
         # store while the primary is broken hides the failure. Degrade to a
         # miss so processing continues at full LLM cost.
         logging.error(
-            f"Metadata cache database {db_dir / 'cache.db'} is corrupt or unreadable ({e}). "
+            f"Metadata cache database {cache_dir / 'cache.db'} is corrupt or unreadable ({e}). "
             "Delete or rename it to rebuild the cache; skipping legacy fallback."
         )
         return None
     except Exception as e:
-        logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
+        logging.warning(f"Failed to read metadata cache {cache_keys[0]}: {e}")
 
     if db_result is not None:
         return db_result
 
     try:
-        legacy_file_data = _read_from_legacy_file(cache_path, provider, model)
+        legacy_file_data = _read_from_legacy_file(legacy_path, provider, model)
     except Exception as e:
-        logging.warning(f"Failed to read metadata cache {cache_path}: {e}")
+        logging.warning(f"Failed to read metadata cache {legacy_path}: {e}")
         return None
     if legacy_file_data is None:
         return None
@@ -351,28 +353,25 @@ class CacheSource(NamedTuple):
 
 
 @overload
-def read_metadata_cache_with_source[V: BaseModel](
-    cache_path: Path,
-    provider: str,
-    model: str,
+def read_metadata_cache[V: BaseModel](
+    key: MetadataCacheKey,
     model_class: type[V],
+    cache_dir: Path | None = None,
 ) -> tuple[V | None, CacheSource | None]: ...
 
 
 @overload
-def read_metadata_cache_with_source(
-    cache_path: Path,
-    provider: str,
-    model: str,
+def read_metadata_cache(
+    key: MetadataCacheKey,
     model_class: None = None,
+    cache_dir: Path | None = None,
 ) -> tuple[dict[str, Any] | None, CacheSource | None]: ...
 
 
-def read_metadata_cache_with_source[V: BaseModel](
-    cache_path: Path,
-    provider: str,
-    model: str,
+def read_metadata_cache[V: BaseModel](
+    key: MetadataCacheKey,
     model_class: type[V] | None = None,
+    cache_dir: Path | None = None,
 ) -> tuple[Any | None, CacheSource | None]:
     """Read cached metadata together with its persisted extraction provenance.
 
@@ -381,13 +380,19 @@ def read_metadata_cache_with_source[V: BaseModel](
     bookkeeping keys are still stripped). See :class:`CacheSource` for the
     meaning of the individual fields.
 
-    ``provider``/``model`` no longer select or validate current rows — the
-    cache key is identity-free and the producing identity is validated by the
-    caller. They are used only for rows written before provenance was stored:
-    locating their legacy keys and the historical compare-and-invalidate.
+    ``key.provider``/``key.model`` do not select or validate current rows —
+    the cache key is identity-free and the producing identity is validated by
+    the caller. They are used only for rows written before provenance was
+    stored: locating their legacy keys and the historical compare-and-invalidate.
     """
     with _cache_lock:
-        provenance = _read_provenance_cache_data(cache_path, provider, model)
+        cache_dir = _resolve_cache_dir(cache_dir)
+        cache_key = _encode_metadata_key(key)
+        legacy_key = _encode_legacy_metadata_key(key)
+        legacy_path = cache_dir / "metadata" / legacy_key
+        provenance = _read_provenance_cache_data(
+            cache_dir, [cache_key, legacy_key], legacy_path, key.provider, key.model
+        )
         if provenance is not None:
             cache_data, produced = provenance
         else:
@@ -399,14 +404,14 @@ def read_metadata_cache_with_source[V: BaseModel](
             # bools). Warn so the silent template switch is explainable, then
             # let the caller apply its legacy fallback instead of trusting it.
             logging.warning(
-                f"Corrupt vision marker in metadata cache row {cache_path.name}: expected "
+                f"Corrupt vision marker in metadata cache row {cache_key}: expected "
                 f"a bool, got {type(raw_vision).__name__}; treating as legacy"
             )
         is_vision_doc = raw_vision if isinstance(raw_vision, bool) else None
         rule_signature = cache_data.pop("_rule_sig", None) if cache_data else None
         if rule_signature is not None and not isinstance(rule_signature, str):
             logging.warning(
-                f"Corrupt rule signature in metadata cache row {cache_path.name}: expected "
+                f"Corrupt rule signature in metadata cache row {cache_key}: expected "
                 f"a string, got {type(rule_signature).__name__}; treating as legacy"
             )
             rule_signature = None
@@ -427,21 +432,25 @@ def read_metadata_cache_with_source[V: BaseModel](
 
 
 def write_metadata_cache(
-    cache_path: Path,
+    key: MetadataCacheKey,
     metadata: BaseModel | dict[str, Any],
-    provider: str,
-    model: str,
     *,
     is_vision_doc: bool | None = None,
     rule_signature: str | None = None,
+    cache_dir: Path | None = None,
+    produced_provider: str | None = None,
+    produced_model: str | None = None,
 ) -> bool:
     """Write metadata to SQLite cache atomically.
 
-    ``provider``/``model`` are the identity of the engine that PRODUCED the
-    record (not the engine the cache namespace was requested for): they are
-    written to the row columns and persisted under the reserved
-    ``_prod_provider``/``_prod_model`` keys so cache hits can validate against
-    the producing engine. When ``is_vision_doc`` is not None, the observed
+    The row is written under the structured ``key``'s current (identity-free)
+    encoding. ``produced_provider``/``produced_model`` carry the identity of
+    the engine that PRODUCED the record — which may differ from
+    ``key.provider``/``key.model`` (the requested engine) under
+    ``--fallback vision``; they default to the requested identity. The
+    producing identity is written to the row columns and persisted under the
+    reserved ``_prod_provider``/``_prod_model`` keys so cache hits can
+    validate against the producing engine. When ``is_vision_doc`` is not None, the observed
     extraction source is persisted under the reserved ``_is_vision_doc`` key so
     cache hits can replay the fact instead of reconstructing it from request
     flags. The category-universe ``rule_signature`` is always persisted (empty
@@ -449,12 +458,14 @@ def write_metadata_cache(
     apart from global ones.
     """
     with _cache_lock:
-        db_dir = _get_db_dir(cache_path=cache_path)
-        cache_key = cache_path.name
+        db_dir = _resolve_cache_dir(cache_dir)
+        cache_key = _encode_metadata_key(key)
+        row_provider = produced_provider if produced_provider is not None else key.provider
+        row_model = produced_model if produced_model is not None else key.model
         try:
             data = metadata.model_dump() if isinstance(metadata, BaseModel) else dict(metadata)
-            data["_prod_provider"] = provider
-            data["_prod_model"] = model
+            data["_prod_provider"] = row_provider
+            data["_prod_model"] = row_model
             if is_vision_doc is not None:
                 data["_is_vision_doc"] = is_vision_doc
             data["_rule_sig"] = rule_signature or ""
@@ -467,7 +478,7 @@ def write_metadata_cache(
                     (cache_key, provider, model, metadata_json)
                     VALUES (?, ?, ?, ?)
                     """,
-                    (cache_key, provider, model, metadata_json),
+                    (cache_key, row_provider, row_model, metadata_json),
                 )
             return True
         except sqlite3.DatabaseError as e:
@@ -479,7 +490,7 @@ def write_metadata_cache(
             )
             return False
         except Exception as e:
-            logging.warning(f"Failed to write metadata cache {cache_path}: {e}")
+            logging.warning(f"Failed to write metadata cache {cache_key}: {e}")
             return False
 
 

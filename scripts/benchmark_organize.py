@@ -74,7 +74,7 @@ async def run_benchmark():
         # renai.processors.book.read_metadata_cache/write_metadata_cache patch
         # targets started raising AttributeError when the middleware seam landed.
         with (
-            patch("renai.cache.middleware.read_metadata_cache_with_source") as mock_read,
+            patch("renai.cache.middleware.read_metadata_cache") as mock_read,
             patch("renai.cache.middleware.write_metadata_cache"),
         ):
             # Mock return value for all files to be organized: a cache hit is

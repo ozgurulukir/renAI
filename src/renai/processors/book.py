@@ -8,9 +8,9 @@ import logging
 from pathlib import Path
 from typing import cast
 
-from ..cache.manager import get_metadata_cache_path
+from ..cache.manager import MetadataCacheKey
 from ..cache.middleware import MetadataRequest, with_metadata_cache
-from ..config import CACHE_DIR, get_image_extensions
+from ..config import get_image_extensions
 from ..config.folder_rules import FolderRule, get_folder_rule_for, rule_cache_signature
 from ..engines.llm import LLMEngine
 from ..engines.ocr import OCREngine
@@ -140,7 +140,7 @@ class BookProcessor:
     ) -> MetadataRequest:
         """Build the explicit ``MetadataRequest`` contract for the cache middleware.
 
-        Determines cache path, model class, and vision-cache selection from the
+        Determines the structured cache key, model class, and vision-cache selection from the
         caller's inputs and returns them as a single type-safe value the decorator
         relies on instead of a set of bare keyword arguments. The governing
         folder rule rides the same contract: its category overrides feed the
@@ -157,10 +157,13 @@ class BookProcessor:
             fallback_mode == FallbackMode.VISION and file_path.suffix.lower() == ".pdf"
         )
 
-        cache_path = get_metadata_cache_path(
-            file_hash,
+        # The requested identity rides the key (for legacy reads and row
+        # observability); the key encoding itself stays identity-free (#193).
+        cache_key = MetadataCacheKey(
+            file_hash=file_hash,
+            provider=self.vision_provider if use_vision_cache else self.provider,
+            model=self.vision_model if use_vision_cache else self.model,
             mode=cache_mode,
-            cache_dir=CACHE_DIR,
             use_vision=use_vision_cache,
         )
         model_class: type[BookMetadata] | type[ImageMetadata] = (
@@ -168,7 +171,7 @@ class BookProcessor:
         )
         return MetadataRequest(
             file_path=file_path,
-            cache_path=cache_path,
+            cache_key=cache_key,
             model_class=model_class,
             provider=self.provider,
             model=self.model,

@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from renai.cache.manager import read_metadata_cache_with_source, write_metadata_cache
+from renai.cache.manager import MetadataCacheKey, read_metadata_cache, write_metadata_cache
 from renai.config import get_image_extensions
 from renai.logging_config import get_logger
 
@@ -34,7 +34,7 @@ class MetadataRequest:
     """
 
     file_path: Path
-    cache_path: Path
+    cache_key: MetadataCacheKey
     model_class: type[BaseModel]
     provider: str
     model: str
@@ -172,11 +172,9 @@ def with_metadata_cache() -> Callable[
 
             if not request.update_metadata:
                 cached_data, source = await asyncio.to_thread(
-                    read_metadata_cache_with_source,
-                    request.cache_path,
-                    legacy_provider,
-                    legacy_model,
-                    model_class=request.model_class,
+                    read_metadata_cache,
+                    request.cache_key,
+                    request.model_class,
                 )
                 if cached_data:
                     expected_sig = request.rule_signature or ""
@@ -251,12 +249,12 @@ def with_metadata_cache() -> Callable[
                     model = request.model
                 await asyncio.to_thread(
                     write_metadata_cache,
-                    request.cache_path,
+                    request.cache_key,
                     metadata,
-                    provider,
-                    model,
                     is_vision_doc=is_vision_fallback,
                     rule_signature=request.rule_signature,
+                    produced_provider=provider,
+                    produced_model=model,
                 )
 
             return metadata, is_vision_fallback
