@@ -4,7 +4,48 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from rich.table import Table
 
+from renai.models import ProcessingResult
+from renai.models.schemas import ProcessingConfig
 from renai.processors.orchestrator import _run_benchmark_mode, run_evaluation_pipeline
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_headless_with_plain_processing_config(tmp_path):
+    """run_pipeline must be callable headless with a plain ProcessingConfig.
+
+    No app_settings dependency is allowed in the pipeline body: the config
+    passed by the caller is used as-is (identity, not a model_copy repopulated
+    from settings), and BookProcessor reads its knobs from that config.
+    """
+    import renai.processors.orchestrator as orch
+
+    test_file = tmp_path / "a.pdf"
+    test_file.write_text("content")
+
+    processor = MagicMock()
+    processor.setup_move_folders = AsyncMock()
+    processor.process_file = AsyncMock(
+        return_value=ProcessingResult(success=True, name="a.pdf", original_name="a.pdf")
+    )
+
+    config = ProcessingConfig(mode="rename", workers=1, max_filename_length=180)
+
+    with (
+        patch.object(
+            orch, "setup_engines", AsyncMock(return_value=(MagicMock(), MagicMock(), processor))
+        ) as mock_setup,
+        patch.object(orch, "collect_files", return_value=[test_file]),
+        patch.object(orch, "console"),
+        patch.object(orch, "_flush_eval_log", new_callable=AsyncMock),
+    ):
+        results = await orch.run_pipeline(tmp_path, provider="openai", config=config)
+
+    assert len(results) == 1 and results[0].success
+    # The caller's config object is used verbatim — no settings repopulation.
+    assert mock_setup.call_args.args[2] is config
+    # BookProcessor gets only the file path; behavior comes from its config.
+    assert processor.process_file.await_args.args == (test_file,)
+    processor.setup_move_folders.assert_awaited_once_with(tmp_path)
 
 
 @pytest.mark.asyncio
