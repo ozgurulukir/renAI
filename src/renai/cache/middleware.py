@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import inspect
+import logging
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,9 +11,8 @@ from pydantic import BaseModel
 
 from renai.cache.manager import MetadataCacheKey, read_metadata_cache, write_metadata_cache
 from renai.config import get_image_extensions
-from renai.logging_config import get_logger
 
-logger = get_logger("renai.cache.middleware")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -186,15 +186,16 @@ def with_metadata_cache() -> Callable[
                         # Info, not debug: a mismatch means a real paid LLM
                         # re-extraction the user did not ask for (typically a
                         # changed folder rule), which deserves visibility.
+                        if stored_sig:
+                            stored_repr: str = stored_sig
+                        else:
+                            stored_repr = "legacy" if stored_sig is None else "global"
                         logger.info(
-                            "Metadata cache rule-signature mismatch; re-extracting",
-                            file=request.file_path.name,
-                            expected=expected_sig or "global",
-                            stored=(
-                                stored_sig
-                                if stored_sig
-                                else ("legacy" if stored_sig is None else "global")
-                            ),
+                            "Metadata cache rule-signature mismatch; re-extracting "
+                            "(file=%s, expected=%s, stored=%s)",
+                            request.file_path.name,
+                            expected_sig or "global",
+                            stored_repr,
                         )
                     elif (
                         source is None
@@ -205,9 +206,9 @@ def with_metadata_cache() -> Callable[
                     ):
                         is_vision_doc = source.is_vision_doc if source else None
                         logger.debug(
-                            "Metadata cache hit",
-                            file=request.file_path.name,
-                            produced_by=(
+                            "Metadata cache hit (file=%s, produced_by=%s)",
+                            request.file_path.name,
+                            (
                                 f"{source.produced_by_provider}/{source.produced_by_model}"
                                 if source and source.produced_by_provider
                                 else f"{legacy_provider}/{legacy_model} (legacy)"
@@ -227,12 +228,11 @@ def with_metadata_cache() -> Callable[
                         # that produced the row changed), which deserves
                         # visibility.
                         logger.info(
-                            "Metadata cache producing-engine mismatch; re-extracting",
-                            file=request.file_path.name,
-                            produced_by=(
-                                f"{source.produced_by_provider}/{source.produced_by_model}"
-                            ),
-                            expected="/".join(_producing_identity(request, source.is_vision_doc)),
+                            "Metadata cache producing-engine mismatch; re-extracting "
+                            "(file=%s, produced_by=%s, expected=%s)",
+                            request.file_path.name,
+                            f"{source.produced_by_provider}/{source.produced_by_model}",
+                            "/".join(_producing_identity(request, source.is_vision_doc)),
                         )
 
             metadata, is_vision_fallback = await func(self, request, **extra)
