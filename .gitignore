@@ -117,3 +117,7 @@ docs/audit/
 # only its local-only subcontent is ignored:
 docs/history/artifacts/
 docs/history/p0-fixes-report.md
+
+# Local AI agent tooling
+.claude/
+CLAUDE.md
