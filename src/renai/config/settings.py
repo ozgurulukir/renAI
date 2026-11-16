@@ -103,6 +103,31 @@ class AppSettings(BaseSettings):
     llm_rpm_limit: int = Field(
         default=60, ge=0, description="Requests Per Minute limit (0 for unlimited)"
     )
+    # Domain rationale: metadata extraction is a short, structured call (capped
+    # by llm_max_tokens), so a hung HTTP request only blocks the whole pipeline.
+    # 120s comfortably covers slow 70B models on free tiers while failing an
+    # unresponsive endpoint ~5x faster than the OpenAI SDK's implicit 600s.
+    llm_timeout: float = Field(
+        default=120.0,
+        gt=0,
+        description="HTTP timeout (seconds) for a single LLM API request",
+    )
+    # Transport-level retry budget (rate limits, 5xx, connection errors). Kept
+    # separate from llm_max_retries, which bounds the JSON-validation retry loop;
+    # together they cap the worst-case API cost per document.
+    llm_transport_max_attempts: int = Field(
+        default=5, ge=1, description="Max transport-level attempts per LLM request"
+    )
+    llm_backoff_initial: float = Field(
+        default=2.0,
+        gt=0,
+        description="Initial backoff (seconds) for retryable LLM API errors",
+    )
+    llm_backoff_max: float = Field(
+        default=60.0,
+        gt=0,
+        description="Upper bound (seconds) for exponential LLM backoff",
+    )
     llm_temperature: float = Field(
         default=0.3,
         ge=0.0,
@@ -155,6 +180,35 @@ class AppSettings(BaseSettings):
     # OCR settings
     ocr_enhanced: bool = Field(default=False, description="Enable high-quality OCR")
     skip_needs_ocr: bool = Field(default=False, description="Skip OCR for files needing fallback")
+    # Domain rationale: OCR is CPU-bound in a process pool, so its concurrency is
+    # deliberately independent of `workers` (which limits async LLM calls). Four
+    # processes keep memory bounded on scan-heavy libraries without saturating
+    # the machine; scan-heavy users can raise it alongside `workers`.
+    ocr_workers: int = Field(
+        default=4, ge=1, le=32, description="Process pool size for CPU-heavy OCR work"
+    )
+    # OCR render DPI tiers mirror vision_dpi: 150 is the floor for reliable
+    # body-text recognition at reasonable cost; enhanced mode doubles it (300)
+    # because deskew/threshold pipelines only pay off on denser scans.
+    ocr_dpi: int = Field(default=150, ge=72, description="Render DPI for minimal-mode OCR")
+    ocr_enhanced_dpi: int = Field(
+        default=300, ge=72, description="Render DPI for enhanced-mode OCR"
+    )
+    # Metadata lives on the first pages (title page, colophon) and the last ones
+    # (ISBN, references); head/tail sampling mirrors the text-side head-tail
+    # split rather than scanning every page (OCR is ~100x slower than text).
+    ocr_head_pages: int = Field(
+        default=5, ge=1, le=50, description="First pages sampled for OCR extraction"
+    )
+    ocr_tail_pages: int = Field(
+        default=3, ge=1, le=50, description="Last pages sampled for OCR extraction"
+    )
+    # Tesseract page segmentation mode: 3 = fully automatic (the safe default for
+    # mixed layouts); e.g. 6 suits uniform text blocks. Operators with uniform
+    # scan collections regularly retune this.
+    ocr_psm: int = Field(
+        default=3, ge=0, le=13, description="Tesseract page segmentation mode (psm)"
+    )
 
     # Tool settings
     use_mutool: bool = Field(default=False, description="Use mutool for PDF-to-image")

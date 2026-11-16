@@ -16,6 +16,7 @@ from renai.config import (
 )
 from renai.engines.ocr import OCREngine
 from renai.extractors import get_extractor
+from renai.file_ops.operations import COLLISION_SUFFIX_LENGTH
 from renai.models.schemas import FallbackMode
 from renai.utils import (
     get_file_hash,
@@ -336,7 +337,10 @@ class TextExtractor:
     ) -> str:
         """Attempt to extract text via OCR asynchronously."""
         try:
-            ocr_text = await self.ocr_engine.extract_text(file_path)
+            # Honor the configured text budget (target_length, default 10000)
+            # instead of the OCR engine's literal default, so OCR fallback
+            # respects the same head-tail text target as text extraction.
+            ocr_text = await self.ocr_engine.extract_text(file_path, target_chars=target_length)
             if ocr_text.strip():
                 return self._apply_extraction_mode(ocr_text, target_length)
         except Exception as e:
@@ -389,8 +393,10 @@ class TextExtractor:
         try:
             target_path = dest_dir / file_path.name
             if target_path.exists():
-                # Avoid collision
-                suffix = f"_{uuid.uuid4().hex[:4]}{file_path.suffix}"
+                # Avoid collision — same suffix width as safe_move_file
+                # (COLLISION_SUFFIX_LENGTH) so quarantine and rename paths
+                # share one collision-resistance guarantee.
+                suffix = f"_{uuid.uuid4().hex[:COLLISION_SUFFIX_LENGTH]}{file_path.suffix}"
                 target_path = dest_dir / f"{file_path.stem}{suffix}"
 
             shutil.move(str(file_path), str(target_path))

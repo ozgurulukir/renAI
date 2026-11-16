@@ -1,4 +1,6 @@
 from .pdf_extractors import (
+    EXTRACTOR_NAMES as EXTRACTOR_NAMES,
+    EXTRACTOR_REGISTRY as EXTRACTOR_REGISTRY,
     PDFPlumberExtractor as PDFPlumberExtractor,
     PyMuPDFExtractor as PyMuPDFExtractor,
     PyPDFExtractor as PyPDFExtractor,
@@ -7,6 +9,8 @@ from .pdf_extractors import (
 )
 
 __all__ = [
+    "EXTRACTOR_NAMES",
+    "EXTRACTOR_REGISTRY",
     "PDFPlumberExtractor",
     "PyMuPDFExtractor",
     "PyPDFExtractor",

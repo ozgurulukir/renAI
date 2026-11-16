@@ -35,6 +35,7 @@ from renai.config.constants import (
 from renai.engines.llm import LLMCallPolicy, LLMEngine
 from renai.engines.ocr import OCREngine
 from renai.exceptions import ConfigurationError
+from renai.extractors import EXTRACTOR_NAMES
 from renai.messages import orchestrator as orch_msg
 from renai.models import ProcessingResult
 from renai.models.schemas import FallbackMode, ProcessingConfig
@@ -54,13 +55,20 @@ async def setup_engines(
     config: ProcessingConfig,
 ) -> tuple[OCREngine, LLMEngine, BookProcessor]:
     """Initialize OCR, LLM, and book processor engines asynchronously."""
-    # Initialize OCR engine
+    # Initialize OCR engine; OCR is a CPU-bound process pool with its own knob
+    # (ocr_workers) so it stays independent of the async `workers` LLM limit.
     ocr_engine = OCREngine(
         enhanced=config.ocr_enhanced,
         debug=config.debug_ocr,
         use_mutool=config.use_mutool,
         mutool_path=config.mutool_path,
         silent=False,
+        max_workers=app_settings.ocr_workers,
+        dpi=app_settings.ocr_dpi,
+        enhanced_dpi=app_settings.ocr_enhanced_dpi,
+        head_pages=app_settings.ocr_head_pages,
+        tail_pages=app_settings.ocr_tail_pages,
+        psm=app_settings.ocr_psm,
     )
 
     # Get provider configuration
@@ -89,6 +97,10 @@ async def setup_engines(
         temperature_retry=app_settings.llm_temperature_retry,
         max_retries=app_settings.llm_max_retries,
         refine_mode=app_settings.refine_metadata,
+        timeout=app_settings.llm_timeout,
+        transport_max_attempts=app_settings.llm_transport_max_attempts,
+        backoff_initial=app_settings.llm_backoff_initial,
+        backoff_max=app_settings.llm_backoff_max,
     )
 
     # Initialize Text LLM engine
@@ -449,7 +461,9 @@ async def _run_benchmark_mode(
     live: Live,
 ) -> None:
     """Run PDF extraction benchmark across multiple libraries."""
-    extractors_to_test = ["pymupdf", "pdfplumber", "pypdf", "pypdfium2"]
+    # Derived from the extractor registry (SSoT) so a new backend is
+    # benchmarked automatically instead of being silently skipped.
+    extractors_to_test = EXTRACTOR_NAMES
     benchmark_data = []
     sample_count = app_settings.benchmark_sample_count
     if sample_count < len(file_paths):

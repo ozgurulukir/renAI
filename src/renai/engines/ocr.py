@@ -49,6 +49,23 @@ except ImportError:
 if TESSERACT_PATH.exists():
     pytesseract.pytesseract.tesseract_cmd = str(TESSERACT_PATH)  # type: ignore[assignment]
 
+# Preprocessing tuning constants. These are heuristics tuned for the default
+# 150/300 DPI render tiers (see ocr_dpi / ocr_enhanced_dpi settings); they are
+# image-domain fixed rather than operator knobs.
+# Longest-edge downscale limit before Tesseract: keeps per-page OCR memory and
+# runtime bounded regardless of source scan resolution.
+OCR_MAX_DIMENSION = 2000
+# Morphological kernel for deskew text-line detection (~150 DPI text lines).
+DESKEW_LINE_KERNEL = (30, 5)
+# Enhanced-mode contrast boost and unsharp mask; tuned for scanned documents
+# where faint print needs reinforcement before binarization.
+ENHANCED_CONTRAST_FACTOR = 1.5
+ENHANCED_UNSHARP_RADIUS = 2
+ENHANCED_UNSHARP_PERCENT = 150
+ENHANCED_UNSHARP_THRESHOLD = 3
+# Tesseract OCR engine mode: 3 = default, OEM-chosen (LSTM where available).
+TESSERACT_OEM = 3
+
 
 class OCREngine:
     """OCR Engine managing image preprocessing and Tesseract OCR execution.
@@ -69,6 +86,11 @@ class OCREngine:
         mutool_path: str = "mutool",
         silent: bool = False,
         max_workers: int = 4,
+        dpi: int = 150,
+        enhanced_dpi: int = 300,
+        head_pages: int = 5,
+        tail_pages: int = 3,
+        psm: int = 3,
     ):
         self.enhanced = enhanced
         self.debug = debug
@@ -76,6 +98,9 @@ class OCREngine:
         self.mutool_path = mutool_path
         self.silent = silent
         self.max_workers = max_workers
+        self.head_pages = head_pages
+        self.tail_pages = tail_pages
+        self.psm = psm
         OCREngine._max_workers = max_workers
 
         # Validate mutool if requested
@@ -90,10 +115,11 @@ class OCREngine:
                 )
                 self.use_mutool = False
 
-        # Simple two-tier configuration
+        # Simple two-tier configuration; DPI tiers are settings-backed knobs
+        # (ocr_dpi / ocr_enhanced_dpi) because scan density varies per library.
         if self.enhanced:
             self.cfg = {
-                "dpi": 300,
+                "dpi": enhanced_dpi,
                 "resize": 1.0,
                 "enhance": True,
                 "sharpen": True,
@@ -102,11 +128,12 @@ class OCREngine:
             }
             if not self.silent:
                 logging.debug(
-                    "OCR Engine initialized in ENHANCED mode (300 DPI, deskew, threshold, sharpen)"
+                    f"OCR Engine initialized in ENHANCED mode ({enhanced_dpi} DPI, "
+                    "deskew, threshold, sharpen)"
                 )
         else:
             self.cfg = {
-                "dpi": 150,
+                "dpi": dpi,
                 "resize": 1.0,
                 "enhance": False,
                 "sharpen": False,
@@ -114,9 +141,9 @@ class OCREngine:
                 "threshold": False,
             }
             if not self.silent:
-                logging.debug("OCR Engine initialized in MINIMAL mode (150 DPI)")
+                logging.debug(f"OCR Engine initialized in MINIMAL mode ({dpi} DPI)")
 
-        self.MAX_DIMENSION = 2000
+        self.MAX_DIMENSION = OCR_MAX_DIMENSION
 
     def _validate_mutool(self, path: str) -> str | None:
         """
@@ -200,7 +227,7 @@ class OCREngine:
             gray = image_array
 
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 5))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, DESKEW_LINE_KERNEL)
         dilated = cv2.dilate(binary, kernel, iterations=1)
         contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
@@ -269,13 +296,14 @@ class OCREngine:
     def _get_page_sampling(self, total_pages: int) -> list[int]:
         """Head-tail page sampling strategy for OCR.
 
-        Samples the first HEAD_PAGES and last TAIL_PAGES of the document,
+        Samples the first ``head_pages`` and last ``tail_pages`` of the document,
         which is where metadata (title, author, references, ISBN) is located.
+        Page counts are settings-backed (ocr_head_pages / ocr_tail_pages) because
+        documents with metadata in appendices/colophons need deeper sampling,
+        while OCR is roughly 100x slower than text extraction.
         """
-        HEAD_PAGES = 5
-        TAIL_PAGES = 3
-        head = list(range(min(HEAD_PAGES, total_pages)))
-        tail_start = max(HEAD_PAGES, total_pages - TAIL_PAGES)
+        head = list(range(min(self.head_pages, total_pages)))
+        tail_start = max(self.head_pages, total_pages - self.tail_pages)
         tail = list(range(tail_start, total_pages))
         return sorted(set(head + tail))
 
@@ -335,9 +363,15 @@ class OCREngine:
                 image = self._deskew(image)
             image = ImageOps.autocontrast(image)
             enhancer = ImageEnhance.Contrast(image)
-            image = enhancer.enhance(1.5)
+            image = enhancer.enhance(ENHANCED_CONTRAST_FACTOR)
             if self.cfg["sharpen"]:
-                image = image.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
+                image = image.filter(
+                    ImageFilter.UnsharpMask(
+                        radius=ENHANCED_UNSHARP_RADIUS,
+                        percent=ENHANCED_UNSHARP_PERCENT,
+                        threshold=ENHANCED_UNSHARP_THRESHOLD,
+                    )
+                )
             if self.cfg["threshold"]:
                 CONTRAST_THRESHOLD = 140
                 image = image.point(lambda x: 0 if x < CONTRAST_THRESHOLD else 255)  # type: ignore[operator]
@@ -355,7 +389,7 @@ class OCREngine:
                 return pytesseract.image_to_string(
                     image,
                     lang=get_ocr_lang(),
-                    config=r"--oem 3 --psm 3",
+                    config=f"--oem {TESSERACT_OEM} --psm {self.psm}",
                     timeout=get_subprocess_timeout(),
                 )
 

@@ -29,6 +29,11 @@ llm_temperature = 0.3
 llm_temperature_retry = 0.5
 llm_max_retries = 2
 refine_metadata = "auto"
+# Transport-level resilience (rate limits / 5xx / connection errors)
+llm_timeout = 120.0
+llm_transport_max_attempts = 5
+llm_backoff_initial = 2.0
+llm_backoff_max = 60.0
 
 # Vision and Image settings
 rename_images = false
@@ -43,6 +48,14 @@ fallback_mode = "none"
 move_scan_failures = false
 ocr_enhanced = false
 skip_needs_ocr = false
+
+# OCR tuning (independent of `workers`: OCR is a CPU-bound process pool)
+ocr_workers = 4
+ocr_dpi = 150
+ocr_enhanced_dpi = 300
+ocr_head_pages = 5
+ocr_tail_pages = 3
+ocr_psm = 3
 
 # Tool settings
 use_mutool = false
