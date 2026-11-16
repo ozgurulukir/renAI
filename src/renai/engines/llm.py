@@ -70,6 +70,16 @@ class LLMCallPolicy:
     temperature_retry: float = 0.5
     max_retries: int = 2
     refine_mode: str = "auto"
+    # Transport-level knobs (HTTP timeout + retryable-error backoff). Defaults
+    # mirror AppSettings; see settings.py for the domain rationale.
+    timeout: float = 120.0
+    transport_max_attempts: int = 5
+    backoff_initial: float = 2.0
+    backoff_max: float = 60.0
+
+
+# Standard exponential-backoff growth factor; fixed by convention, not a knob.
+_BACKOFF_MULTIPLIER = 2.0
 
 
 def _filter_model_fields(
@@ -111,9 +121,17 @@ class LLMEngine:
     ) -> None:
         self.provider = provider
         self.model_name = model_name
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-        self.rate_limiter = rate_limiter
+        # Resolve the effective policy first: the HTTP client timeout is a
+        # policy knob, so the client cannot be built before it is normalized.
         self.call_policy = call_policy or LLMCallPolicy()
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            # Fail a hung endpoint in bounded time instead of the SDK's implicit
+            # 600s; every other timeout in the app is settings-backed too.
+            timeout=self.call_policy.timeout,
+        )
+        self.rate_limiter = rate_limiter
         self.allowed_categories = get_allowed_categories()
         # Path to the prompts directory within the package
         self.prompts_dir = Path(__file__).parent.parent / "prompts"
@@ -541,9 +559,9 @@ class LLMEngine:
         :func:`_classify_llm_error` so retry behavior is testable without
         patching globals or sleeping.
         """
-        backoff_sec = 2.0
-        max_backoff_sec = 60.0
-        max_attempts = 5
+        backoff_sec = self.call_policy.backoff_initial
+        max_backoff_sec = self.call_policy.backoff_max
+        max_attempts = self.call_policy.transport_max_attempts
 
         for attempt in range(max_attempts):
             try:
@@ -582,7 +600,7 @@ class LLMEngine:
                     err,
                 )
                 await asyncio.sleep(backoff_sec)
-                backoff_sec = min(backoff_sec * 2.0, max_backoff_sec)
+                backoff_sec = min(backoff_sec * _BACKOFF_MULTIPLIER, max_backoff_sec)
         raise LLMError(f"LLM call returned no completion for {context_name}")
 
     async def _generate_json_completion(

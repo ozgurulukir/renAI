@@ -39,6 +39,11 @@ custom_theme = Theme(
 )
 console = Console(theme=custom_theme)
 
+# Deliberately short: the wizard validates keys with a lightweight models.list
+# call and interactive users bail out on multi-second freezes. This is a
+# setup-time convenience timeout, independent of llm_timeout (runtime calls).
+API_VALIDATION_TIMEOUT_SEC = 5.0
+
 # Premium, high-contrast, terminal-friendly questionary style
 custom_style = Style(
     [
@@ -214,8 +219,8 @@ async def _validate_api_key_async(base_url: str, api_key: str) -> tuple[bool, st
 
     try:
         async with AsyncOpenAI(api_key=api_key, base_url=base_url) as client:
-            # We use a very low timeout (e.g., 5 seconds) to avoid freezing the setup wizard
-            await client.models.list(timeout=5.0)
+            # Very low timeout to avoid freezing the setup wizard
+            await client.models.list(timeout=API_VALIDATION_TIMEOUT_SEC)
             return True, ""
     except AuthenticationError as e:
         # Invalid API key

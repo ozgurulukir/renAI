@@ -6,6 +6,7 @@ import contextlib
 import functools
 import json
 import logging
+import time
 from pathlib import Path
 
 import httpx
@@ -14,7 +15,12 @@ from renai import __version__
 from renai.config.constants import APP_DATA_DIR
 
 CACHE_FILE = APP_DATA_DIR / "models_dev_cache.json"
+# Catalog refresh cadence: model catalogs change slowly (new releases, not
+# pricing), so a 24h TTL keeps the wizard fresh without a network hit per run.
 CACHE_EXPIRY = 86400  # 24 hours in seconds
+# Short fetch timeout: the catalog is a multi-MB JSON on a fixed host and the
+# caller degrades gracefully (stale cache) when it fails.
+HTTP_TIMEOUT_SEC = 6.0
 HTTP_STATUS_OK = 200
 
 
@@ -48,7 +54,7 @@ def _fetch_catalog_json() -> dict | None:
         response = httpx.get(
             "https://models.dev/catalog.json",
             headers=_remote_headers(),
-            timeout=6.0,
+            timeout=HTTP_TIMEOUT_SEC,
         )
     except Exception as e:
         logging.debug(f"Failed to fetch https://models.dev/catalog.json: {e}")
@@ -62,7 +68,7 @@ def _fetch_models_json() -> dict | None:
         response = httpx.get(
             "https://models.dev/models.json",
             headers=_remote_headers(),
-            timeout=6.0,
+            timeout=HTTP_TIMEOUT_SEC,
         )
     except Exception as e:
         logging.debug(f"Failed to fetch https://models.dev/models.json: {e}")
@@ -134,15 +140,31 @@ def _load_cached_catalog_parsed(cache_path: str) -> tuple:
     return ({},)
 
 
+def _cache_is_fresh() -> bool:
+    """Check the on-disk cache age against CACHE_EXPIRY.
+
+    The TTL was previously defined but never consulted, so a cached catalog
+    lived forever; enforcing mtime-based expiry lets model metadata (vision
+    support, new providers) actually refresh while keeping the stale copy as
+    an offline fallback.
+    """
+    try:
+        return (time.time() - CACHE_FILE.stat().st_mtime) < CACHE_EXPIRY
+    except OSError:
+        return False
+
+
 def _get_raw_catalog(force_refresh: bool = False) -> dict:
     """Fetch raw catalog from cache or remote endpoint."""
     with contextlib.suppress(Exception):
         CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    if force_refresh:
+    if force_refresh or not _cache_is_fresh():
         # ``force_refresh`` bypasses the memoized read entirely (used only for an
         # explicit refresh, never in the wizard path) and falls through to the
-        # fresh-load/remote-fetch logic below.
+        # fresh-load/remote-fetch logic below. An expired cache is treated the
+        # same way so a refresh is attempted; the final fallback below still
+        # serves the stale file when the network is unavailable.
         cached: dict = {}
     else:
         cached = _load_cached_catalog_parsed(str(CACHE_FILE))[0]

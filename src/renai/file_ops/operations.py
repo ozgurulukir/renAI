@@ -19,6 +19,11 @@ from ..utils import get_file_hash
 UNDO_JOURNAL_NAME = "undo_journal.jsonl"
 LEGACY_HISTORY_NAME = "undo_history.json"
 
+# Hex-char width of the random suffix used to break filename collisions.
+# 8 hex chars (2^32 space) makes a second collision practically impossible,
+# which matters because the suffix is applied in a single attempt without retry.
+COLLISION_SUFFIX_LENGTH = 8
+
 
 def ensure_within_root(dest_path: Path, root_dir: Path) -> None:
     """Ensure dest_path resolves inside root_dir, blocking path-traversal escapes.
@@ -45,7 +50,7 @@ def _ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path
     if existing_hash == new_hash:
         return dest_path
 
-    unique_id = uuid.uuid4().hex[:8]
+    unique_id = uuid.uuid4().hex[:COLLISION_SUFFIX_LENGTH]
     return dest_path.parent / f"{dest_path.stem}_{unique_id}{dest_path.suffix}"
 
 

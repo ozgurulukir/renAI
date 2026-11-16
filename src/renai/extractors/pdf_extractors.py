@@ -230,11 +230,18 @@ class PyPdfium2Extractor(BaseExtractor):
         return "pypdfium2"
 
 
+# Single registry of available PDF extraction backends, ordered by default
+# preference. ``get_extractor`` resolves from it and the benchmark mode iterates
+# it, so adding a backend here makes it available everywhere at once.
+EXTRACTOR_REGISTRY: dict[str, BaseExtractor] = {
+    "pymupdf": PyMuPDFExtractor(),
+    "pdfplumber": PDFPlumberExtractor(),
+    "pypdf": PyPDFExtractor(),
+    "pypdfium2": PyPdfium2Extractor(),
+}
+EXTRACTOR_NAMES: list[str] = list(EXTRACTOR_REGISTRY)
+_DEFAULT_EXTRACTOR = "pymupdf"
+
+
 def get_extractor(name: str) -> BaseExtractor:
-    extractors = {
-        "pymupdf": PyMuPDFExtractor(),
-        "pdfplumber": PDFPlumberExtractor(),
-        "pypdf": PyPDFExtractor(),
-        "pypdfium2": PyPdfium2Extractor(),
-    }
-    return extractors.get(name.lower(), PyMuPDFExtractor())
+    return EXTRACTOR_REGISTRY.get(name.lower(), EXTRACTOR_REGISTRY[_DEFAULT_EXTRACTOR])
