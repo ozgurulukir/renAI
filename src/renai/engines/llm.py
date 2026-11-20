@@ -22,6 +22,8 @@ from ..exceptions import LLMError
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
 from ..utils.rate_limiter import AsyncRateLimiter
 
+logger = logging.getLogger(__name__)
+
 T = TypeVar("T", bound=BaseMetadata)
 
 # Values that indicate missing/placeholder metadata (P0-1 refinement gate).
@@ -165,10 +167,10 @@ class LLMEngine:
                     with path.open(encoding="utf-8") as f:
                         templates[name] = f.read()
                 else:
-                    logging.error(f"Prompt template not found: {path}")
+                    logger.error(f"Prompt template not found: {path}")
                     templates[name] = ""
             except Exception as e:
-                logging.error(f"Failed to load prompt template {name}: {e}")
+                logger.error(f"Failed to load prompt template {name}: {e}")
                 templates[name] = ""
         return templates
 
@@ -227,7 +229,7 @@ class LLMEngine:
         in both the prompt and category validation.
         """
         if not self.client.api_key:
-            logging.error(f"API Key for {self.provider} not found.")
+            logger.error(f"API Key for {self.provider} not found.")
             return None
 
         prompt = self._build_document_prompt(text)
@@ -291,7 +293,7 @@ class LLMEngine:
         self, initial_model: BookMetadata, allowed_categories: dict[str, list] | None = None
     ) -> BookMetadata:
         """Refine extracted metadata using the editor persona and SSoT schema."""
-        logging.debug("Refining metadata using SSoT-based validation pass...")
+        logger.debug("Refining metadata using SSoT-based validation pass...")
 
         system_role = self._get_system_role(
             "refinement", BookMetadata, categories=allowed_categories
@@ -319,7 +321,7 @@ class LLMEngine:
     ) -> BookMetadata | None:
         """Extract book metadata via vision using modular prompts."""
         if not self.client.api_key:
-            logging.error(f"API Key for {self.provider} not found.")
+            logger.error(f"API Key for {self.provider} not found.")
             return None
 
         try:
@@ -347,7 +349,7 @@ class LLMEngine:
 
             return await self._maybe_refine(initial_model, allowed_categories)
         except Exception as e:
-            logging.error(f"Vision book extraction failed for {image_path.name}: {e}")
+            logger.error(f"Vision book extraction failed for {image_path.name}: {e}")
             return None
 
     async def get_image_metadata(
@@ -358,7 +360,7 @@ class LLMEngine:
     ) -> ImageMetadata | None:
         """Extract image metadata for renaming using image analyzer SSoT."""
         if not self.client.api_key:
-            logging.error(f"API Key for {self.provider} not found.")
+            logger.error(f"API Key for {self.provider} not found.")
             return None
 
         try:
@@ -378,7 +380,7 @@ class LLMEngine:
                 allowed_categories=image_categories,
             )
         except Exception as e:
-            logging.error(f"Vision image extraction failed for {image_path.name}: {e}")
+            logger.error(f"Vision image extraction failed for {image_path.name}: {e}")
             return None
 
     async def _call_vision_llm(
@@ -493,7 +495,7 @@ class LLMEngine:
             filtered_data = _filter_model_fields(raw_data, model_class)
             validated_model = model_class(**filtered_data)
         except Exception as e:
-            logging.warning(f"Schema validation failed for {context_name}: {e}")
+            logger.warning(f"Schema validation failed for {context_name}: {e}")
             return None, None
 
         # Category & Language SSoT Alignment
@@ -537,7 +539,7 @@ class LLMEngine:
                 )
             return model_class(**filtered_data)
         except Exception as e:
-            logging.debug(
+            logger.debug(
                 "Could not coerce LLM JSON payload to %s (%s); treating as extraction failure.",
                 model_class.__name__,
                 e,
@@ -579,10 +581,10 @@ class LLMEngine:
             except Exception as err:
                 retryable, label = _classify_llm_error(err)
                 if not retryable:
-                    logging.error("%s for %s: %s", label, context_name, err)
+                    logger.error("%s for %s: %s", label, context_name, err)
                     raise LLMError(f"{label} for {context_name}: {err}") from err
                 if attempt == max_attempts - 1:
-                    logging.error(
+                    logger.error(
                         "%s retries exhausted (%d attempts) for %s.",
                         label,
                         max_attempts,
@@ -592,7 +594,7 @@ class LLMEngine:
                         f"{label} retries exhausted ({max_attempts} attempts) "
                         f"for {context_name}: {err}"
                     ) from err
-                logging.warning(
+                logger.warning(
                     "%s for %s. Retrying in %.1fs... Error: %s",
                     label,
                     context_name,
@@ -643,7 +645,7 @@ class LLMEngine:
                     return validated_model
 
                 if allowed:
-                    logging.warning(
+                    logger.warning(
                         "Invalid category '%s' for %s (Attempt %d)",
                         raw_data.get("category"),
                         context_name,
@@ -657,7 +659,7 @@ class LLMEngine:
                         }
                     )
             except Exception as e:
-                logging.error(f"Failed to generate JSON completion for {context_name}: {e}")
+                logger.error(f"Failed to generate JSON completion for {context_name}: {e}")
 
         # Final Fallback to a forced category if JSON exists
         return self._attempt_final_fallback(

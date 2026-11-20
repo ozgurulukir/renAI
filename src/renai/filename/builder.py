@@ -14,6 +14,8 @@ from typing import Any
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
 from ..utils import sanitize_filename
 
+logger = logging.getLogger(__name__)
+
 _TEMPLATE_TOKEN_RE = re.compile(r"\{(\w+)\}")
 # Composite tokens rendered on top of the raw metadata fields.
 _COMPOSITE_TOKENS = frozenset({"series_volume"})
@@ -39,14 +41,14 @@ def validate_filename_template(template: str, model_class: type[BaseMetadata]) -
     """
     unknown = set(_TEMPLATE_TOKEN_RE.findall(template)) - _known_template_tokens(model_class)
     if unknown:
-        logging.warning(
+        logger.warning(
             "Ignoring template %r: unknown token(s): %s", template, ", ".join(sorted(unknown))
         )
         return None
     try:
         template.format_map(_EmptyTokenDefaults())
     except (ValueError, IndexError):
-        logging.warning("Ignoring template %r: malformed braces", template)
+        logger.warning("Ignoring template %r: malformed braces", template)
         return None
     return template
 

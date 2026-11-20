@@ -36,6 +36,8 @@ from PIL import Image
 
 from ..config import CACHE_DIR, get_subprocess_timeout
 
+logger = logging.getLogger(__name__)
+
 __all__ = [
     "PageRenderer",
     "RenderedPage",
@@ -167,7 +169,7 @@ class _MutoolPageRenderer:
             try:
                 await asyncio.to_thread(leftover.unlink)
             except OSError as e:
-                logging.warning(f"Failed to remove mutool temp file {leftover.name}: {e}")
+                logger.warning(f"Failed to remove mutool temp file {leftover.name}: {e}")
 
     async def _collect_batch_pages(
         self, batch_id: str, pages: Sequence[int]
@@ -186,7 +188,7 @@ class _MutoolPageRenderer:
                 succeeded = True
                 results[pno] = RenderedPage(page_number=pno, image=image, temp_path=img_path)
             except Exception as e:
-                logging.error(f"Failed to load rendered image for page {pno + 1}: {e}")
+                logger.error(f"Failed to load rendered image for page {pno + 1}: {e}")
                 if image is not None:
                     # Release the Windows file handle so the unlink below can succeed
                     image.close()
@@ -198,9 +200,7 @@ class _MutoolPageRenderer:
                     try:
                         await asyncio.to_thread(img_path.unlink)
                     except Exception as e:
-                        logging.warning(
-                            f"Failed to remove mutool temp file for page {pno + 1}: {e}"
-                        )
+                        logger.warning(f"Failed to remove mutool temp file for page {pno + 1}: {e}")
         return results
 
     async def render_pages(
@@ -243,7 +243,7 @@ class _MutoolPageRenderer:
                     process.communicate(), timeout=get_subprocess_timeout()
                 )
                 if process.returncode != 0:
-                    logging.error(
+                    logger.error(
                         f"mutool bulk error for {file_path.name} "
                         f"(pages [{page_range}]): {stderr.decode()}"
                     )
@@ -252,7 +252,7 @@ class _MutoolPageRenderer:
             except TimeoutError:
                 process.kill()
                 await process.wait()  # reap so pipes/transport don't linger
-                logging.error(
+                logger.error(
                     f"mutool bulk extraction timed out for {file_path.name} (pages [{page_range}])"
                 )
                 await self._cleanup_batch(batch_id)
@@ -261,7 +261,7 @@ class _MutoolPageRenderer:
             return await self._collect_batch_pages(batch_id, pages)
 
         except Exception as e:
-            logging.error(f"Bulk mutool extraction failed for {file_path.name}: {e}", exc_info=True)
+            logger.error(f"Bulk mutool extraction failed for {file_path.name}: {e}", exc_info=True)
             # results (if any) are abandoned: clean their handed-back temps too
             await self._cleanup_batch(batch_id)
             return {}

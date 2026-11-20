@@ -38,7 +38,6 @@ from renai.cache.manager import (  # noqa: E402
     _encode_text_key,
     _get_db_connection,
     clear_all_cache,
-    invalidate_cache_for_provider_model,
     read_metadata_cache,
     read_text_cache,
     write_metadata_cache,
@@ -374,37 +373,6 @@ def test_read_metadata_cache_exception(tmp_path, caplog):
         assert result is None
         assert "Failed to read metadata cache" in caplog.text
         assert "Read error" in caplog.text
-
-
-def test_invalidate_cache_for_provider_model_basic(tmp_path):
-    """Test basic clearing of metadata cache files for provider/model."""
-    metadata_dir = tmp_path / "metadata"
-    metadata_dir.mkdir()
-
-    (metadata_dir / "test1.json").write_text("{}")
-    (metadata_dir / "test2.json").write_text("{}")
-    (metadata_dir / "not_json.txt").write_text("")
-
-    count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
-    assert count == 2
-    assert not (metadata_dir / "test1.json").exists()
-    assert not (metadata_dir / "test2.json").exists()
-    assert (metadata_dir / "not_json.txt").exists()
-
-
-def test_invalidate_cache_for_provider_model_nonexistent(tmp_path):
-    """Test clearing metadata cache when directory doesn't exist."""
-    non_existent = tmp_path / "nonexistent"
-    count = invalidate_cache_for_provider_model(cache_dir=non_existent)
-    assert count == 0
-
-
-def test_invalidate_cache_for_provider_model_empty(tmp_path):
-    """Test clearing metadata cache when directory is empty."""
-    metadata_dir = tmp_path / "metadata"
-    metadata_dir.mkdir()
-    count = invalidate_cache_for_provider_model(cache_dir=tmp_path)
-    assert count == 0
 
 
 def test_clear_all_cache(tmp_path):

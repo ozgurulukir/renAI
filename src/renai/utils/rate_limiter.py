@@ -2,6 +2,8 @@ import asyncio
 import logging
 import time
 
+logger = logging.getLogger(__name__)
+
 
 class AsyncRateLimiter:
     """
@@ -28,7 +30,7 @@ class AsyncRateLimiter:
 
             if elapsed < self.delay:
                 wait_time = self.delay - elapsed
-                logging.debug(f"Rate limiting: waiting {wait_time:.3f}s for next slot")
+                logger.debug(f"Rate limiting: waiting {wait_time:.3f}s for next slot")
                 await asyncio.sleep(wait_time)
                 # Update time after sleep for precision
                 self.last_request_time = time.perf_counter()

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Settings-Backed Defaults for LLM Transport and OCR Tuning (#218)**: hardcoded tunables are now validated `AppSettings` knobs: `llm_timeout` (120s, previously the SDK's implicit 600s — a **behavior change**, callers relying on a 10-minute LLM timeout must set `RENAI_LLM_TIMEOUT`), `llm_transport_max_attempts`, `llm_backoff_initial/max`, `ocr_workers` (now follows `workers` instead of being pinned to 4), `ocr_dpi` / `ocr_enhanced_dpi` (150/300), `ocr_head_pages` / `ocr_tail_pages` (5/3), `ocr_psm` (3). Also: models.dev cache TTL enforced (24h, stale cache kept as offline fallback), unified collision suffix width, and benchmark extractor list derived from the extractor registry.
+- Dependency bumps: actions/checkout 7, actions/setup-python 7, astral-sh/setup-uv 7, codecov-action 7 (#214-#217).
+
+### Changed
+
+- **Logging unified on stdlib `logging`**: the unused structlog pipeline (configured but never used by any module) is removed together with the `structlog` dependency. `configure_logging` now configures the root stdlib logger; production JSON output is real (a `JsonFormatter` renders app log records as JSON lines on stderr). All modules log through named loggers (`logging.getLogger(__name__)`) instead of the root logger.
+
+### Removed
+
+- Dead code: `invalidate_cache_for_provider_model` (deleted the entire metadata table regardless of provider/model — misleading name, no callers), `VisualProcessor._convert_pdf_page_to_image_async` (superseded by the `engines.render` seam), and `config.providers.get_providers`.
+
+### Fixed
+
+- The per-file failure handler in `BookProcessor.process_file` now logs with `exc_info`, preserving tracebacks on the pipeline's main error path.
+- The Windows stdout UTF-8 re-wrap failure is debug-logged instead of silently swallowed.
+
 ## [2.4.0] - 2026-11-14
 
 ### Changed

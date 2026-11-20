@@ -104,7 +104,7 @@ class TestLoadCategories:
             ),
             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
         ):
-            with patch("logging.warning") as mock_warn:
+            with patch("renai.config.providers.logger.warning") as mock_warn:
                 result = load_categories_from_file()
                 assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
                 assert len(mock_warn.call_args_list) == 1
@@ -136,7 +136,7 @@ class TestLoadCategories:
                 return original_open(file, *args, **kwargs)
 
             with patch.object(Path, "open", autospec=True, side_effect=mock_open):
-                with patch("logging.warning") as mock_warn:
+                with patch("renai.config.providers.logger.warning") as mock_warn:
                     result = load_categories_from_file()
 
                     assert result["categories"] == {"en": ["PkgEn"], "tr": ["PkgTr"]}
@@ -181,7 +181,7 @@ class TestLoadCategories:
             ),
             patch("renai.config.providers.PACKAGE_CONFIG_DIR", tmp_path),
         ):
-            with patch("logging.warning") as mock_warn:
+            with patch("renai.config.providers.logger.warning") as mock_warn:
                 result = load_categories_from_file()
 
                 assert result == {"categories": {}, "image_categories": {}}
@@ -213,7 +213,7 @@ class TestLoadCategories:
                 return original_open(file, *args, **kwargs)
 
             with patch.object(Path, "open", autospec=True, side_effect=mock_open):
-                with patch("logging.warning") as mock_warn:
+                with patch("renai.config.providers.logger.warning") as mock_warn:
                     result = load_categories_from_file()
 
                     assert result == {"categories": {}, "image_categories": {}}
@@ -332,7 +332,7 @@ class TestDisplayWarnings:
         """Warnings should be disabled when setting is False."""
         with patch("renai.config.app_settings.show_warnings", False):
             with patch("builtins.input", side_effect=EOFError):
-                with patch("logging.warning") as mock:
+                with patch("renai.config.providers.logger.warning") as mock:
                     display_warnings("rename", True)
                     mock.assert_not_called()
 
@@ -484,7 +484,7 @@ class TestLoadEvalModels:
 
         from renai.config import load_eval_models
 
-        with patch("logging.warning") as mock_warn:
+        with patch("renai.config.providers.logger.warning") as mock_warn:
             result = load_eval_models("test_provider")
             assert result == ["pkg_model_1"]
             assert len(mock_warn.call_args_list) == 1
@@ -558,7 +558,7 @@ class TestLoadEvalModels:
 
         with (
             patch.object(Path, "open", autospec=True, side_effect=mock_open),
-            patch("logging.warning") as mock_warn,
+            patch("renai.config.providers.logger.warning") as mock_warn,
         ):
             result = load_eval_models("test_provider")
             assert result == ["pkg_model_1"]
@@ -583,7 +583,7 @@ class TestLoadEvalModels:
 
         with (
             patch.object(Path, "open", autospec=True, side_effect=mock_open),
-            patch("logging.warning") as mock_warn,
+            patch("renai.config.providers.logger.warning") as mock_warn,
         ):
             result = load_eval_models("test_provider")
             assert result == []
@@ -601,7 +601,7 @@ class TestLoadEvalModels:
 
         from renai.config import load_eval_models
 
-        with patch("logging.warning") as mock_warn:
+        with patch("renai.config.providers.logger.warning") as mock_warn:
             result = load_eval_models("test_provider")
             assert result == []
             assert len(mock_warn.call_args_list) == 1
@@ -618,7 +618,7 @@ class TestLoadEvalModels:
 
         # Mock open to raise an exception
         with patch.object(Path, "open", autospec=True, side_effect=OSError("Permission denied")):
-            with patch("logging.warning") as mock_warn:
+            with patch("renai.config.providers.logger.warning") as mock_warn:
                 result = load_eval_models("test_provider")
                 assert result == []
                 assert len(mock_warn.call_args_list) == 1

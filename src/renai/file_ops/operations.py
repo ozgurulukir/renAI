@@ -16,6 +16,8 @@ from typing import Any
 from ..exceptions import FileOperationError
 from ..utils import get_file_hash
 
+logger = logging.getLogger(__name__)
+
 UNDO_JOURNAL_NAME = "undo_journal.jsonl"
 LEGACY_HISTORY_NAME = "undo_history.json"
 
@@ -72,12 +74,12 @@ def _load_undo_entries(cache_dir: Path) -> list[dict]:
                     try:
                         parsed = json.loads(line)
                     except json.JSONDecodeError:
-                        logging.warning("Skipping corrupt line in %s", journal_path)
+                        logger.warning("Skipping corrupt line in %s", journal_path)
                         continue
                     if isinstance(parsed, dict):
                         entries.append(parsed)
         except OSError as e:
-            logging.error("Failed to read undo journal %s: %s", journal_path, e)
+            logger.error("Failed to read undo journal %s: %s", journal_path, e)
             return []
         return entries
     legacy_path = cache_dir / LEGACY_HISTORY_NAME
@@ -88,7 +90,7 @@ def _load_undo_entries(cache_dir: Path) -> list[dict]:
             if isinstance(data, list):
                 entries = [item for item in data if isinstance(item, dict)]
         except (json.JSONDecodeError, OSError) as e:
-            logging.warning("Failed to read legacy undo history %s: %s", legacy_path, e)
+            logger.warning("Failed to read legacy undo history %s: %s", legacy_path, e)
     return entries
 
 
@@ -131,7 +133,7 @@ def record_undo_entry(
         with (cache_dir / UNDO_JOURNAL_NAME).open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as e:
-        logging.warning("Failed to record undo entry: %s", e)
+        logger.warning("Failed to record undo entry: %s", e)
 
 
 def undo_last_operation(cache_dir: Path | None = None) -> int:
@@ -144,7 +146,7 @@ def undo_last_operation(cache_dir: Path | None = None) -> int:
     try:
         entries = _load_undo_entries(cache_dir)
     except Exception as e:
-        logging.error(f"Failed to load undo journal from {cache_dir}: {e}")
+        logger.error(f"Failed to load undo journal from {cache_dir}: {e}")
         return 0
     if not entries:
         return 0
@@ -158,13 +160,13 @@ def undo_last_operation(cache_dir: Path | None = None) -> int:
                 old_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(new_path), str(old_path))
             except Exception as e:
-                logging.error(f"Failed to undo {new_path} -> {old_path}: {e}")
+                logger.error(f"Failed to undo {new_path} -> {old_path}: {e}")
                 continue
             reverted_count += 1
         try:
             _persist_undo_entries(cache_dir, entries)
         except OSError as e:
-            logging.warning(f"Failed to persist remaining undo journal entries: {e}")
+            logger.warning(f"Failed to persist remaining undo journal entries: {e}")
     return reverted_count
 
 
@@ -204,14 +206,12 @@ def _safe_transfer(
         new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
 
         if existing_hash == new_hash:
-            logging.debug(
-                f"File {dest_path.name} already exists with same content, skipping {kind}"
-            )
+            logger.debug(f"File {dest_path.name} already exists with same content, skipping {kind}")
             return dest_path
         final_dest_path = _ensure_unique_path(dest_path, source_hash)
 
     if dry_run:
-        logging.info(f"[DRY-RUN] Would {kind} {source_path.name} -> {final_dest_path.name}")
+        logger.info(f"[DRY-RUN] Would {kind} {source_path.name} -> {final_dest_path.name}")
         return final_dest_path
 
     try:
@@ -222,10 +222,10 @@ def _safe_transfer(
             record_undo_entry(
                 source_path, final_dest_path, operation_type=kind, cache_dir=cache_dir
             )
-        logging.debug(f"SUCCESS: {kind.capitalize()} {source_path.name} -> {final_dest_path.name}")
+        logger.debug(f"SUCCESS: {kind.capitalize()} {source_path.name} -> {final_dest_path.name}")
         return final_dest_path
     except Exception as e:
-        logging.error(f"ERROR: Failed to {kind} {source_path.name} to {dest_path.parent.name}: {e}")
+        logger.error(f"ERROR: Failed to {kind} {source_path.name} to {dest_path.parent.name}: {e}")
         raise
 
 

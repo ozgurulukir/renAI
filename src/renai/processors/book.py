@@ -22,6 +22,8 @@ from ..utils import get_file_hash
 from .text_extractor import SUPPORTED_EXTENSIONS, FallbackMode, TextExtractor
 from .visual import VisualProcessor
 
+logger = logging.getLogger(__name__)
+
 
 class BookProcessor:
     """
@@ -234,7 +236,7 @@ class BookProcessor:
         dry_run = self.config.dry_run
         try:
             if file_path.is_symlink():
-                logging.warning(f"Skipping symlink: {file_path.name}")
+                logger.warning(f"Skipping symlink: {file_path.name}")
                 return ProcessingResult(
                     success=False,
                     name=file_path.name,
@@ -303,7 +305,7 @@ class BookProcessor:
             )
 
         except Exception as e:
-            logging.error(f"Failed to process {file_path.name}: {e}")
+            logger.exception("Failed to process %s", file_path.name)
             return ProcessingResult(
                 success=False,
                 name=file_path.name,
@@ -345,7 +347,7 @@ class BookProcessor:
             and self.visual_processor
             and self.visual_processor.llm_engine
         ):
-            logging.info(
+            logger.info(
                 "Text extraction yielded no metadata for %s. Trying Vision LLM fallback...",
                 file_path.name,
             )
@@ -356,7 +358,7 @@ class BookProcessor:
                 if metadata:
                     return metadata, True
             except Exception as e:
-                logging.error(f"Vision LLM fallback failed for {file_path.name}: {e}")
+                logger.error(f"Vision LLM fallback failed for {file_path.name}: {e}")
 
         return None, False
 
@@ -381,6 +383,6 @@ class BookProcessor:
             )
         except Exception as e:
             # One unreadable file must not abort the whole benchmark run.
-            logging.error(f"Benchmark extraction failed for {file_path.name}: {e}")
+            logger.error(f"Benchmark extraction failed for {file_path.name}: {e}")
             return False
         return len(text.strip()) > self.text_extractor.min_sufficient_text

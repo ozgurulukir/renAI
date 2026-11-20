@@ -55,7 +55,7 @@ File Operations (file_ops/operations.py) -> safe_move_file / safe_copy_file
 src/renai/                  # Main package
   cli.py                    # CLI entry point (Typer commands)
   exceptions.py             # RenAIError hierarchy
-  logging_config.py         # structlog configuration (stderr output)
+  logging_config.py         # stdlib logging configuration (stderr output)
   messages/                  # Centralized user-facing messages
     __init__.py             # Package init
     cli.py                  # CLI warnings, prompts, help texts (Msg.Warn, Msg.Prompt, etc.)
@@ -75,11 +75,13 @@ src/renai/                  # Main package
   engines/                  # Core processing engines
     llm.py                  # LLMEngine (OpenAI-compatible async client + prompt templates)
     ocr.py                  # OCREngine (Tesseract + OpenCV preprocessing)
+  render.py               # PageRenderer seam (mutool / pymupdf PDF page rendering)
   processors/               # High-level orchestration
     orchestrator.py         # Pipeline runner, progress display, engine setup
     book.py                 # BookProcessor (unified document + image processing)
     text_extractor.py       # TextExtractor (format detection, caching, fallback strategies)
     visual.py               # VisualProcessor (vision-based extraction for PDFs/images)
+    model_catalog.py        # models.dev catalog helpers
     setup.py                # Interactive init wizard runner
     setup_steps.py          # Interactive wizard steps, prompts, and API validation
   extractors/               # PDF text extraction backends
@@ -248,7 +250,7 @@ python -m build
 | `src/renai/filename/builder.py`        | Filename generation from metadata                                                                              |
 | `src/renai/cache/manager.py`           | Two-layer cache (text + metadata)                                                                              |
 | `src/renai/exceptions.py`              | Exception hierarchy                                                                                            |
-| `src/renai/logging_config.py`          | structlog setup with JSON/console output                                                                       |
+| `src/renai/logging_config.py`          | stdlib logging setup with JSON/console output                                                                  |
 | `tests/conftest.py`                    | Conditional dependency mocking for minimal CI environments                                                     |
 | `.github/workflows/ci.yml`             | CI: test (3.12), lint, build                                                                                   |
 
@@ -261,7 +263,7 @@ python -m build
 - **Type checkers**: pyright (standard)
 - **Testing**: pytest + pytest-asyncio + pytest-cov
 - **CLI framework**: Typer
-- **Logging**: structlog (JSON in production, colored console in dev)
+- **Logging**: stdlib `logging` (JSON in production via `JsonFormatter`, plain console in dev)
 - **Rich**: Terminal UI (progress bars, tables, panels)
 - **Configuration format**: TOML (via pydantic-settings + tomllib)
 

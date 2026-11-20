@@ -18,7 +18,7 @@ async def test_mutool_seam_fallback_process_error():
             "renai.engines.render.asyncio.create_subprocess_exec",
             AsyncMock(return_value=process_mock),
         ),
-        patch("renai.engines.render.logging.error") as mock_log_error,
+        patch("renai.engines.render.logger.error") as mock_log_error,
     ):
         renderer = create_page_renderer(use_mutool=True, mutool_path="/usr/bin/mutool")
         results = await renderer.render_pages(Path("dummy.pdf"), [0, 1], 300)

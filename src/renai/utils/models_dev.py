@@ -14,6 +14,8 @@ import httpx
 from renai import __version__
 from renai.config.constants import APP_DATA_DIR
 
+logger = logging.getLogger(__name__)
+
 CACHE_FILE = APP_DATA_DIR / "models_dev_cache.json"
 # Catalog refresh cadence: model catalogs change slowly (new releases, not
 # pricing), so a 24h TTL keeps the wizard fresh without a network hit per run.
@@ -38,9 +40,9 @@ def _decode_remote_json(response: httpx.Response) -> dict | None:
         data = response.json()
         if isinstance(data, dict) and data:
             return data
-        logging.debug(f"Endpoint returned empty or non-dict response: {data}")
+        logger.debug(f"Endpoint returned empty or non-dict response: {data}")
     else:
-        logging.debug(f"Endpoint returned HTTP status {response.status_code}")
+        logger.debug(f"Endpoint returned HTTP status {response.status_code}")
     return None
 
 
@@ -57,7 +59,7 @@ def _fetch_catalog_json() -> dict | None:
             timeout=HTTP_TIMEOUT_SEC,
         )
     except Exception as e:
-        logging.debug(f"Failed to fetch https://models.dev/catalog.json: {e}")
+        logger.debug(f"Failed to fetch https://models.dev/catalog.json: {e}")
         return None
     return _decode_remote_json(response)
 
@@ -71,7 +73,7 @@ def _fetch_models_json() -> dict | None:
             timeout=HTTP_TIMEOUT_SEC,
         )
     except Exception as e:
-        logging.debug(f"Failed to fetch https://models.dev/models.json: {e}")
+        logger.debug(f"Failed to fetch https://models.dev/models.json: {e}")
         return None
     return _decode_remote_json(response)
 

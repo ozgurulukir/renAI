@@ -6,6 +6,7 @@ original main.py has been migrated here.
 """
 
 import asyncio
+import logging
 import sys
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -74,8 +75,8 @@ def setup_environment() -> None:
             if sys.stdout.encoding != "utf-8":
                 sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
                 sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger(__name__).debug("stdout UTF-8 re-wrap failed: %s", e)
 
     try:
         from colorama import init  # type: ignore[import-untyped]

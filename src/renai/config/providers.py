@@ -23,6 +23,8 @@ from renai.config.constants import (
     PACKAGE_CONFIG_DIR,
 )
 
+logger = logging.getLogger(__name__)
+
 # Lazy references to avoid circular imports at module load time.
 # settings.py -> constants.py (safe), but providers.py -> settings.py creates
 # a cycle when both are imported via __init__.py. We defer the actual import
@@ -49,11 +51,6 @@ def load_providers_config() -> dict:
     """Return provider configurations from unified app_settings."""
     app, _ = _get_settings()
     return app.providers
-
-
-def get_providers() -> dict:
-    """Get provider registry (freshly computed, never stale)."""
-    return load_providers_config()
 
 
 # PROVIDERS is resolved lazily via module-level __getattr__ (see end of file)
@@ -180,7 +177,7 @@ def _try_load_categories(path: Path, label: str) -> dict | None:
             if result["categories"] or result["image_categories"]:
                 return result
     except Exception as e:
-        logging.warning(f"Could not load {label} categories from {path}: {e}")
+        logger.warning(f"Could not load {label} categories from {path}: {e}")
     return None
 
 
@@ -246,7 +243,7 @@ def _merge_eval_models(path: Path, target: dict[str, list[str]]) -> None:
                     target[provider] = config["models"]
     except Exception as e:
         label = "user" if path == EVAL_MODELS_USER_FILE else "package"
-        logging.warning(f"Could not load {label} eval models from {path}: {e}")
+        logger.warning(f"Could not load {label} eval models from {path}: {e}")
 
 
 def load_all_eval_models() -> dict[str, list[str]]:
