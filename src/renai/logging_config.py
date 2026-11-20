@@ -61,6 +61,9 @@ def configure_logging(
     Args:
         log_level: Logging level (default: from RENAI_LOG_LEVEL, else INFO)
         json_output: Use JSON output (default: True in production, False in dev)
+
+    Note:
+        Replaces any existing root handlers (CLI-style reconfiguration).
     """
     if log_level is None:
         log_level = get_log_level()
@@ -85,8 +88,11 @@ def configure_logging(
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
-# Initialize logging on module import
-configure_logging()
+# Initialize logging on module import. Library hosts that have already
+# configured the root logger keep their handlers; the CLI re-configures
+# explicitly at startup (see cli.py).
+if not logging.getLogger().handlers:
+    configure_logging()
 
 
 def _analyze_exception(exc_value: BaseException) -> tuple[str, str]:

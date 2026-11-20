@@ -5,12 +5,25 @@ import logging
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from renai.logging_config import (
     JsonFormatter,
     configure_logging,
     get_log_level,
     is_development,
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logging_state():
+    """configure_logging mutates global root-logger state; snapshot and restore it."""
+    root = logging.getLogger()
+    saved_handlers = root.handlers[:]
+    saved_level = root.level
+    yield
+    root.handlers[:] = saved_handlers
+    root.setLevel(saved_level)
 
 
 @patch("renai.logging_config.sys.stdout.isatty")

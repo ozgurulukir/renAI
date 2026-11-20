@@ -16,7 +16,6 @@ def pre_mock(module_name):
 pre_mock("platformdirs")
 pre_mock("pydantic")
 pre_mock("pydantic_settings")
-pre_mock("structlog")
 pre_mock("rich")
 pre_mock("rich.progress")
 pre_mock("rich.console")

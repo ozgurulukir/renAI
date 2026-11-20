@@ -75,7 +75,7 @@ src/renai/                  # Main package
   engines/                  # Core processing engines
     llm.py                  # LLMEngine (OpenAI-compatible async client + prompt templates)
     ocr.py                  # OCREngine (Tesseract + OpenCV preprocessing)
-  render.py               # PageRenderer seam (mutool / pymupdf PDF page rendering)
+    render.py               # PageRenderer seam (mutool / pymupdf PDF page rendering)
   processors/               # High-level orchestration
     orchestrator.py         # Pipeline runner, progress display, engine setup
     book.py                 # BookProcessor (unified document + image processing)
