@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Changed
+
+- **Single config population path restored (#219 follow-up)**: the #218 OCR/LLM transport knobs (`ocr_workers`, `ocr_dpi`, `ocr_enhanced_dpi`, `ocr_head_pages`/`ocr_tail_pages`, `ocr_psm`, `llm_rpm_limit`, and the full `LLMCallPolicy` field set) are now `ProcessingConfig` fields mapped once in `from_app_settings`; `setup_engines` reads them from `config` only. A headless caller constructing a `ProcessingConfig` programmatically can now control every engine knob, and `run_pipeline`'s "no app_settings dependency" docstring is true again. `OCREngine` additionally takes `ocr_lang`/`subprocess_timeout` at construction and no longer reads the settings singleton on every tesseract call (same contract as `LLMCallPolicy`).
 - **Logging unified on stdlib `logging`**: the unused structlog pipeline (configured but never used by any module) is removed together with the `structlog` dependency. `configure_logging` now configures the root stdlib logger; production JSON output is real (a `JsonFormatter` renders app log records as JSON lines on stderr). All modules log through named loggers (`logging.getLogger(__name__)`) instead of the root logger.
 
 ### Removed

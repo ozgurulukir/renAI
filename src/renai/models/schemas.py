@@ -51,6 +51,28 @@ class ProcessingConfig(BaseModel):
     vision_image_quality: int = 85
     vision_dpi: int = 150
 
+    # OCR engine knobs (settings-backed defaults via from_app_settings)
+    ocr_workers: int = Field(default=4, ge=1, le=32)
+    ocr_dpi: int = Field(default=150, ge=72)
+    ocr_enhanced_dpi: int = Field(default=300, ge=72)
+    ocr_head_pages: int = Field(default=5, ge=1, le=50)
+    ocr_tail_pages: int = Field(default=3, ge=1, le=50)
+    ocr_psm: int = Field(default=3, ge=0, le=13)
+    ocr_lang: str = "tur+eng"
+    subprocess_timeout: int = Field(default=60, ge=1)
+
+    # LLM transport/policy knobs (settings-backed defaults via from_app_settings)
+    llm_rpm_limit: int = Field(default=60, ge=1)
+    llm_max_tokens: int = Field(default=1024, ge=256)
+    llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    llm_temperature_retry: float = Field(default=0.5, ge=0.0, le=2.0)
+    llm_max_retries: int = Field(default=2, ge=0)
+    refine_metadata: Literal["auto", "always", "never"] = "auto"
+    llm_timeout: float = Field(default=120.0, gt=0)
+    llm_transport_max_attempts: int = Field(default=5, ge=1)
+    llm_backoff_initial: float = Field(default=2.0, ge=0)
+    llm_backoff_max: float = Field(default=60.0, ge=0)
+
     @classmethod
     def from_app_settings(cls, **overrides: Any) -> "ProcessingConfig":
         """Build a config from app_settings defaults, with explicit overrides on top.
@@ -101,6 +123,26 @@ class ProcessingConfig(BaseModel):
             "vision_image_max_size": s.vision_image_max_size,
             "vision_image_quality": s.vision_image_quality,
             "vision_dpi": s.vision_dpi,
+            # OCR engine knobs
+            "ocr_workers": s.ocr_workers,
+            "ocr_dpi": s.ocr_dpi,
+            "ocr_enhanced_dpi": s.ocr_enhanced_dpi,
+            "ocr_head_pages": s.ocr_head_pages,
+            "ocr_tail_pages": s.ocr_tail_pages,
+            "ocr_psm": s.ocr_psm,
+            "ocr_lang": s.ocr_lang,
+            "subprocess_timeout": s.subprocess_timeout,
+            # LLM transport/policy knobs
+            "llm_rpm_limit": s.llm_rpm_limit,
+            "llm_max_tokens": s.llm_max_tokens,
+            "llm_temperature": s.llm_temperature,
+            "llm_temperature_retry": s.llm_temperature_retry,
+            "llm_max_retries": s.llm_max_retries,
+            "refine_metadata": s.refine_metadata,
+            "llm_timeout": s.llm_timeout,
+            "llm_transport_max_attempts": s.llm_transport_max_attempts,
+            "llm_backoff_initial": s.llm_backoff_initial,
+            "llm_backoff_max": s.llm_backoff_max,
         }
         fields.update(overrides)
         return cls(**fields)

@@ -93,6 +93,8 @@ class OCREngine:
         head_pages: int = 5,
         tail_pages: int = 3,
         psm: int = 3,
+        ocr_lang: str | None = None,
+        subprocess_timeout: int | None = None,
     ):
         self.enhanced = enhanced
         self.debug = debug
@@ -103,6 +105,12 @@ class OCREngine:
         self.head_pages = head_pages
         self.tail_pages = tail_pages
         self.psm = psm
+        # Resolve from settings once at construction; engines never read the
+        # settings singleton at call time (same contract as LLMCallPolicy).
+        self.ocr_lang = ocr_lang if ocr_lang is not None else get_ocr_lang()
+        self.subprocess_timeout = (
+            subprocess_timeout if subprocess_timeout is not None else get_subprocess_timeout()
+        )
         OCREngine._max_workers = max_workers
 
         # Validate mutool if requested
@@ -390,9 +398,9 @@ class OCREngine:
             def _tesseract_thread():
                 return pytesseract.image_to_string(
                     image,
-                    lang=get_ocr_lang(),
+                    lang=self.ocr_lang,
                     config=f"--oem {TESSERACT_OEM} --psm {self.psm}",
-                    timeout=get_subprocess_timeout(),
+                    timeout=self.subprocess_timeout,
                 )
 
             return await asyncio.to_thread(_tesseract_thread)
