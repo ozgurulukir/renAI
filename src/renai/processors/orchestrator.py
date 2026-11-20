@@ -65,12 +65,14 @@ async def setup_engines(
         use_mutool=config.use_mutool,
         mutool_path=config.mutool_path,
         silent=False,
-        max_workers=app_settings.ocr_workers,
-        dpi=app_settings.ocr_dpi,
-        enhanced_dpi=app_settings.ocr_enhanced_dpi,
-        head_pages=app_settings.ocr_head_pages,
-        tail_pages=app_settings.ocr_tail_pages,
-        psm=app_settings.ocr_psm,
+        max_workers=config.ocr_workers,
+        dpi=config.ocr_dpi,
+        enhanced_dpi=config.ocr_enhanced_dpi,
+        head_pages=config.ocr_head_pages,
+        tail_pages=config.ocr_tail_pages,
+        psm=config.ocr_psm,
+        ocr_lang=config.ocr_lang,
+        subprocess_timeout=config.subprocess_timeout,
     )
 
     # Get provider configuration
@@ -88,21 +90,21 @@ async def setup_engines(
     model_name = model or get_effective_model(provider)
 
     # Initialize Rate Limiter
-    rate_limiter = AsyncRateLimiter(rpm=app_settings.llm_rpm_limit)
+    rate_limiter = AsyncRateLimiter(rpm=config.llm_rpm_limit)
 
     # Config-to-engine translation happens here: engines read behavioral knobs
     # from an injected LLMCallPolicy, never from the settings singleton at
     # call time.
     call_policy = LLMCallPolicy(
-        max_tokens=app_settings.llm_max_tokens,
-        temperature=app_settings.llm_temperature,
-        temperature_retry=app_settings.llm_temperature_retry,
-        max_retries=app_settings.llm_max_retries,
-        refine_mode=app_settings.refine_metadata,
-        timeout=app_settings.llm_timeout,
-        transport_max_attempts=app_settings.llm_transport_max_attempts,
-        backoff_initial=app_settings.llm_backoff_initial,
-        backoff_max=app_settings.llm_backoff_max,
+        max_tokens=config.llm_max_tokens,
+        temperature=config.llm_temperature,
+        temperature_retry=config.llm_temperature_retry,
+        max_retries=config.llm_max_retries,
+        refine_mode=config.refine_metadata,
+        timeout=config.llm_timeout,
+        transport_max_attempts=config.llm_transport_max_attempts,
+        backoff_initial=config.llm_backoff_initial,
+        backoff_max=config.llm_backoff_max,
     )
 
     # Initialize Text LLM engine
@@ -419,10 +421,11 @@ async def run_pipeline(
     """Core processing pipeline orchestration.
 
     Headless-friendly: ``config`` may be a plain ``ProcessingConfig`` — there is
-    no app_settings dependency here. Settings-derived values (including
-    ``max_filename_length``) are populated exclusively by
-    ``ProcessingConfig.from_app_settings``; callers wanting settings defaults
-    build their config through that classmethod.
+    no app_settings dependency for engine knobs here (process-wide concerns —
+    provider registry, API keys, benchmark sample count — remain). Settings-
+    derived values (including ``max_filename_length``) are populated
+    exclusively by ``ProcessingConfig.from_app_settings``; callers wanting
+    settings defaults build their config through that classmethod.
     """
     if config is None:
         config = ProcessingConfig()

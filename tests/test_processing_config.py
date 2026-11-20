@@ -5,6 +5,8 @@ one-to-one; if a future edit drops a field, these tests fail loud instead
 of silently reverting an evaluate knob to the model default.
 """
 
+from unittest.mock import MagicMock
+
 from renai.config.settings import app_settings
 from renai.models.schemas import FallbackMode, ProcessingConfig
 
@@ -64,6 +66,136 @@ def test_from_app_settings_maps_processing_knobs(monkeypatch):
     assert config.rename_images is True
     assert config.vision_provider == "openrouter"
     assert config.vision_model == "vlm-x"
+
+
+def test_from_app_settings_maps_engine_knobs(monkeypatch):
+    """#218's OCR/LLM transport knobs flow through from_app_settings so
+    setup_engines can read them from config, not the settings singleton."""
+    monkeypatch.setattr(app_settings, "ocr_workers", 8)
+    monkeypatch.setattr(app_settings, "ocr_dpi", 160)
+    monkeypatch.setattr(app_settings, "ocr_enhanced_dpi", 320)
+    monkeypatch.setattr(app_settings, "ocr_head_pages", 7)
+    monkeypatch.setattr(app_settings, "ocr_tail_pages", 4)
+    monkeypatch.setattr(app_settings, "ocr_psm", 6)
+    monkeypatch.setattr(app_settings, "ocr_lang", "eng")
+    monkeypatch.setattr(app_settings, "subprocess_timeout", 90)
+    monkeypatch.setattr(app_settings, "llm_rpm_limit", 30)
+    monkeypatch.setattr(app_settings, "llm_max_tokens", 2048)
+    monkeypatch.setattr(app_settings, "llm_temperature", 0.1)
+    monkeypatch.setattr(app_settings, "llm_temperature_retry", 0.7)
+    monkeypatch.setattr(app_settings, "llm_max_retries", 3)
+    monkeypatch.setattr(app_settings, "refine_metadata", "always")
+    monkeypatch.setattr(app_settings, "llm_timeout", 240.0)
+    monkeypatch.setattr(app_settings, "llm_transport_max_attempts", 4)
+    monkeypatch.setattr(app_settings, "llm_backoff_initial", 1.0)
+    monkeypatch.setattr(app_settings, "llm_backoff_max", 30.0)
+
+    config = ProcessingConfig.from_app_settings()
+
+    assert config.ocr_workers == 8
+    assert config.ocr_dpi == 160
+    assert config.ocr_enhanced_dpi == 320
+    assert config.ocr_head_pages == 7
+    assert config.ocr_tail_pages == 4
+    assert config.ocr_psm == 6
+    assert config.ocr_lang == "eng"
+    assert config.subprocess_timeout == 90
+    assert config.llm_rpm_limit == 30
+    assert config.llm_max_tokens == 2048
+    assert config.llm_temperature == 0.1
+    assert config.llm_temperature_retry == 0.7
+    assert config.llm_max_retries == 3
+    assert config.refine_metadata == "always"
+    assert config.llm_timeout == 240.0
+    assert config.llm_transport_max_attempts == 4
+    assert config.llm_backoff_initial == 1.0
+    assert config.llm_backoff_max == 30.0
+
+
+def test_setup_engines_reads_config_not_settings(monkeypatch):
+    """setup_engines must source OCR/LLM knobs from ProcessingConfig only.
+
+    A headless caller building a ProcessingConfig programmatically (the
+    documented run_pipeline contract) must be able to control engine knobs
+    without touching app_settings."""
+    import renai.processors.orchestrator as orch
+
+    cfg = ProcessingConfig(
+        fallback_mode=FallbackMode.NONE,  # internal sentinel: no vision needed
+        ocr_workers=6,
+        ocr_dpi=160,
+        ocr_lang="eng",
+        subprocess_timeout=90,
+        llm_rpm_limit=30,
+        llm_max_tokens=2048,
+        llm_temperature=0.1,
+        llm_temperature_retry=0.7,
+        llm_max_retries=3,
+        refine_metadata="never",
+        llm_timeout=240.0,
+        llm_transport_max_attempts=4,
+        llm_backoff_initial=1.0,
+        llm_backoff_max=30.0,
+    )
+
+    captured: dict = {}
+
+    def fake_ocr_engine(*args, **kwargs):
+        captured["ocr"] = kwargs
+        return MagicMock()
+
+    def fake_llm_engine(*args, **kwargs):
+        captured["llm"] = kwargs
+        return MagicMock()
+
+    class fake_processor:
+        def __init__(self, **kwargs):
+            captured["processor"] = kwargs
+
+    class fake_rate_limiter:
+        def __init__(self, **kwargs):
+            captured["rate_limiter"] = kwargs
+
+    monkeypatch.setattr(orch, "OCREngine", fake_ocr_engine)
+    monkeypatch.setattr(orch, "LLMEngine", fake_llm_engine)
+    monkeypatch.setattr(orch, "BookProcessor", fake_processor)
+    monkeypatch.setattr(orch, "AsyncRateLimiter", fake_rate_limiter)
+    monkeypatch.setattr(orch, "PROVIDERS", {"p": MagicMock(api_key="k", base_url="u")})
+    monkeypatch.setattr(orch, "get_api_key", lambda p: "k")
+    monkeypatch.setattr(orch, "get_effective_model", lambda p: "m")
+    # Sentinels proving setup_engines does not consult these globals:
+    monkeypatch.setattr(orch.app_settings, "ocr_workers", 999, raising=False)
+    monkeypatch.setattr(orch.app_settings, "llm_max_tokens", 999, raising=False)
+    monkeypatch.setattr(orch.app_settings, "llm_rpm_limit", 999, raising=False)
+
+    import asyncio
+
+    asyncio.run(orch.setup_engines(provider="p", model="m", config=cfg))
+
+    ocr = captured["ocr"]
+    assert ocr["max_workers"] == 6
+    assert ocr["dpi"] == 160
+    assert ocr["ocr_lang"] == "eng"
+    assert ocr["subprocess_timeout"] == 90
+    assert captured["rate_limiter"] == {"rpm": 30}
+    policy = captured["llm"]["call_policy"]
+    assert policy.max_tokens == 2048
+    assert policy.temperature == 0.1
+    assert policy.timeout == 240.0
+    assert policy.refine_mode == "never"
+
+
+def test_llm_rpm_limit_zero_means_unlimited(monkeypatch):
+    """llm_rpm_limit=0 (documented 'unlimited') must survive from_app_settings.
+
+    ProcessingConfig briefly used ge=1, which raised ValidationError at every
+    `renai process` startup for users with RENAI_LLM_RPM_LIMIT=0.
+    """
+    monkeypatch.setattr(app_settings, "llm_rpm_limit", 0)
+
+    config = ProcessingConfig.from_app_settings()
+
+    assert config.llm_rpm_limit == 0
 
 
 def test_from_app_settings_renames_exif_override():

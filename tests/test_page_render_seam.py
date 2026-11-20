@@ -161,6 +161,18 @@ class TestMutoolBackendContract:
         assert "timed out" in caplog.text
         assert written and all(not p.exists() for p in written)  # no orphaned PNGs
 
+    def test_subprocess_timeout_resolved_at_construction(self):
+        """The mutool backend resolves its timeout at construction (no call-time
+        settings reads); an explicit value wins over the settings default."""
+        from renai.config import get_subprocess_timeout
+
+        explicit = create_page_renderer(
+            use_mutool=True, mutool_path="mutool", subprocess_timeout=90
+        )
+        assert explicit._subprocess_timeout == 90
+        default = create_page_renderer(use_mutool=True, mutool_path="mutool")
+        assert default._subprocess_timeout == get_subprocess_timeout()
+
     async def test_successful_temp_files_are_caller_owned(self, tmp_path, monkeypatch):
         """Contract: on success the temp file is handed back; renderer must NOT delete it."""
         fake_img = MagicMock()
