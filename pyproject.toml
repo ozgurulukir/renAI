@@ -34,7 +34,6 @@ dependencies = [
     "typer",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
-    "structlog",
     "platformdirs",
     "colorama",
     "tomli-w",

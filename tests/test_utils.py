@@ -216,7 +216,7 @@ def test_read_text_limited_empty(tmp_path):
     assert result == ""
 
 
-@patch("renai.utils.logging.error")
+@patch("renai.utils.logger.error")
 @patch.object(Path, "open")
 def test_read_text_limited_error_logging(mock_open, mock_logging_error, tmp_path):
     """Test that an exception triggers logging.error and returns an empty string."""
@@ -278,7 +278,7 @@ def test_read_text_limited_directory(caplog, tmp_path):
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
 @patch("renai.utils.subprocess")
-@patch("renai.utils.logging.debug")
+@patch("renai.utils.logger.debug")
 def test_ensure_secure_dir_windows_exception_extended(
     mock_debug, mock_subprocess, mock_os, mock_sys, tmp_path
 ):
@@ -330,7 +330,7 @@ def test_ensure_secure_dir_unix(mock_sys, tmp_path):
 
 
 @patch("renai.utils.sys")
-@patch("renai.utils.logging.debug")
+@patch("renai.utils.logger.debug")
 def test_ensure_secure_dir_unix_exception(mock_debug, mock_sys, tmp_path):
     """Test exception handling during chmod on Unix."""
     mock_sys.platform = "linux"
@@ -380,7 +380,7 @@ def test_ensure_secure_dir_windows_valid_user(mock_subprocess, mock_os, mock_sys
 
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
-@patch("renai.utils.logging.warning")
+@patch("renai.utils.logger.warning")
 @patch("renai.utils.subprocess")
 def test_ensure_secure_dir_windows_invalid_user(
     mock_subprocess, mock_warning, mock_os, mock_sys, tmp_path
@@ -421,7 +421,7 @@ def test_ensure_secure_dir_windows_no_user(mock_subprocess, mock_os, mock_sys, t
 @patch("renai.utils.sys")
 @patch("renai.utils.os")
 @patch("renai.utils.subprocess")
-@patch("renai.utils.logging.debug")
+@patch("renai.utils.logger.debug")
 def test_ensure_secure_dir_windows_exception(
     mock_debug, mock_subprocess, mock_os, mock_sys, tmp_path
 ):

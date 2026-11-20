@@ -32,6 +32,8 @@ from ..config import (
 from ..utils import ensure_secure_dir, sanitize_filename
 from .render import RenderedPage, create_page_renderer, get_subprocess_kwargs
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     import cv2  # type: ignore[import-untyped]
 
@@ -109,7 +111,7 @@ class OCREngine:
             if resolved_path:
                 self.mutool_path = resolved_path
             else:
-                logging.warning(
+                logger.warning(
                     f"mutool not found or invalid at {self.mutool_path}. "
                     "Falling back to standard extraction."
                 )
@@ -127,7 +129,7 @@ class OCREngine:
                 "threshold": True,
             }
             if not self.silent:
-                logging.debug(
+                logger.debug(
                     f"OCR Engine initialized in ENHANCED mode ({enhanced_dpi} DPI, "
                     "deskew, threshold, sharpen)"
                 )
@@ -141,7 +143,7 @@ class OCREngine:
                 "threshold": False,
             }
             if not self.silent:
-                logging.debug(f"OCR Engine initialized in MINIMAL mode ({dpi} DPI)")
+                logger.debug(f"OCR Engine initialized in MINIMAL mode ({dpi} DPI)")
 
         self.MAX_DIMENSION = OCR_MAX_DIMENSION
 
@@ -161,14 +163,14 @@ class OCREngine:
         # 1. Strict character whitelist check for the path
         # Allows alphanumeric, dots, underscores, hyphens, spaces, parentheses, and path separators
         if not re.match(r"^[a-zA-Z0-9._/\\:\- ()]+$", resolved):
-            logging.warning(f"Rejected mutool path with suspicious characters: {resolved}")
+            logger.warning(f"Rejected mutool path with suspicious characters: {resolved}")
             return None
 
         # 2. Basic filename check (case-insensitive)
         name = resolved_path.name.lower()
         # On Windows it might be mutool.exe
         if not name.startswith("mutool"):
-            logging.warning(f"Rejected non-mutool executable: {resolved}")
+            logger.warning(f"Rejected non-mutool executable: {resolved}")
             return None
 
         # 3. Identity check via version command
@@ -186,10 +188,10 @@ class OCREngine:
             output = (result.stdout + result.stderr).lower()
             if "mutool" in output or "mupdf" in output:
                 return resolved
-            logging.warning(f"Executable at {resolved} did not respond like mutool")
+            logger.warning(f"Executable at {resolved} did not respond like mutool")
             return None
         except Exception as e:
-            logging.warning(f"Failed to verify mutool at {resolved}: {e}")
+            logger.warning(f"Failed to verify mutool at {resolved}: {e}")
             return None
 
     @staticmethod
@@ -209,7 +211,7 @@ class OCREngine:
                     max_dpi = max(max_dpi, dpi_x, dpi_y)
             return max_dpi
         except Exception as e:
-            logging.debug(f"Failed to calculate source DPI: {e}")
+            logger.debug(f"Failed to calculate source DPI: {e}")
             return 72
 
     def _calculate_skew_angle(self, image_array: np.ndarray) -> float | None:
@@ -290,7 +292,7 @@ class OCREngine:
                 return image
             return self._rotate_image(image_array, skew_angle)
         except Exception as e:
-            logging.debug(f"Skew correction failed: {e}")
+            logger.debug(f"Skew correction failed: {e}")
             return image
 
     def _get_page_sampling(self, total_pages: int) -> list[int]:
@@ -343,7 +345,7 @@ class OCREngine:
                 OCREngine._process_pool, self._sync_preprocess_image, image
             )
         except Exception as e:
-            logging.debug(f"ProcessPool execution fallback to thread: {e}")
+            logger.debug(f"ProcessPool execution fallback to thread: {e}")
             return await asyncio.to_thread(self._sync_preprocess_image, image)
 
     def _sync_preprocess_image(self, image: Image.Image) -> Image.Image:
@@ -395,13 +397,13 @@ class OCREngine:
 
             return await asyncio.to_thread(_tesseract_thread)
         except Exception as e:
-            logging.error(f"Tesseract failed for page {pno + 1}: {e}")
+            logger.error(f"Tesseract failed for page {pno + 1}: {e}")
             return ""
 
     async def extract_text(self, file_path: Path, target_chars: int = 10000) -> str:  # noqa: C901, PLR0912, PLR0915
         """Extract text from a document asynchronously using OCR."""
         if file_path.is_symlink():
-            logging.warning(
+            logger.warning(
                 "Skipping symlink to prevent arbitrary file read (OCR): %s",
                 file_path.name,
             )
@@ -486,18 +488,18 @@ class OCREngine:
                             image.close()
                             await asyncio.to_thread(page_temp.unlink)
                         except Exception as e:
-                            logging.debug(f"Cleanup of temp_img failed: {e}")
+                            logger.debug(f"Cleanup of temp_img failed: {e}")
 
                 if total_chars > target_chars:
                     break
 
-            logging.debug(
+            logger.debug(
                 f"OCR extracted text from {len(pages_to_extract)} pages of {file_path.name}"
             )
             return "\n\n".join(extracted_text).strip()
 
         except Exception as e:
-            logging.error(f"OCR Pipeline failed for {file_path.name}: {e}")
+            logger.error(f"OCR Pipeline failed for {file_path.name}: {e}")
             return ""
         finally:
             if doc:
@@ -508,7 +510,7 @@ class OCREngine:
                     try:
                         await asyncio.to_thread(rendered.temp_path.unlink)
                     except Exception as e:
-                        logging.debug(f"Cleanup of bulk temp file failed: {e}")
+                        logger.debug(f"Cleanup of bulk temp file failed: {e}")
             # Per-page temps are usually unlinked right after their OCR; this
             # catches any left behind by an exception between hand-back and
             # that cleanup (previously a leak window).
@@ -517,7 +519,7 @@ class OCREngine:
                     try:
                         await asyncio.to_thread(temp_path.unlink)
                     except Exception as e:
-                        logging.debug(f"Cleanup of per-page temp file failed: {e}")
+                        logger.debug(f"Cleanup of per-page temp file failed: {e}")
 
 
 atexit.register(OCREngine.shutdown_process_pool, wait=False)

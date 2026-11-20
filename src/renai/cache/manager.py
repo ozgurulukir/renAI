@@ -13,6 +13,8 @@ from pydantic import BaseModel
 
 from renai.config import CACHE_DIR, DEBUG_DIR
 
+logger = logging.getLogger(__name__)
+
 # Thread-safe lock for all cache database operations
 _cache_lock = threading.Lock()
 
@@ -144,7 +146,7 @@ def read_text_cache(key: TextCacheKey, cache_dir: Path | None = None) -> str | N
                 if row:
                     return row[0]
         except Exception as e:
-            logging.warning(f"Failed to read text cache {cache_key}: {e}")
+            logger.warning(f"Failed to read text cache {cache_key}: {e}")
 
         # Fallback to legacy file reading if present
         legacy_path = db_dir / "text" / cache_key
@@ -152,7 +154,7 @@ def read_text_cache(key: TextCacheKey, cache_dir: Path | None = None) -> str | N
             if legacy_path.exists():
                 return legacy_path.read_text(encoding="utf-8")
         except Exception as e:
-            logging.warning(f"Failed to read text cache {legacy_path}: {e}")
+            logger.warning(f"Failed to read text cache {legacy_path}: {e}")
     return None
 
 
@@ -172,7 +174,7 @@ def write_text_cache(key: TextCacheKey, content: str, cache_dir: Path | None = N
                 )
             return True
         except Exception as e:
-            logging.warning(f"Failed to write text cache {cache_key}: {e}")
+            logger.warning(f"Failed to write text cache {cache_key}: {e}")
             return False
 
 
@@ -192,10 +194,10 @@ def _read_from_legacy_file(legacy_path: Path, provider: str, model: str) -> dict
         return cache_data
 
     msg = f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
-    logging.debug(msg)
+    logger.debug(msg)
     with contextlib.suppress(Exception):
         legacy_path.unlink()
-        logging.debug(f"Removed stale cache file: {legacy_path}")
+        logger.debug(f"Removed stale cache file: {legacy_path}")
     return None
 
 
@@ -221,7 +223,7 @@ def _parse_metadata_row(
     try:
         data = json.loads(metadata_json)
     except (TypeError, ValueError) as e:
-        logging.warning(
+        logger.warning(
             f"Corrupt metadata cache row {cache_key}: invalid JSON ({e}); treating as a cache miss"
         )
     if not isinstance(data, dict):
@@ -229,7 +231,7 @@ def _parse_metadata_row(
             # Valid JSON but not an object: corrupt row. Degrade to a
             # miss (and drop the row) instead of crashing on dict-only
             # operations downstream.
-            logging.warning(
+            logger.warning(
                 f"Corrupt metadata cache row for {cache_key}: expected a JSON "
                 f"object, got {type(data).__name__}; treating as a cache miss"
             )
@@ -242,7 +244,7 @@ def _parse_metadata_row(
     if isinstance(produced_provider, str) and isinstance(produced_model, str):
         return data, (produced_provider, produced_model)
     if produced_provider is not None or produced_model is not None:
-        logging.warning(
+        logger.warning(
             f"Corrupt producing-identity marker in metadata cache row {cache_key}; "
             "treating row as legacy"
         )
@@ -252,7 +254,7 @@ def _parse_metadata_row(
     if cached_provider == provider and cached_model == model:
         return data, None
     msg = f"Cache invalidated (was {cached_provider}/{cached_model}, now {provider}/{model})"
-    logging.debug(msg)
+    logger.debug(msg)
     with conn:
         conn.execute("DELETE FROM metadata_cache WHERE cache_key = ?", (cache_key,))
     return None
@@ -298,13 +300,13 @@ def _read_provenance_cache_data(
         # fall back to legacy JSON files: serving records from a superseded
         # store while the primary is broken hides the failure. Degrade to a
         # miss so processing continues at full LLM cost.
-        logging.error(
+        logger.error(
             f"Metadata cache database {cache_dir / 'cache.db'} is corrupt or unreadable ({e}). "
             "Delete or rename it to rebuild the cache; skipping legacy fallback."
         )
         return None
     except Exception as e:
-        logging.warning(f"Failed to read metadata cache {cache_keys[0]}: {e}")
+        logger.warning(f"Failed to read metadata cache {cache_keys[0]}: {e}")
 
     if db_result is not None:
         return db_result
@@ -312,7 +314,7 @@ def _read_provenance_cache_data(
     try:
         legacy_file_data = _read_from_legacy_file(legacy_path, provider, model)
     except Exception as e:
-        logging.warning(f"Failed to read metadata cache {legacy_path}: {e}")
+        logger.warning(f"Failed to read metadata cache {legacy_path}: {e}")
         return None
     if legacy_file_data is None:
         return None
@@ -327,7 +329,7 @@ def _validate_cached_metadata[V: BaseModel](
     try:
         return model_class(**cache_data)
     except Exception as e:
-        logging.warning(f"Failed to validate cached metadata against {model_class.__name__}: {e}")
+        logger.warning(f"Failed to validate cached metadata against {model_class.__name__}: {e}")
         return None
 
 
@@ -403,14 +405,14 @@ def read_metadata_cache[V: BaseModel](
             # Present but corrupt (external tampering; the writer only stores
             # bools). Warn so the silent template switch is explainable, then
             # let the caller apply its legacy fallback instead of trusting it.
-            logging.warning(
+            logger.warning(
                 f"Corrupt vision marker in metadata cache row {cache_key}: expected "
                 f"a bool, got {type(raw_vision).__name__}; treating as legacy"
             )
         is_vision_doc = raw_vision if isinstance(raw_vision, bool) else None
         rule_signature = cache_data.pop("_rule_sig", None) if cache_data else None
         if rule_signature is not None and not isinstance(rule_signature, str):
-            logging.warning(
+            logger.warning(
                 f"Corrupt rule signature in metadata cache row {cache_key}: expected "
                 f"a string, got {type(rule_signature).__name__}; treating as legacy"
             )
@@ -484,45 +486,14 @@ def write_metadata_cache(
         except sqlite3.DatabaseError as e:
             # Caching is best-effort: extraction succeeded, so never fail the
             # run — but a broken store must not look like a routine miss.
-            logging.error(
+            logger.error(
                 f"Metadata cache database {db_dir / 'cache.db'} is corrupt or unreadable ({e}); "
                 "metadata was extracted but NOT cached. Delete or rename the file to rebuild."
             )
             return False
         except Exception as e:
-            logging.warning(f"Failed to write metadata cache {cache_key}: {e}")
+            logger.warning(f"Failed to write metadata cache {cache_key}: {e}")
             return False
-
-
-def invalidate_cache_for_provider_model(cache_dir: Path | None = None) -> int:
-    """Clear metadata cache when switching providers/models without double-counting."""
-    with _cache_lock:
-        if cache_dir is None:
-            cache_dir = CACHE_DIR
-
-        cleared_keys: set[str] = set()
-
-        db_path = cache_dir / "cache.db"
-        if db_path.exists():
-            try:
-                with _get_db_connection(cache_dir) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT cache_key FROM metadata_cache")
-                    cleared_keys.update(row[0] for row in cursor.fetchall())
-                    with conn:
-                        conn.execute("DELETE FROM metadata_cache")
-            except Exception as e:
-                logging.warning(f"Failed to clear metadata cache from DB: {e}")
-
-        metadata_dir = cache_dir / "metadata"
-        if metadata_dir.exists():
-            try:
-                for cache_file in metadata_dir.glob("*.json"):
-                    cleared_keys.add(cache_file.name)
-                    cache_file.unlink()
-            except Exception as e:
-                logging.warning(f"Failed to clear metadata cache files: {e}")
-        return len(cleared_keys)
 
 
 def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
@@ -549,7 +520,7 @@ def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
                         conn.execute("DELETE FROM text_cache")
                         conn.execute("DELETE FROM metadata_cache")
             except Exception as e:
-                logging.warning(f"Failed to clear DB cache: {e}")
+                logger.warning(f"Failed to clear DB cache: {e}")
 
         targets = [
             ("text", cache_dir / "text", text_keys),
@@ -562,7 +533,7 @@ def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
                     keys_set.update(f.name for f in target_path.iterdir() if f.is_file())
                     shutil.rmtree(target_path)
                 except Exception as e:
-                    logging.warning(f"Failed to clear cache directory at {target_path}: {e}")
+                    logger.warning(f"Failed to clear cache directory at {target_path}: {e}")
 
         ocr_count = _clear_debug_cache()
         models_dev_count = _clear_models_dev_cache()
@@ -587,7 +558,7 @@ def _clear_debug_cache() -> int:
         DEBUG_DIR.unlink()
         return 1
     except Exception as e:
-        logging.warning(f"Failed to clear ocr_debug cache at {DEBUG_DIR}: {e}")
+        logger.warning(f"Failed to clear ocr_debug cache at {DEBUG_DIR}: {e}")
         return 0
 
 
@@ -601,5 +572,5 @@ def _clear_models_dev_cache() -> int:
             models_dev_file.unlink()
             return 1
         except Exception as e:
-            logging.warning(f"Failed to clear models.dev cache at {models_dev_file}: {e}")
+            logger.warning(f"Failed to clear models.dev cache at {models_dev_file}: {e}")
     return 0

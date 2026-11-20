@@ -24,6 +24,8 @@ from renai.utils import (
     read_text_limited,
 )
 
+logger = logging.getLogger(__name__)
+
 # Single registry of extractable extensions (issue #195). Per-kind sets are
 # derived here and reused everywhere; ``SUPPORTED_EXTENSIONS`` is their union.
 #
@@ -165,7 +167,7 @@ class TextExtractor:
 
         # Skip symlinks
         if file_path.is_symlink():
-            logging.warning(f"Skipping symlink to prevent arbitrary file read: {file_path.name}")
+            logger.warning(f"Skipping symlink to prevent arbitrary file read: {file_path.name}")
             return ""
 
         cache_key = None
@@ -182,7 +184,7 @@ class TextExtractor:
 
             cached_text = await asyncio.to_thread(read_text_cache, cache_key)
             if cached_text is not None:
-                logging.debug(f"Using cached text for {file_path.name}")
+                logger.debug(f"Using cached text for {file_path.name}")
                 return cached_text
 
         # Extract based on file type
@@ -221,7 +223,7 @@ class TextExtractor:
     ) -> str:
         """Route and execute fallback strategy when text extraction is insufficient."""
         if fallback == FallbackMode.MOVE_TO_FOLDER:
-            logging.debug(
+            logger.debug(
                 f"Primary text insufficient, moving {file_path.name} to {NEEDS_SCAN_DIR_NAME}"
             )
             return await self._quarantine(file_path, NEEDS_SCAN_DIR_NAME, dry_run)
@@ -229,16 +231,16 @@ class TextExtractor:
         if fallback == FallbackMode.OCR:
             if self.skip_scan_files:
                 # skip_needs_ocr: never OCR these files -- quarantine them instead
-                logging.debug(
+                logger.debug(
                     f"Primary text insufficient for {file_path.name}, "
                     f"moving to {NEEDS_SCAN_DIR_NAME} (OCR skipped)"
                 )
                 return await self._quarantine(file_path, NEEDS_SCAN_DIR_NAME, dry_run)
-            logging.debug(f"Primary text insufficient for {file_path.name}, falling back to OCR")
+            logger.debug(f"Primary text insufficient for {file_path.name}, falling back to OCR")
             return await self._fallback_to_ocr(file_path, target_length, dry_run)
 
         if fallback == FallbackMode.VISION:
-            logging.debug(
+            logger.debug(
                 f"Primary text insufficient for {file_path.name}, marking for Vision fallback"
             )
             return ""
@@ -270,10 +272,10 @@ class TextExtractor:
             content = await asyncio.to_thread(_convert)
             return self._apply_extraction_mode(content, target_length)
         except ImportError:
-            logging.error(f"MarkItDown not installed, skipping: {file_path.name}")
+            logger.error(f"MarkItDown not installed, skipping: {file_path.name}")
             return ""
         except Exception as e:
-            logging.error(f"MarkItDown failed for {file_path.name}: {e}")
+            logger.error(f"MarkItDown failed for {file_path.name}: {e}")
             return ""
 
     async def _extract_from_plain_text(
@@ -293,7 +295,7 @@ class TextExtractor:
             )
             return self._apply_extraction_mode(content, target_length)
         except Exception as e:
-            logging.error(f"Text read failed for {file_path.name}: {e}")
+            logger.error(f"Text read failed for {file_path.name}: {e}")
             return ""
 
     async def _extract_from_document(
@@ -344,7 +346,7 @@ class TextExtractor:
             if ocr_text.strip():
                 return self._apply_extraction_mode(ocr_text, target_length)
         except Exception as e:
-            logging.error(f"OCR fallback failed for {file_path.name}: {e}")
+            logger.error(f"OCR fallback failed for {file_path.name}: {e}")
 
         if self.move_scan_failures:
             # --move-scan-failures: quarantine files where OCR also failed
@@ -375,12 +377,12 @@ class TextExtractor:
         """Move a file into a quarantine subfolder of the run root (log-only in dry-run)."""
         dest_dir = self._quarantine_dir_path(folder_name, create=not dry_run)
         if dest_dir is None:
-            logging.warning(
+            logger.warning(
                 "Cannot move %s: no %s directory configured", file_path.name, folder_name
             )
             return ""
         if dry_run:
-            logging.info(f"[DRY-RUN] Would move {file_path.name} to {folder_name}")
+            logger.info(f"[DRY-RUN] Would move {file_path.name} to {folder_name}")
             return ""
         # Serialize moves so same-basename files from concurrent workers cannot
         # interleave the collision check and the move (silent overwrite).
@@ -400,9 +402,9 @@ class TextExtractor:
                 target_path = dest_dir / f"{file_path.stem}{suffix}"
 
             shutil.move(str(file_path), str(target_path))
-            logging.debug(f"Moved {file_path.name} to {dest_dir.name} directory")
+            logger.debug(f"Moved {file_path.name} to {dest_dir.name} directory")
         except Exception as e:
-            logging.error(f"Failed to move {file_path.name} to {dest_dir}: {e}")
+            logger.error(f"Failed to move {file_path.name} to {dest_dir}: {e}")
 
     def capture_run_state(self) -> TextExtractorRunState:
         """Snapshot quarantine run-state (see :class:`TextExtractorRunState`)."""

@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 from platformdirs import user_data_dir
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from renai.config.settings import AppSettings
 
@@ -87,7 +89,7 @@ def load_factory_defaults() -> dict:
         with default_file.open("rb") as f:
             return tomllib.load(f)
     except Exception as e:
-        logging.error(f"Failed to load factory defaults: {e}")
+        logger.error(f"Failed to load factory defaults: {e}")
         return {}
 
 

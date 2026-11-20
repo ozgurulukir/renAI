@@ -5,6 +5,8 @@ import pymupdf
 
 from .base import BaseExtractor
 
+logger = logging.getLogger(__name__)
+
 
 def _extract_head_tail(
     get_page_text,
@@ -108,7 +110,7 @@ class PyMuPDFExtractor(BaseExtractor):
                     get_page, total_pages, target_chars, head_ratio, max_pages_per_side
                 )
         except Exception as e:
-            logging.error(f"PyMuPDF extraction failed for {file_path.name}: {e}")
+            logger.error(f"PyMuPDF extraction failed for {file_path.name}: {e}")
             return None
 
     @property
@@ -140,10 +142,10 @@ class PDFPlumberExtractor(BaseExtractor):
                     get_page, total_pages, target_chars, head_ratio, max_pages_per_side
                 )
         except ImportError:
-            logging.error("pdfplumber is not installed.")
+            logger.error("pdfplumber is not installed.")
             return None
         except Exception as e:
-            logging.error(f"pdfplumber extraction failed for {file_path.name}: {e}")
+            logger.error(f"pdfplumber extraction failed for {file_path.name}: {e}")
             return None
 
     @property
@@ -176,10 +178,10 @@ class PyPDFExtractor(BaseExtractor):
                     get_page, total_pages, target_chars, head_ratio, max_pages_per_side
                 )
         except ImportError:
-            logging.error("pypdf is not installed.")
+            logger.error("pypdf is not installed.")
             return None
         except Exception as e:
-            logging.error(f"pypdf extraction failed for {file_path.name}: {e}")
+            logger.error(f"pypdf extraction failed for {file_path.name}: {e}")
             return None
 
     @property
@@ -219,10 +221,10 @@ class PyPdfium2Extractor(BaseExtractor):
                     get_page, total_pages, target_chars, head_ratio, max_pages_per_side
                 )
         except ImportError:
-            logging.error("pypdfium2 is not installed.")
+            logger.error("pypdfium2 is not installed.")
             return None
         except Exception as e:
-            logging.error(f"pypdfium2 extraction failed for {file_path.name}: {e}")
+            logger.error(f"pypdfium2 extraction failed for {file_path.name}: {e}")
             return None
 
     @property

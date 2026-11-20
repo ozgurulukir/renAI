@@ -72,7 +72,6 @@ dependencies = [
     "pypdf",
     "pypdfium2",
     "pdfplumber",
-    "structlog",
     "pytesseract",
 ]
 

@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 # Pre-compiled regular expressions for filename sanitization
 RE_INVALID_CHARS = re.compile(r'[<>:"/\\|?*]')
 RE_WHITESPACE = re.compile(r"\s+")
@@ -75,7 +77,7 @@ def ensure_secure_dir(path: Path) -> Path:
         try:
             path.chmod(0o700)
         except Exception as e:
-            logging.debug(f"Failed to set secure permissions on {path}: {e}")
+            logger.debug(f"Failed to set secure permissions on {path}: {e}")
         return path
 
     # Windows: Best effort to restrict permissions to current user using icacls
@@ -85,7 +87,7 @@ def ensure_secure_dir(path: Path) -> Path:
 
     # Security: Validate username to prevent command injection
     if not re.match(r"^\w[\w\s.@\\-]*$", username):
-        logging.warning(f"Invalid username for secure permissions: {username}")
+        logger.warning(f"Invalid username for secure permissions: {username}")
         return path
 
     try:
@@ -110,7 +112,7 @@ def ensure_secure_dir(path: Path) -> Path:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except Exception as e:
-        logging.debug(f"Failed to set secure permissions on {path}: {e}")
+        logger.debug(f"Failed to set secure permissions on {path}: {e}")
 
     return path
 
@@ -124,7 +126,7 @@ def read_text_limited(file_path: Path, max_chars: int) -> str:
         with file_path.open(encoding="utf-8", errors="ignore", newline=None) as f:
             return f.read(max_chars)
     except Exception as e:
-        logging.error(f"Error reading {file_path}: {e}")
+        logger.error(f"Error reading {file_path}: {e}")
         return ""
 
 

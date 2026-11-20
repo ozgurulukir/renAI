@@ -42,6 +42,8 @@ from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.book import BookProcessor
 from renai.utils.rate_limiter import AsyncRateLimiter
 
+logger = logging.getLogger(__name__)
+
 console = Console()
 
 _eval_log_buffer: list[dict[str, Any]] = []
@@ -284,7 +286,7 @@ async def _flush_eval_log() -> None:
 
         await asyncio.to_thread(_write)
     except Exception as e:
-        logging.error(f"Failed to flush evaluation log: {e}")
+        logger.error(f"Failed to flush evaluation log: {e}")
 
 
 async def _execute_processing_loop(
@@ -405,7 +407,7 @@ async def _close_llm_engines(processor: BookProcessor) -> None:
         try:
             await aclose()
         except Exception as e:  # teardown must not raise
-            logging.debug("Failed to close LLM engine client: %s", e)
+            logger.debug("Failed to close LLM engine client: %s", e)
 
 
 async def run_pipeline(
@@ -467,7 +469,7 @@ async def _run_benchmark_mode(
     benchmark_data = []
     sample_count = app_settings.benchmark_sample_count
     if sample_count < len(file_paths):
-        logging.info(
+        logger.info(
             "Benchmarking on the first %d of %d files (benchmark_sample_count)",
             sample_count,
             len(file_paths),

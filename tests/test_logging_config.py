@@ -1,22 +1,29 @@
-"""Tests for structured logging configuration."""
+"""Tests for stdlib logging configuration."""
 
+import json
 import logging
 import os
-import sys
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-import structlog
 
 from renai.logging_config import (
+    JsonFormatter,
     configure_logging,
-    get_api_logger,
     get_log_level,
-    get_logger,
-    get_ocr_logger,
-    get_processing_logger,
     is_development,
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logging_state():
+    """configure_logging mutates global root-logger state; snapshot and restore it."""
+    root = logging.getLogger()
+    saved_handlers = root.handlers[:]
+    saved_level = root.level
+    yield
+    root.handlers[:] = saved_handlers
+    root.setLevel(saved_level)
 
 
 @patch("renai.logging_config.sys.stdout.isatty")
@@ -63,177 +70,90 @@ def test_get_log_level_invalid():
         assert get_log_level() == logging.INFO
 
 
-class TestGetLogger:
-    """Tests for the get_logger function."""
-
-    @patch("renai.logging_config.structlog.get_logger")
-    def test_get_logger_without_context(self, mock_get_logger):
-        """Test that get_logger returns a logger without calling bind when no context is provided."""
-        # Setup mock
-        mock_logger_instance = mock_get_logger.return_value
-
-        # Call function
-        result = get_logger("test_module")
-
-        # Verify
-        mock_get_logger.assert_called_once_with("test_module")
-        mock_logger_instance.bind.assert_not_called()
-        assert result == mock_logger_instance
-
-    @patch("renai.logging_config.structlog.get_logger")
-    def test_get_logger_with_context(self, mock_get_logger):
-        """Test that get_logger returns a bound logger when context is provided."""
-        # Setup mocks
-        mock_logger_instance = mock_get_logger.return_value
-        mock_bound_logger = mock_logger_instance.bind.return_value
-
-        # Call function
-        result = get_logger("test_module", key="value", count=42)
-
-        # Verify
-        mock_get_logger.assert_called_once_with("test_module")
-        mock_logger_instance.bind.assert_called_once_with(key="value", count=42)
-        assert result == mock_bound_logger
-
-
 def test_configure_logging_defaults():
     """Test configure_logging with default arguments."""
     with (
         patch("renai.logging_config.get_log_level", return_value=logging.INFO),
         patch("renai.logging_config.is_development", return_value=True),
-        patch("structlog.configure") as mock_structlog_configure,
-        patch("logging.basicConfig") as mock_basic_config,
-        patch("logging.getLogger") as mock_get_logger,
     ):
-        mock_logger_instance = MagicMock()
-        mock_get_logger.return_value = mock_logger_instance
-
         configure_logging()
 
-        # Should call structlog.configure
-        assert mock_structlog_configure.call_count == 1
-        _, _kwargs = mock_structlog_configure.call_args
-
-        # Verify basic config is called
-        mock_basic_config.assert_called_once_with(
-            format="%(message)s", stream=sys.stderr, level=logging.INFO
-        )
-
-        # Verify third-party loggers are silenced
-        mock_get_logger.assert_has_calls(
-            [call("httpx"), call("openai"), call("urllib3")], any_order=True
-        )
-        assert mock_logger_instance.setLevel.call_count == 3
-        mock_logger_instance.setLevel.assert_called_with(logging.WARNING)
+        root = logging.getLogger()
+        assert root.level == logging.INFO
+        # Dev mode: plain formatter
+        assert not any(isinstance(h.formatter, JsonFormatter) for h in root.handlers)
+        # Third-party loggers are silenced
+        for name in ("httpx", "openai", "urllib3"):
+            assert logging.getLogger(name).level == logging.WARNING
 
 
 def test_configure_logging_explicit_args():
     """Test configure_logging with explicit arguments."""
-    with (
-        patch("structlog.configure") as mock_structlog_configure,
-        patch("logging.basicConfig") as mock_basic_config,
-        patch("logging.getLogger"),
-    ):
-        configure_logging(log_level=logging.DEBUG, json_output=True)
+    configure_logging(log_level=logging.DEBUG, json_output=True)
 
-        assert mock_structlog_configure.call_count == 1
-        _, kwargs = mock_structlog_configure.call_args
-
-        # JSONRenderer should be in processors
-        processors = kwargs["processors"]
-        assert any(isinstance(p, structlog.processors.JSONRenderer) for p in processors)
-        assert not any(isinstance(p, structlog.dev.ConsoleRenderer) for p in processors)
-
-        mock_basic_config.assert_called_once_with(
-            format="%(message)s", stream=sys.stderr, level=logging.DEBUG
-        )
+    root = logging.getLogger()
+    assert root.level == logging.DEBUG
+    assert any(isinstance(h.formatter, JsonFormatter) for h in root.handlers)
 
 
 def test_configure_logging_development_mode():
-    """Test configure_logging output processors in development mode."""
-    with (
-        patch("renai.logging_config.is_development", return_value=True),
-        patch("structlog.configure") as mock_structlog_configure,
-        patch("logging.basicConfig"),
-        patch("logging.getLogger"),
-    ):
-        # json_output is None so it uses `not is_development()`
+    """Dev mode (json_output inferred False) should not use the JSON formatter."""
+    with patch("renai.logging_config.is_development", return_value=True):
         configure_logging(log_level=logging.INFO)
-
-        assert mock_structlog_configure.call_count == 1
-        _, kwargs = mock_structlog_configure.call_args
-
-        processors = kwargs["processors"]
-
-        # In dev mode, should use ConsoleRenderer, not JSONRenderer
-        assert any(isinstance(p, structlog.dev.ConsoleRenderer) for p in processors)
-        assert not any(isinstance(p, structlog.processors.JSONRenderer) for p in processors)
+        root = logging.getLogger()
+        assert not any(isinstance(h.formatter, JsonFormatter) for h in root.handlers)
 
 
 def test_configure_logging_production_mode():
-    """Test configure_logging output processors in production mode."""
-    with (
-        patch("renai.logging_config.is_development", return_value=False),
-        patch("structlog.configure") as mock_structlog_configure,
-        patch("logging.basicConfig"),
-        patch("logging.getLogger"),
-    ):
-        # json_output is None so it uses `not is_development()`
+    """Production mode (json_output inferred True) should use the JSON formatter."""
+    with patch("renai.logging_config.is_development", return_value=False):
         configure_logging(log_level=logging.INFO)
-
-        assert mock_structlog_configure.call_count == 1
-        _, kwargs = mock_structlog_configure.call_args
-
-        processors = kwargs["processors"]
-
-        # In production mode, should use JSONRenderer, not ConsoleRenderer
-        assert any(isinstance(p, structlog.processors.JSONRenderer) for p in processors)
-        assert not any(isinstance(p, structlog.dev.ConsoleRenderer) for p in processors)
+        root = logging.getLogger()
+        assert any(isinstance(h.formatter, JsonFormatter) for h in root.handlers)
 
 
-@patch("renai.logging_config.get_logger")
-def test_get_ocr_logger(mock_get_logger):
-    """Test that get_ocr_logger calls get_logger with correct arguments."""
-    file_path = "test.pdf"
-
-    # Call the function
-    result = get_ocr_logger(file_path)
-
-    # Verify the mock was called correctly
-    mock_get_logger.assert_called_once_with("renai.ocr", file=file_path)
-
-    # Verify it returns what get_logger returns
-    assert result == mock_get_logger.return_value
-
-
-@patch("renai.logging_config.get_logger")
-def test_get_processing_logger(mock_get_logger):
-    """Test that get_processing_logger calls get_logger with correct arguments."""
-    file_path = "test.pdf"
-
-    # Call the function
-    result = get_processing_logger(file_path)
-
-    # Verify the mock was called correctly
-    mock_get_logger.assert_called_once_with("renai.processor", file=file_path)
-
-    # Verify it returns what get_logger returns
-    assert result == mock_get_logger.return_value
+def test_json_formatter_output():
+    """The JSON formatter must render one JSON object per line with key fields."""
+    formatter = JsonFormatter()
+    record = logging.LogRecord(
+        name="renai.test",
+        level=logging.WARNING,
+        pathname="src/renai/test.py",
+        lineno=42,
+        msg="cache miss: %s",
+        args=("book.pdf",),
+        exc_info=None,
+        func="read_cache",
+    )
+    payload = json.loads(formatter.format(record))
+    assert payload["level"] == "warning"
+    assert payload["logger"] == "renai.test"
+    assert payload["message"] == "cache miss: book.pdf"
+    assert payload["module"] == "test.py"
+    assert payload["func_name"] == "read_cache"
+    assert payload["lineno"] == 42
+    assert "timestamp" in payload
 
 
-@patch("renai.logging_config.get_logger")
-def test_get_api_logger(mock_get_logger):
-    """Test that get_api_logger calls get_logger with correct arguments."""
-    provider = "openai"
+def test_json_formatter_includes_exception():
+    """Exception info is rendered under the 'exception' key."""
+    formatter = JsonFormatter()
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        import sys
 
-    # Call the function
-    result = get_api_logger(provider)
-
-    # Verify the mock was called correctly
-    mock_get_logger.assert_called_once_with("renai.api", provider=provider)
-
-    # Verify it returns what get_logger returns
-    assert result == mock_get_logger.return_value
+        record = logging.LogRecord(
+            name="renai.test",
+            level=logging.ERROR,
+            pathname="x.py",
+            lineno=1,
+            msg="failed",
+            args=None,
+            exc_info=sys.exc_info(),
+        )
+    payload = json.loads(formatter.format(record))
+    assert "boom" in payload["exception"]
 
 
 def test_analyze_exception():
@@ -314,7 +234,10 @@ def test_handle_unhandled_exception():
         ValueError("unexpected system error"),
         MagicMock(),
     )
-    with patch("rich.console.Console.print") as mock_print:
+    with (
+        patch("rich.console.Console.print") as mock_print,
+        patch("renai.logging_config.logging.getLogger"),
+    ):
         handle_unhandled_exception(exc_type, exc_value, exc_traceback)
         assert mock_print.call_count == 2
         mock_print.assert_any_call()
@@ -340,4 +263,5 @@ def test_handle_unhandled_exception_keyboard_interrupt():
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    pytest_main = __import__("pytest").main
+    pytest_main([__file__, "-v"])

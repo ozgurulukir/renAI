@@ -1,23 +1,24 @@
-"""
-Structured logging configuration for renAI CLI application.
+"""Logging configuration for renAI CLI application.
 
-This module provides structured logging using structlog with:
-- JSON output for production
-- Colored console output for development
-- Contextual logging with bound loggers
+All application logging uses the standard library ``logging`` framework
+(unified in PR #199). This module configures the root logger and provides:
+
+- JSON output for production (``json_output=True``)
+- Plain console output for development
+- Third-party noise suppression
+- An empathetic unhandled-exception hook (what happened / why / how to fix)
 
 Usage:
-    from renai.logging_config import get_logger
+    import logging
 
-    logger = get_logger(__name__)
-    logger.info("processing_file", file="book.pdf", size=1024)
+    logger = logging.getLogger(__name__)
+    logger.info("processing file: %s", path)
 """
 
+import json
 import logging
 import sys
 from typing import Any
-
-import structlog
 
 
 def is_development() -> bool:
@@ -33,16 +34,36 @@ def get_log_level() -> int:
     return getattr(logging, level_str.upper(), logging.INFO)
 
 
+class JsonFormatter(logging.Formatter):
+    """Render log records as one JSON object per line (production output)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.filename,
+            "func_name": record.funcName,
+            "lineno": record.lineno,
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
 def configure_logging(
     log_level: int | None = None,
     json_output: bool | None = None,
 ) -> None:
-    """Configure structured logging for the application.
+    """Configure application logging (stdlib logging on stderr).
 
     Args:
-        log_level: Logging level (default: INFO)
+        log_level: Logging level (default: from RENAI_LOG_LEVEL, else INFO)
         json_output: Use JSON output (default: True in production, False in dev)
-        log_file: Optional file path for log output
+
+    Note:
+        Replaces any existing root handlers (CLI-style reconfiguration).
     """
     if log_level is None:
         log_level = get_log_level()
@@ -50,47 +71,16 @@ def configure_logging(
     if json_output is None:
         json_output = not is_development()
 
-    processors: list[Any] = [
-        # Add timestamp in ISO format
-        structlog.processors.TimeStamper(fmt="iso"),
-        # Add log level
-        structlog.processors.add_log_level,
-        # Add caller information (module, function, line)
-        structlog.processors.CallsiteParameterAdder(
-            {
-                structlog.processors.CallsiteParameter.FILENAME,
-                structlog.processors.CallsiteParameter.FUNC_NAME,
-                structlog.processors.CallsiteParameter.LINENO,
-            }
-        ),
-        # Stack trace renderer for errors
-        structlog.processors.StackInfoRenderer(),
-        # Exception formatter
-        structlog.processors.format_exc_info,
-    ]
-
+    handler = logging.StreamHandler(sys.stderr)
     if json_output:
-        # JSON output for production/log aggregation
-        processors.append(structlog.processors.JSONRenderer())
+        handler.setFormatter(JsonFormatter())
     else:
-        # Colored console output for development
-        processors.append(structlog.dev.ConsoleRenderer(colors=True))
+        handler.setFormatter(logging.Formatter("%(message)s"))
 
-    # Configure structlog
-    structlog.configure(
-        processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(log_level),
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
-        cache_logger_on_first_use=True,
-    )
-
-    # Also configure standard logging for third-party libraries
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stderr,
-        level=log_level,
-    )
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(log_level)
 
     # Reduce noise from third-party libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -98,48 +88,11 @@ def configure_logging(
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
-def get_logger(name: str, **context: Any) -> structlog.BoundLogger:
-    """Get a structured logger with optional context.
-
-    Args:
-        name: Logger name (typically __name__)
-        **context: Additional context to bind to all log messages
-
-    Returns:
-        A bound structlog logger
-
-    Example:
-        logger = get_logger(__name__)
-        logger.info("message", key="value")
-
-        # Or with context
-        logger = get_logger(__name__, user_id="123")
-        logger.info("message")  # Automatically includes user_id
-    """
-    logger = structlog.get_logger(name)
-    if context:
-        logger = logger.bind(**context)
-    return logger
-
-
-# Convenience loggers for common use cases
-def get_processing_logger(file_path: str) -> structlog.BoundLogger:
-    """Get a logger for file processing with file context."""
-    return get_logger("renai.processor", file=file_path)
-
-
-def get_api_logger(provider: str) -> structlog.BoundLogger:
-    """Get a logger for API calls with provider context."""
-    return get_logger("renai.api", provider=provider)
-
-
-def get_ocr_logger(file_path: str) -> structlog.BoundLogger:
-    """Get a logger for OCR operations."""
-    return get_logger("renai.ocr", file=file_path)
-
-
-# Initialize logging on module import
-configure_logging()
+# Initialize logging on module import. Library hosts that have already
+# configured the root logger keep their handlers; the CLI re-configures
+# explicitly at startup (see cli.py).
+if not logging.getLogger().handlers:
+    configure_logging()
 
 
 def _analyze_exception(exc_value: BaseException) -> tuple[str, str]:
@@ -227,9 +180,10 @@ def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
         )
     )
 
-    # Log the full traceback to file/structlog for debugging
-    logger = get_logger("renai.system")
-    logger.error("unhandled_exception", exc_info=(exc_type, exc_value, exc_traceback))
+    # Log the full traceback for debugging
+    logging.getLogger("renai.system").critical(
+        "unhandled exception", exc_info=(exc_type, exc_value, exc_traceback)
+    )
 
 
 # Set the global exception hook
@@ -237,20 +191,13 @@ sys.excepthook = handle_unhandled_exception
 
 
 if __name__ == "__main__":
-    # Test logging configuration
-    logger = get_logger(__name__)
+    logger = logging.getLogger(__name__)
 
-    logger.debug("Debug message", key="value")
-    logger.info("Info message", file="test.pdf", size=1024)
-    logger.warning("Warning message", count=5)
-    logger.error("Error message", error="Something went wrong")
+    logger.debug("Debug message")
+    logger.info("Info message: %s", "test.pdf")
+    logger.warning("Warning message")
+    logger.error("Error message: %s", "Something went wrong")
 
-    # Test with context
-    process_logger = get_processing_logger("book.pdf")
-    process_logger.info("Processing started", pages=100)
-
-    print("\n--- JSON Output Test ---")
-    # Force JSON output
+    print("\n--- JSON Output Test ---", file=sys.stderr)
     configure_logging(json_output=True)
-    json_logger = get_logger("test")
-    json_logger.info("JSON message", data={"key": "value"})
+    logging.getLogger("test").info("JSON message")

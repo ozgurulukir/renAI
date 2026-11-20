@@ -19,6 +19,8 @@ from renai.filename.builder import (
 from renai.models import ProcessingResult
 from renai.models.schemas import BookMetadata, ImageMetadata
 
+logger = logging.getLogger(__name__)
+
 
 class FileOrganizer:
     def __init__(self, root_dir: Path | None = None, *, max_filename_length: int):
@@ -66,14 +68,14 @@ class FileOrganizer:
                 )
 
             if folder_rule:
-                logging.debug("Applied folder rule %s to %s", folder_rule.path, file_path.name)
+                logger.debug("Applied folder rule %s to %s", folder_rule.path, file_path.name)
 
             target_dest = resolve_target_destination(
                 file_path, new_name, category=category, mode=mode, root_dir=self.root_dir
             )
 
             if file_path.resolve() == target_dest.resolve():
-                logging.debug(f"Skipping (Already organized/renamed): {file_path.name}")
+                logger.debug(f"Skipping (Already organized/renamed): {file_path.name}")
                 m_data = (
                     metadata.model_dump()
                     if hasattr(metadata, "model_dump")
@@ -124,7 +126,7 @@ class FileOrganizer:
 
                     final_path = await asyncio.to_thread(_do_move)
 
-            logging.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
+            logger.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
             m_data = (
                 metadata.model_dump() if hasattr(metadata, "model_dump") else cast("dict", metadata)
             )
@@ -141,7 +143,7 @@ class FileOrganizer:
             # Path-traversal and other boundary violations from the file_ops
             # security controls are reported verbatim so the security reason
             # stays visible in the processing result.
-            logging.error("Blocked file operation for %s: %s", file_path.name, e)
+            logger.error("Blocked file operation for %s: %s", file_path.name, e)
             return ProcessingResult(
                 success=False,
                 name=file_path.name,
@@ -150,7 +152,7 @@ class FileOrganizer:
             )
 
         except Exception as e:
-            logging.error(f"Renaming logic failed for {file_path.name}: {e}")
+            logger.error(f"Renaming logic failed for {file_path.name}: {e}")
             return ProcessingResult(
                 success=False,
                 name=file_path.name,

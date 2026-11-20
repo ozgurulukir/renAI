@@ -33,6 +33,8 @@ from renai.config.constants import (
 from renai.filename.builder import validate_filename_template
 from renai.models.schemas import BookMetadata, ImageMetadata
 
+logger = logging.getLogger(__name__)
+
 
 class FolderRule(BaseModel):
     """A per-folder rule restricting categories and/or overriding templates."""
@@ -134,7 +136,7 @@ def _validated_template(
         return None
     template = validate_filename_template(str(value), model_class)
     if template is None:
-        logging.warning("Folder rule %s: ignoring %s", rule_label, key)
+        logger.warning("Folder rule %s: ignoring %s", rule_label, key)
         return None
     return template
 
@@ -143,7 +145,7 @@ def _parse_rule(raw: Any, source: str, index: int) -> FolderRule | None:
     """Parse a single [[rules]] entry; invalid rules are skipped with a warning."""
     label = f"{source}#rules[{index}]"
     if not isinstance(raw, dict) or not raw.get("path"):
-        logging.warning("Folder rule %s skipped: missing 'path'", label)
+        logger.warning("Folder rule %s skipped: missing 'path'", label)
         return None
     try:
         rule = FolderRule(
@@ -161,7 +163,7 @@ def _parse_rule(raw: Any, source: str, index: int) -> FolderRule | None:
             ),
         )
     except Exception as e:
-        logging.warning("Folder rule %s skipped: %s", label, e)
+        logger.warning("Folder rule %s skipped: %s", label, e)
         return None
 
     if not (
@@ -171,7 +173,7 @@ def _parse_rule(raw: Any, source: str, index: int) -> FolderRule | None:
         or rule.vision_template
         or rule.image_template
     ):
-        logging.warning("Folder rule %s skipped: no categories or templates defined", label)
+        logger.warning("Folder rule %s skipped: no categories or templates defined", label)
         return None
     return rule
 
@@ -190,7 +192,7 @@ def _try_load_rules(path: Path, label: str) -> tuple[FolderRule, ...] | None:
         with path.open("rb") as f:
             data = tomllib.load(f)
     except Exception as e:
-        logging.warning("Could not load %s folder rules from %s: %s", label, path, e)
+        logger.warning("Could not load %s folder rules from %s: %s", label, path, e)
         return ()
 
     raw_rules = data.get("rules")

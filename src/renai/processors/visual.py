@@ -10,6 +10,8 @@ from ..engines.llm import LLMEngine
 from ..engines.render import PageRenderer, RenderedPage, create_page_renderer
 from ..models.schemas import BookMetadata, ImageMetadata
 
+logger = logging.getLogger(__name__)
+
 
 class VisualProcessor:
     """
@@ -59,7 +61,7 @@ class VisualProcessor:
                     await renderer.render_pages(file_path, [page_number], self.vision_dpi)
                 )
             except Exception as e:
-                logging.error(
+                logger.error(
                     f"Failed to render page {page_number + 1} of {file_path.name} "
                     f"for vision extraction, skipping it: {e}"
                 )
@@ -84,7 +86,7 @@ class VisualProcessor:
                 # Batch render failed; one corrupt page must not cost the
                 # whole sample -- degrade to per-page rendering, skipping
                 # the pages that fail.
-                logging.warning(
+                logger.warning(
                     f"Batch page render failed for {file_path.name}, retrying page by page: {e}"
                 )
                 rendered = await self._render_pages_skipping_failures(
@@ -101,7 +103,7 @@ class VisualProcessor:
             )
 
         except Exception as e:
-            logging.error(f"Vision extraction failed for PDF {file_path.name}: {e}")
+            logger.error(f"Vision extraction failed for PDF {file_path.name}: {e}")
             return None
 
     async def extract_metadata_from_image(
@@ -127,7 +129,7 @@ class VisualProcessor:
 
             return metadata
         except Exception as e:
-            logging.error(f"Vision extraction failed for image {file_path.name}: {e}")
+            logger.error(f"Vision extraction failed for image {file_path.name}: {e}")
             return None
 
     async def get_exif_date_async(self, file_path: Path) -> str | None:
@@ -150,7 +152,7 @@ class VisualProcessor:
 
             return await asyncio.to_thread(_get_exif)
         except Exception as e:
-            logging.debug(f"Failed to extract EXIF data from {file_path.name}: {e}")
+            logger.debug(f"Failed to extract EXIF data from {file_path.name}: {e}")
         return None
 
     def _select_pages(self, total_pages: int) -> list[int]:
@@ -159,19 +161,3 @@ class VisualProcessor:
         if total_pages <= max_pages:
             return list(range(total_pages))
         return list(range(max_pages))
-
-    async def _convert_pdf_page_to_image_async(
-        self, file_path: Path, page_number: int = 0, dpi: int | None = None
-    ) -> bytes | None:
-        """Convert a PDF page to optimized image bytes asynchronously."""
-        if dpi is None:
-            dpi = self.vision_dpi
-
-        try:
-            renderer = self._make_renderer()
-            rendered = await renderer.render_pages(file_path, [page_number], dpi)
-            page = rendered.get(page_number)
-            return page.encoded if page else None
-        except Exception as e:
-            logging.error(f"Failed to convert PDF page to image for {file_path.name}: {e}")
-            return None
