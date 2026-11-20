@@ -152,15 +152,21 @@ def test_setup_engines_reads_config_not_settings(monkeypatch):
         def __init__(self, **kwargs):
             captured["processor"] = kwargs
 
+    class fake_rate_limiter:
+        def __init__(self, **kwargs):
+            captured["rate_limiter"] = kwargs
+
     monkeypatch.setattr(orch, "OCREngine", fake_ocr_engine)
     monkeypatch.setattr(orch, "LLMEngine", fake_llm_engine)
     monkeypatch.setattr(orch, "BookProcessor", fake_processor)
-    monkeypatch.setattr(orch, "AsyncRateLimiter", MagicMock())
+    monkeypatch.setattr(orch, "AsyncRateLimiter", fake_rate_limiter)
     monkeypatch.setattr(orch, "PROVIDERS", {"p": MagicMock(api_key="k", base_url="u")})
     monkeypatch.setattr(orch, "get_api_key", lambda p: "k")
     monkeypatch.setattr(orch, "get_effective_model", lambda p: "m")
-    # Sentinel proving setup_engines does not consult these globals:
+    # Sentinels proving setup_engines does not consult these globals:
     monkeypatch.setattr(orch.app_settings, "ocr_workers", 999, raising=False)
+    monkeypatch.setattr(orch.app_settings, "llm_max_tokens", 999, raising=False)
+    monkeypatch.setattr(orch.app_settings, "llm_rpm_limit", 999, raising=False)
 
     import asyncio
 
@@ -171,11 +177,25 @@ def test_setup_engines_reads_config_not_settings(monkeypatch):
     assert ocr["dpi"] == 160
     assert ocr["ocr_lang"] == "eng"
     assert ocr["subprocess_timeout"] == 90
+    assert captured["rate_limiter"] == {"rpm": 30}
     policy = captured["llm"]["call_policy"]
     assert policy.max_tokens == 2048
     assert policy.temperature == 0.1
     assert policy.timeout == 240.0
     assert policy.refine_mode == "never"
+
+
+def test_llm_rpm_limit_zero_means_unlimited(monkeypatch):
+    """llm_rpm_limit=0 (documented 'unlimited') must survive from_app_settings.
+
+    ProcessingConfig briefly used ge=1, which raised ValidationError at every
+    `renai process` startup for users with RENAI_LLM_RPM_LIMIT=0.
+    """
+    monkeypatch.setattr(app_settings, "llm_rpm_limit", 0)
+
+    config = ProcessingConfig.from_app_settings()
+
+    assert config.llm_rpm_limit == 0
 
 
 def test_from_app_settings_renames_exif_override():

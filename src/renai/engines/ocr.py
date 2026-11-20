@@ -436,7 +436,11 @@ class OCREngine:
             # Factory picks the backend; this flow only orchestrates its own
             # sampling + DPI policy (bulk @ cfg dpi, per-page @ dynamic dpi).
             mutool_renderer = (
-                create_page_renderer(use_mutool=True, mutool_path=self.mutool_path)
+                create_page_renderer(
+                    use_mutool=True,
+                    mutool_path=self.mutool_path,
+                    subprocess_timeout=self.subprocess_timeout,
+                )
                 if use_mutool
                 else None
             )

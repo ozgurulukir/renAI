@@ -155,8 +155,13 @@ class _MutoolPageRenderer:
     whose image failed to load are cleaned up here and absent from results.
     """
 
-    def __init__(self, mutool_path: str):
+    def __init__(self, mutool_path: str, subprocess_timeout: int | None = None):
         self._mutool_path = mutool_path
+        # Resolve from settings once at construction; callers thread their own
+        # resolved value (same no-call-time-globals contract as OCREngine).
+        self._subprocess_timeout = (
+            subprocess_timeout if subprocess_timeout is not None else get_subprocess_timeout()
+        )
 
     async def _cleanup_batch(self, batch_id: str) -> None:
         """Remove partially written temp PNGs after a failed render call.
@@ -240,7 +245,7 @@ class _MutoolPageRenderer:
 
             try:
                 _stdout, stderr = await asyncio.wait_for(
-                    process.communicate(), timeout=get_subprocess_timeout()
+                    process.communicate(), timeout=self._subprocess_timeout
                 )
                 if process.returncode != 0:
                     logger.error(
@@ -282,16 +287,18 @@ def create_page_renderer(
     doc: pymupdf.Document | None = None,
     use_mutool: bool = False,
     mutool_path: str = "mutool",
+    subprocess_timeout: int | None = None,
     image_max_size: int | None = None,
     image_quality: int | None = None,
 ) -> PageRenderer:
     """Factory for the page-rendering seam; callers never learn the backend.
 
-    - ``use_mutool=True`` -> mutool subprocess backend (bulk semantics).
+    - ``use_mutool=True`` -> mutool subprocess backend (bulk semantics);
+      ``subprocess_timeout`` overrides the settings-resolved default.
     - otherwise -> pymupdf backend, optionally with vision JPEG knobs.
     """
     if use_mutool:
-        return _MutoolPageRenderer(mutool_path=mutool_path)
+        return _MutoolPageRenderer(mutool_path=mutool_path, subprocess_timeout=subprocess_timeout)
     return _PymupdfPageRenderer(doc=doc, image_max_size=image_max_size, image_quality=image_quality)
 
 

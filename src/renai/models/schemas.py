@@ -58,11 +58,11 @@ class ProcessingConfig(BaseModel):
     ocr_head_pages: int = Field(default=5, ge=1, le=50)
     ocr_tail_pages: int = Field(default=3, ge=1, le=50)
     ocr_psm: int = Field(default=3, ge=0, le=13)
-    ocr_lang: str = "tur+eng"
+    ocr_lang: str = Field(default="tur+eng", min_length=1)
     subprocess_timeout: int = Field(default=60, ge=1)
 
     # LLM transport/policy knobs (settings-backed defaults via from_app_settings)
-    llm_rpm_limit: int = Field(default=60, ge=1)
+    llm_rpm_limit: int = Field(default=60, ge=0)  # 0 = unlimited (AsyncRateLimiter contract)
     llm_max_tokens: int = Field(default=1024, ge=256)
     llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     llm_temperature_retry: float = Field(default=0.5, ge=0.0, le=2.0)
@@ -70,8 +70,8 @@ class ProcessingConfig(BaseModel):
     refine_metadata: Literal["auto", "always", "never"] = "auto"
     llm_timeout: float = Field(default=120.0, gt=0)
     llm_transport_max_attempts: int = Field(default=5, ge=1)
-    llm_backoff_initial: float = Field(default=2.0, ge=0)
-    llm_backoff_max: float = Field(default=60.0, ge=0)
+    llm_backoff_initial: float = Field(default=2.0, gt=0)
+    llm_backoff_max: float = Field(default=60.0, gt=0)
 
     @classmethod
     def from_app_settings(cls, **overrides: Any) -> "ProcessingConfig":

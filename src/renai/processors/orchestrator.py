@@ -421,10 +421,11 @@ async def run_pipeline(
     """Core processing pipeline orchestration.
 
     Headless-friendly: ``config`` may be a plain ``ProcessingConfig`` — there is
-    no app_settings dependency here. Settings-derived values (including
-    ``max_filename_length``) are populated exclusively by
-    ``ProcessingConfig.from_app_settings``; callers wanting settings defaults
-    build their config through that classmethod.
+    no app_settings dependency for engine knobs here (process-wide concerns —
+    provider registry, API keys, benchmark sample count — remain). Settings-
+    derived values (including ``max_filename_length``) are populated
+    exclusively by ``ProcessingConfig.from_app_settings``; callers wanting
+    settings defaults build their config through that classmethod.
     """
     if config is None:
         config = ProcessingConfig()
