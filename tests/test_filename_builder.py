@@ -3,6 +3,7 @@ from renai.filename.builder import (
     build_image_filename,
     build_vision_filename,
     extract_category_from_metadata,
+    render_filename_template,
 )
 from renai.models.schemas import BookMetadata, ImageMetadata
 
@@ -352,3 +353,59 @@ class TestSeriesAndVolumeInFilename:
         assert "10.1234" not in result
         assert "Jane Doe" not in result
         assert "464" not in result
+
+
+class TestFilenameLengthAndConsistencyFixes:
+    """Tests for #232 and #233 (length cap with extension, validation, year bounds, lang)."""
+
+    def test_total_filename_never_exceeds_max_length(self):
+        long_title = "A" * 100
+        book = BookMetadata(
+            title=long_title, author="Author", year=2024, language="en", category="Other"
+        )
+        img = ImageMetadata(description=long_title, language="de", category="Photo")
+
+        book_name = build_book_filename(book, ".pdf", max_filename_length=50)
+        assert len(book_name) <= 50
+        assert book_name.endswith(".pdf")
+
+        vision_name = build_vision_filename(book, ".pdf", max_filename_length=50)
+        assert len(vision_name) <= 50
+        assert vision_name.endswith(" -- (en).pdf")
+
+        img_name = build_image_filename(img, ".jpg", max_filename_length=50)
+        assert len(img_name) <= 50
+        assert img_name.endswith(" -- (de).jpg")
+
+        tmpl_name = render_filename_template("{title}", book, ".epub", max_filename_length=50)
+        assert tmpl_name is not None
+        assert len(tmpl_name) <= 50
+        assert tmpl_name.endswith(".epub")
+
+    def test_unknown_document_fallback_respects_max_length_and_sanitizes_ext(self):
+        empty_book = BookMetadata(language="en", category="Other")
+        result = build_book_filename(empty_book, ".p<d>f", max_filename_length=15)
+        assert "<" not in result and ">" not in result
+        assert len(result) <= 15
+
+    def test_render_filename_template_strips_duplicate_extension(self):
+        book = BookMetadata(title="My Book", language="en", category="Other")
+        result = render_filename_template("{title}.pdf", book, ".pdf", max_filename_length=100)
+        assert result == "My Book.pdf"
+
+    def test_build_vision_filename_applies_year_bounds(self):
+        out_of_range = BookMetadata.model_construct(
+            title="Future", year=3000, language="en", category="Other"
+        )
+        result = build_vision_filename(out_of_range, ".pdf", max_filename_length=100)
+        assert "(3000)" not in result
+
+    def test_lang_suffix_preserves_non_turkish_iso_codes(self):
+        img = ImageMetadata(description="Berlin", language="de", category="Photo")
+        assert build_image_filename(img, ".png", 100) == "Berlin -- (de).png"
+
+    def test_validate_filename_template_rejects_empty_static_output(self):
+        from renai.filename.builder import validate_filename_template
+
+        assert validate_filename_template(" -- () [] ", BookMetadata) is None
+        assert validate_filename_template("{title} -- {author}", BookMetadata) is not None

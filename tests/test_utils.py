@@ -98,8 +98,15 @@ def test_generate_cache_key():
         # Windows reserved characters: < > : " / \ | ? *
         (
             'test<one>:two"three/four\\five|six?seven*eight',
-            "testonetwothreefourfivesixseveneight",
+            "test one two three four five six seven eight",
         ),
+        # Windows reserved device names
+        ("CON", "unnamed_CON"),
+        ("prn.txt", "unnamed_prn.txt"),
+        ("AUX", "unnamed_AUX"),
+        ("nul.pdf", "unnamed_nul.pdf"),
+        ("COM1", "unnamed_COM1"),
+        ("lpt9.log", "unnamed_lpt9.log"),
         # Control and non-printable characters
         ("file\nname\r\t.txt", "filename.txt"),
         ("file\x00name\x1f.txt", "filename.txt"),
