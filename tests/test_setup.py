@@ -208,7 +208,11 @@ def test_validate_api_key_other_exception():
 def test_validate_api_key_wrapper_exception():
     from renai.processors.setup_steps import _validate_api_key
 
-    with patch("asyncio.run", side_effect=RuntimeError("Loop failure")):
+    def _close_coro_and_raise(coro):
+        coro.close()
+        raise RuntimeError("Loop failure")
+
+    with patch("asyncio.run", side_effect=_close_coro_and_raise):
         res, msg = _validate_api_key("https://api.openai.com/v1", "key-with-wrapper-error")
         assert res is False
         assert "Loop failure" in msg
