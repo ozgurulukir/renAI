@@ -475,7 +475,7 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
         catalog = {}
         providers_catalog = {}
 
-        def is_vision_supported(_model: str) -> bool | None:
+        def is_vision_supported(model_name: str) -> bool | None:
             """Vision support is unknown when the catalog is unavailable."""
             return None
 
