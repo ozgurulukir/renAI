@@ -66,9 +66,10 @@ uv run pyright src/renai
 
 If you add a new feature, please update:
 
-- `README.md` (and `okubeni.md` for Turkish localization if possible).
+- `README.md` for user-facing changes.
+- `docs/` pages for detailed reference material, linked from `docs/index.md`.
 - `CHANGELOG.md` following the [Keep a Changelog](https://keepachangelog.com/) format.
 
 ---
 
-*"Good code is a love letter to your future self. Clarity and kindness come before cleverness."*
+> "Good code is a love letter to your future self. Clarity and kindness come before cleverness."

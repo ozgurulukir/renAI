@@ -2,7 +2,7 @@
 
 `renAI` is a Python tool that automatically renames and organizes your digital files using Large Language Models (LLMs) and Optical Character Recognition (OCR). It extracts meaningful metadata from your files using either text extraction or multimodal AI vision, creating consistent, searchable filenames.
 
-Last updated: 2026-10-05
+Last updated: 2026-11-24
 
 ---
 
@@ -461,7 +461,7 @@ models = ["gpt-4o", "gpt-4o-mini"]
 
 ### Cache Management
 
-The cache is automatically managed based on file SHA256 hashes. Metadata cache entries are scoped by provider-model pairs, so switching providers or models automatically uses a different cache entry.
+The cache is automatically managed based on file SHA256 hashes. Metadata rows record which engine produced them; changing that engine triggers re-extraction and overwrites the row. See the [Caching Strategy](docs/CACHING_STRATEGY.md) reference for details.
 
 ```bash
 # Manually clear all cache (text, metadata, and ocr_debug)
@@ -557,7 +557,7 @@ When using `--mode organize`:
 1. **Regular Backups**: Always keep a backup of your original files
 2. **Start Small**: Test with 5-10 files first to verify quality
 3. **Monitor Costs**: Set up usage alerts with your LLM provider
-4. **Use Caching**: Avoid `--update-metadata` unless necessary (cache is automatically scoped by provider/model)
+4. **Use Caching**: Avoid `--update-metadata` unless necessary (cached rows are validated against the engine that produced them)
 5. **Choose OCR Wisely**: Use `--ocr-enhanced --use-mutool` only for scanned documents
 6. **Vision for PDFs**: Use `--fallback-mode vision` for text-based PDFs (faster, more accurate)
 7. **Compare Providers**: OpenRouter often offers competitive pricing
@@ -565,20 +565,20 @@ When using `--mode organize`:
 
 ### Caching Strategy
 
-renAI uses an intelligent caching system backed by SQLite WAL (Write-Ahead Logging) mode for improved performance and reliability. Metadata cache entries are scoped by provider-model pairs, so switching providers or models automatically uses a different cache entry.
+renAI uses a two-layer cache backed by SQLite WAL (Write-Ahead Logging) mode for concurrent-safe, reliable caching.
 
-| Cache Type         | Key Components                                   | Invalidation                                                                     |
-| :----------------- | :----------------------------------------------- | :------------------------------------------------------------------------------- |
-| **Text Cache**     | File hash + OCR settings                         | **File Content**: Cache is invalidated when the SHA256 hash of the file changes. |
-| **Metadata Cache** | File hash + provider + model + schema validation | When file content, provider, model, or schema changes                            |
+| Cache Type         | Key Components                                         | Invalidation                                                                                       |
+| :----------------- | :----------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
+| **Text Cache**     | File hash + OCR/mutool flags                           | File content or extraction settings change                                                          |
+| **Metadata Cache** | Document/image mode + file hash + optional `_vision` suffix | File content changes, producing-engine identity changes, folder-rule signature changes, or `--update-metadata` |
 
 **How it works:**
 
-- Each file is identified by its SHA256 hash
-- Metadata cache keys include a hash of the provider-model pair
-- Switching providers or models automatically invalidates old cache
-- Use `--update-metadata` to force fresh extraction regardless of cache
-- SQLite WAL mode ensures concurrent reads/writes are safe and performant
+- Each file is identified by its SHA256 hash.
+- Metadata keys are identity-free: the engine that actually _produced_ a record is stored in the row and validated on read. A provider/model change re-extracts and overwrites the same row rather than creating a separate entry.
+- Under `--fallback-mode vision`, PDFs use a separate `_vision` namespace, so text-based and vision-based results do not overwrite each other.
+- Use `--update-metadata` to force fresh extraction regardless of cache.
+- SQLite WAL mode keeps concurrent reads/writes safe and performant.
 
 **Example:**
 
@@ -586,15 +586,17 @@ renAI uses an intelligent caching system backed by SQLite WAL (Write-Ahead Loggi
 # First run with DeepInfra - caches metadata
 renai process "C:/Books" --provider deepinfra
 
-# Same files with OpenRouter - NEW cache entry (old one preserved)
+# Same files with OpenRouter - producing engine changed, so re-extract and overwrite
 renai process "C:/Books" --provider openrouter
 
 # Same provider/model - uses cached metadata
-renai process "C:/Books" --provider deepinfra
+renai process "C:/Books" --provider openrouter
 
 # Force refresh - bypasses cache
-renai process "C:/Books" --provider deepinfra --update-metadata
+renai process "C:/Books" --provider openrouter --update-metadata
 ```
+
+For key formats, provenance validation, legacy-row handling, and troubleshooting, see the [Caching Strategy](docs/CACHING_STRATEGY.md) reference.
 
 **Cache Location:** Managed via `platformdirs` user data directory (e.g., `~/.local/share/renAI/Cache` on Linux, `~/Library/Application Support/renAI/Cache` on macOS, `%LOCALAPPDATA%\renAI\Cache` on Windows). Internally uses SQLite WAL mode for concurrent-safe, high-performance caching.
 
@@ -613,13 +615,7 @@ For detailed privacy guidance, data retention policies, and compliance considera
 
 ### Cost Estimation
 
-| Files  | Est. Cost (~$0.001/file) |
-| :----- | :----------------------- |
-| 100    | $0.10                    |
-| 1,000  | $1.00                    |
-| 10,000 | $10.00                   |
-
-Actual costs vary by provider and model. Vision mode may have different pricing (image tokens vs text tokens).
+Costs depend on the provider, model, file count, and whether vision fallback is used (image tokens are billed differently from text tokens). Check your provider's current pricing before large runs; use `--benchmark` and `--dry-run` to estimate workload, and set usage alerts with your provider.
 
 ---
 
@@ -689,8 +685,8 @@ Behavior notes:
 - File types without a template in the rule keep the built-in pattern.
 - Templates with unknown tokens are ignored at load time (a warning is logged).
 - Rule categories fully replace the global list for that folder; if the model still returns an out-of-list category, it is remapped to `Other`/`Diğer` when allowed, otherwise to the first category in the rule.
-- Metadata caches are keyed per file/provider/model, not per rule: a category cached while a rule was active keeps its restricted value after the rule is removed or relaxed. Re-process the affected files with `--update-metadata` (or run `renai cache`) to refresh them.
-- Rule loading is layered: the first config file that *exists* wins (user → default → package). A user file that exists but defines no valid rules disables packaged defaults; only a missing file lets the next layer be consulted.
+- Metadata rows carry a rule signature: changing a rule's categories or templates invalidates its stale rows, so affected files are re-extracted automatically. Legacy rows without a signature are treated as global and re-extracted under rule-scoped runs.
+- Rule loading is layered: the first config file that _exists_ wins (user → default → package). A user file that exists but defines no valid rules disables packaged defaults; only a missing file lets the next layer be consulted.
 
 ### Command Options
 
@@ -788,65 +784,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **Issues**: Open an issue on GitHub
 - **Discussions**: Use GitHub Discussions
 - **Email**: Contact maintainers
-
----
-
-## 🖼️ Advanced Vision Workflows
-
-Vision mode allows renAI to process PDFs and images without text extraction, using multimodal AI models that can "see" document content.
-
-### Direct Image Renaming
-
-Rename image files (photos, screenshots) using AI:
-
-```bash
-renai process "C:/Photos" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
-```
-
-This will analyze each image and rename it based on its visual content.
-
-### Processing Mixed Folders Strategy
-
-Process folders containing both PDFs and images:
-
-```bash
-renai process "C:/Documents" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images
-```
-
-This processes:
-
-- PDFs with vision model (no OCR needed)
-- Images with vision model
-
-### EXIF Date Support
-
-When processing images, you can include EXIF date information in filenames:
-
-```bash
-renai process "C:/Photos" --mode rename --fallback-mode vision --provider deepinfra --model meta-llama/Llama-3.2-90B-Vision-Instruct --rename-images --exif
-```
-
-This adds the photo date from EXIF metadata to the filename when available.
-
-### Top-Tier Vision Model Options
-
-| Model                                      | Provider   | Notes                             |
-| :----------------------------------------- | :--------- | :-------------------------------- |
-| `meta-llama/Llama-3.2-90B-Vision-Instruct` | DeepInfra  | Best balance of quality and speed |
-| `meta-llama/Llama-3.2-11B-Vision-Instruct` | DeepInfra  | Faster, good for large batches    |
-| `openai/gpt-4o`                            | OpenAI     | Highest quality, more expensive   |
-| `google/gemini-1.5-pro`                    | OpenRouter | Good alternative                  |
-
-### Vision Mode Comparison with OCR Engine
-
-| Feature  | Vision Mode                 | OCR Mode            |
-| :------- | :-------------------------- | :------------------ |
-| Speed    | Faster (no text extraction) | Slower              |
-| Accuracy | Depends on model            | Good for clear text |
-| Cost     | API calls per file          | API calls per file  |
-| Best for | Scanned PDFs, images        | Text-based PDFs     |
-
----
 
 ---
 

@@ -42,61 +42,55 @@ The text cache key is generated using:
 The metadata cache key is generated using:
 
 ```text
-{mode}_{file_hash}_{provider_model_hash}[_vision].json
+{mode}_{file_hash}[_vision].json
 ```
 
-| Component             | Description                             | Example        |
-| :-------------------- | :-------------------------------------- | :------------- |
-| `file_hash`           | SHA256 hash of file content             | `abc123def456` |
-| `provider_model_hash` | Hash of provider:model pair             | `a1b2c3d4`     |
-| `_vision`             | Optional suffix for Vision mode results | `_vision`      |
+| Component   | Description                                                                                      | Example        |
+| :---------- | :----------------------------------------------------------------------------------------------- | :------------- |
+| `mode`      | `doc` for documents, `img` for vision-renamed images                                              | `doc`          |
+| `file_hash` | SHA256 hash of file content                                                                      | `abc123def456` |
+| `_vision`   | Present for vision-renamed images and PDFs processed under `--fallback-mode vision`              | `_vision`      |
 
 **Examples:**
 
-- `doc_abc123def456_a1b2c3d4.json` - Standard metadata cache for document
-- `img_abc123def456_a1b2c3d4_vision.json` - Vision-based metadata cache for image
-- `doc_abc123def456_e5f6g7h8_vision.json` - Vision-based fallback cache for document
+- `doc_abc123def456.json` - Document metadata extracted through the text path
+- `doc_abc123def456_vision.json` - PDF processed under `--fallback-mode vision`
+- `img_abc123def456_vision.json` - Vision-renamed image
 
-> **Where the key lives:** since v2.2.1 these strings are the `cache_key`
-> primary keys of the `text_cache` / `metadata_cache` tables inside
-> `cache.db` (the primary store). The `.json`/`.txt` names above only appear
-> on disk as **legacy fallback files** (read during migration; see
-> [Cache Storage](#cache-storage)).
+> **Provider/model are not part of the key.** Since v2.4.0 the identity of the engine
+> that actually *produced* a record is stored inside the row (`_prod_provider` /
+> `_prod_model`) and validated on read. The provider/model pair still rides the
+> `MetadataCacheKey` struct so rows written by older versions — whose keys embedded a
+> provider-model hash — remain readable. See [Provenance Validation](#provenance-validation).
+>
+> **Where the key lives:** these strings are the `cache_key` primary keys of the
+> `text_cache` / `metadata_cache` tables inside `cache.db` (the primary store). The
+> `.json`/`.txt` names above only appear on disk as **legacy fallback files** (read
+> during migration; see [Cache Storage](#cache-storage)).
 
 ---
 
-## Provider-Model Awareness
+## Provenance Validation
 
 ### Why It Matters
 
-Different LLM providers and models can produce different metadata for the same document. Using cached metadata from one provider/model with another would produce incorrect results.
+Different LLM providers and models can produce different metadata for the same document. Serving a record produced by one engine in a run configured for another would give inconsistent results.
 
 ### Implementation
 
-The cache key includes a hash of the provider-model pair:
+Current rows are keyed by file and mode only. The engine that actually produced the record — which may differ from the engine the cache namespace was requested for — is persisted alongside it:
 
-```python
-def get_provider_model_key(provider: str, model: str) -> str:
-    """Generate a cache key for provider-model pairing."""
-    combined = "|".join([provider, model])
-    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
-```
+- `_prod_provider` / `_prod_model`: producing engine identity, validated on read.
+- `_is_vision_doc`: whether the record came from the vision path, so cached runs replay the same filename template cold and warm.
+- `_rule_sig`: the folder-rule category universe the record was extracted under.
 
-### Cache Validation
+On read, a row is a hit only when its producing identity matches the engine that would produce the record for this request **and** its rule signature matches the current one. A mismatch logs the reason and re-extracts under the same key, overwriting the row.
 
-When reading cached metadata, renAI validates that the cached data was generated with the same provider and model:
+This identity-free key is what lets a text-produced record for a PDF survive a vision-model change under `--fallback vision`, while a change to the text model that produced it correctly invalidates it.
 
-```python
-cached_provider = cache_data.get("_provider", "")
-cached_model = cache_data.get("_model", "")
+### Legacy Rows
 
-if cached_provider == self.provider and cached_model == self.model:
-    # Valid cache - use it
-    book_data = cache_data
-else:
-    # Provider or model changed - invalidate cache
-    logging.info(f"Cache invalidated...")
-```
+Rows written before v2.4.0 carry no producing-identity marker. Their `provider` / `model` columns are compared against the requested pair, and mismatches are deleted — the historical compare-and-invalidate behavior. The old key format (`{mode}_{file_hash}_{provider_model_hash}[_vision].json`) is reconstructed from `MetadataCacheKey` solely to find those rows.
 
 ---
 
@@ -106,10 +100,12 @@ else:
 
 Cache entries are automatically invalidated when:
 
-| Cache Type     | Invalidated When                                                                                |
-| :------------- | :---------------------------------------------------------------------------------------------- |
-| Text Cache     | File content changes, OCR mode changes (enhanced/basic), mutool usage changes                   |
-| Metadata Cache | File content changes, provider changes, model changes, processing mode changes (Text vs Vision) |
+| Cache Type     | Invalidated When                                                                                                                                                       |
+| :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Text Cache     | File content changes, OCR mode changes (enhanced/basic), mutool usage changes                                                                                          |
+| Metadata Cache | File content changes, producing-engine identity changes, folder-rule signature changes, namespace changes (`doc`/`img` or `_vision`), or `--update-metadata` is set      |
+
+For legacy rows without a producing-identity marker, a requested provider/model change still invalidates the record. Current rows are overwritten in place rather than accumulating one entry per provider/model pair.
 
 ### Cache Management
 
@@ -172,32 +168,34 @@ renAI writes to SQLite first and falls back to legacy files only when SQLite is 
 
 ### Scenario 1: Switching Providers
 
+The key is identity-free, so a provider change re-extracts and **overwrites the same row** rather than creating a second entry:
+
 ```bash
-# First run with DeepInfra - caches metadata
+# First run with DeepInfra - caches the record its engine produced
 $ renai process "C:/Books" --provider deepinfra
-[INFO] Cached metadata for book.pdf (provider: deepinfra, model: llama-3.3-70b)
+[INFO] Cached metadata for book.pdf (produced_by=deepinfra/llama-3.3-70b)
 
-# Same files with OpenRouter - NEW cache entry created
+# Same file with OpenRouter - producing engine changed, so re-extract
 $ renai process "C:/Books" --provider openrouter
-[INFO] Cache invalidated for book.pdf (was deepinfra, now openrouter)
-[INFO] Cached metadata for book.pdf (provider: openrouter, model: gemini-2.0-flash)
+[INFO] Metadata cache producing-engine mismatch; re-extracting (file=book.pdf, produced_by=deepinfra/llama-3.3-70b, expected=openrouter/gemini-2.0-flash)
+[INFO] Cached metadata for book.pdf (produced_by=openrouter/gemini-2.0-flash)
 
-# Same provider - uses cached metadata
-$ renai process "C:/Books" --provider deepinfra
-[INFO] Using cached metadata for book.pdf (provider: deepinfra, model: llama-3.3-70b)
+# Same provider/model again - hits the row just written
+$ renai process "C:/Books" --provider openrouter
+[INFO] Metadata cache hit (file=book.pdf, produced_by=openrouter/gemini-2.0-flash)
 ```
 
 ### Scenario 2: Switching Models
 
 ```bash
-# First run with default model
+# First run with the default model
 $ renai process "C:/Books" --provider openai
-[INFO] Cached metadata for book.pdf (provider: openai, model: gpt-4o-mini)
+[INFO] Cached metadata for book.pdf (produced_by=openai/gpt-4o-mini)
 
-# Same provider, different model - NEW cache entry
+# Same provider, different model - mismatch, re-extract, overwrite
 $ renai process "C:/Books" --provider openai --model gpt-4o
-[INFO] Cache invalidated for book.pdf (was gpt-4o-mini, now gpt-4o)
-[INFO] Cached metadata for book.pdf (provider: openai, model: gpt-4o)
+[INFO] Metadata cache producing-engine mismatch; re-extracting (file=book.pdf, produced_by=openai/gpt-4o-mini, expected=openai/gpt-4o)
+[INFO] Cached metadata for book.pdf (produced_by=openai/gpt-4o)
 ```
 
 ### Scenario 3: Local Inference
@@ -207,75 +205,78 @@ $ renai process "C:/Books" --provider openai --model gpt-4o
 $ export CUSTOM_API_BASE_URL="http://localhost:11434/v1"
 $ export CUSTOM_MODEL="llama3"
 $ renai process "C:/Books" --provider custom
-[INFO] Cached metadata for book.pdf (provider: custom, model: llama3)
+[INFO] Cached metadata for book.pdf (produced_by=custom/llama3)
 
 # Same local model - uses cache
 $ renai process "C:/Books" --provider custom
-[INFO] Using cached metadata for book.pdf (provider: custom, model: llama3)
+[INFO] Metadata cache hit (file=book.pdf, produced_by=custom/llama3)
 
-# Different local model - NEW cache entry
+# Different local model - mismatch, re-extract, overwrite
 $ renai process "C:/Books" --provider custom --model mistral
-[INFO] Cache invalidated for book.pdf (was llama3, now mistral)
+[INFO] Metadata cache producing-engine mismatch; re-extracting (file=book.pdf, produced_by=custom/llama3, expected=custom/mistral)
 ```
 
 ### Scenario 4: Vision Mode (PDFs)
 
-Vision mode uses a separate cache entry for PDF files to allow switching between text-based and image-based extraction without collision:
+Vision mode uses a separate `_vision` namespace for PDFs so text-based and image-based extractions do not overwrite each other:
 
 ```bash
-# Process with vision model (image-based fallback)
+# Process with vision fallback - uses doc_<hash>_vision.json
 $ renai process "C:/Books" --fallback-mode vision --provider openrouter --model openai/gpt-4o
 [INFO] Using VISION mode - falls back to image sampling for PDFs
-[INFO] Cached VISION metadata for book.pdf (abc123_pmhash_vision.json)
+[INFO] Cached metadata for book.pdf (doc_<hash>_vision.json)
 
-# Regular mode with same files - uses standard cache
+# Regular text run - uses doc_<hash>.json
 $ renai process "C:/Books" --provider openrouter --model openai/gpt-4o
-[INFO] Using TEXT/OCR mode - extracting text
-[INFO] Cached standard metadata for book.pdf (abc123_pmhash.json)
+[INFO] Cached metadata for book.pdf (doc_<hash>.json)
 ```
 
 > [!NOTE]
-> The `_vision` suffix is applied when vision mode is active and the file is a PDF. This ensures that a high-quality vision extraction doesn't overwrite a high-quality text extraction, or vice versa.
+> The `_vision` suffix is applied when vision mode is active and the file is a PDF. Within that namespace, a PDF whose text extraction succeeds is still produced by the text engine: changing only the vision model leaves that record valid, while changing the text model invalidates it. A record actually produced by vision behaves the other way around.
 
 ### Scenario 5: Image Renaming
 
-Image files (JPG, PNG, etc.) are processed via the unified `VisualProcessor` and share the vision-aware cache logic:
+Image files (JPG, PNG, etc.) are processed via the unified `VisualProcessor` and use the `img` + `_vision` namespace:
 
 ```bash
 # Rename images with vision model
 $ renai process "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
 [INFO] Processing image photo.jpg with vision model
-[INFO] Cached vision metadata for photo.jpg (img_hash_pmhash_vision.json)
+[INFO] Cached metadata for photo.jpg (img_<hash>_vision.json, produced_by=openrouter/openai/gpt-4o)
 
 # Same images - uses cached metadata
 $ renai process "C:/Photos" --rename-images --provider openrouter --model openai/gpt-4o
-[INFO] Using cached vision metadata for photo.jpg
+[INFO] Metadata cache hit (file=photo.jpg, produced_by=openrouter/openai/gpt-4o)
 ```
 
 ---
 
 ## API Reference
 
-### Utility Functions
+### Cache Keys and Records (`renai.cache.manager`)
 
 ```python
-from renai.utils import (
-    get_file_hash,                    # Get SHA256 hash of a file
-    get_provider_model_key,           # Generate provider-model hash
-)
 from renai.cache.manager import (
-    get_metadata_cache_path,          # Get metadata cache path
-    get_text_cache_path,              # Get text cache path
+    CacheSource,         # Persisted provenance returned alongside a metadata hit
+    MetadataCacheKey,    # Structured metadata key (file_hash, provider, model, mode, use_vision)
+    TextCacheKey,        # Structured text key (file_hash, ocr, mutool)
+    clear_all_cache,     # Clear text, metadata and ocr_debug caches
+    read_metadata_cache, # Returns (metadata | None, CacheSource | None)
+    read_text_cache,
+    write_metadata_cache,
+    write_text_cache,
 )
 ```
 
-### BookProcessor Methods
+`MetadataCacheKey.provider` / `.model` do not select or validate current rows; they exist so pre-provenance rows can still be found and validated. `CacheSource` carries `is_vision_doc`, `rule_signature`, `produced_by_provider`, and `produced_by_model`.
+
+### Cache Middleware (`renai.cache.middleware`)
 
 ```python
-class BookProcessor:
-    def update_provider_model(self, provider: str, model: str) -> None:
-        """Update provider and model for cache key generation."""
+from renai.cache.middleware import MetadataRequest, with_metadata_cache
 ```
+
+`MetadataRequest` is the typed contract that carries both engine identities and the folder-rule signature into the `@with_metadata_cache()` decorator. `BookProcessor._build_metadata_request` is the single place that builds it.
 
 ---
 
@@ -292,12 +293,12 @@ class BookProcessor:
 
 Expected cache hit rates:
 
-| Scenario                        |     Expected Hit Rate     |
-| :------------------------------ | :-----------------------: |
-| Same files, same provider/model |           ~100%           |
-| Same files, different provider  | ~0% (new entries created) |
-| Files with minor changes        |     ~0% (new hashes)      |
-| Re-processing after cache clear |            ~0%            |
+| Scenario                          |          Expected Hit Rate           |
+| :-------------------------------- | :----------------------------------: |
+| Same files, same producing engine |                ~100%                 |
+| Same files, different provider    | ~0% (re-extract and overwrite row)   |
+| Files with minor changes          |         ~0% (new hashes)             |
+| Re-processing after cache clear   |                 ~0%                  |
 
 ---
 
@@ -308,9 +309,12 @@ Expected cache hit rates:
 If cache is not being used:
 
 1. Check if `--update-metadata` flag is set
-2. Verify provider/model match between runs
-3. Check if file content has changed (new hash)
-4. Review logs for cache invalidation messages
+2. Check that the producing engine is unchanged (look for `producing-engine mismatch` in the logs)
+3. Check that the folder-rule signature is unchanged (`rule-signature mismatch` in the logs)
+4. Check if file content has changed (new hash)
+5. Review logs for cache invalidation messages
+
+If `cache.db` is corrupt or unreadable, renAI logs an error naming that file and skips the legacy JSON fallback rather than silently re-extracting at full cost. Delete or rename `cache.db` to rebuild the cache.
 
 To clean up old cache entries, use the built-in CLI command:
 
@@ -337,7 +341,9 @@ renai cache
 | 2026-04-08 | Transitioned to Typer CLI with centralized Orchestration pattern                    |
 | 2026-06-10 | **v2.2.0 Release**: Atomic cache writes, vision_max_pages config, eval log batching |
 | 2026-07-26 | **v2.2.1+**: Migrated cache backend to SQLite WAL mode for concurrent-safe high-performance caching |
+| 2026-11-05 | Folder-rule signature keys metadata cache; corrupt `cache.db` fails loudly instead of silently falling back to legacy JSON |
+| 2026-11-14 | **v2.4.0**: Structured cache keys replaced path-based helpers; metadata keys became identity-free with producing-engine provenance validation |
 
 ## Status
 
-Last updated: 2026-10-07
+Last updated: 2026-11-24

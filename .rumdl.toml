@@ -1,0 +1,38 @@
+# rumdl configuration for renAI
+# Rule reference: https://rumdl.dev/
+
+[global]
+# Project convention: 120-column Markdown (see AGENTS.md).
+line-length = 120
+respect-gitignore = true
+
+# Generated, template, and historical files are not authored Markdown.
+exclude = [
+    ".git",
+    ".github",          # issue/PR templates use frontmatter and no H1
+    ".claude",          # agent skill files
+    ".jules",           # local agent notes
+    ".opencode",
+    ".venv",
+    "node_modules",
+    ".pytest_cache",
+    "CHANGELOG.md",     # historical entries are not reflowed
+    "AGENTS.md",        # instruction file with embedded XML blocks
+]
+
+# Code fences (CLI examples) and option tables cannot be wrapped.
+[MD013]
+line-length = 120
+code-blocks = false
+tables = false
+headings = false
+
+# Long-form docs predate this config and are grandfathered until reflowed.
+# New Markdown files are checked at 120 columns.
+[per-file-ignores]
+"README.md" = ["MD013"]
+"CONTRIBUTING.md" = ["MD013"]
+"SECURITY.md" = ["MD013"]
+"docs/CACHING_STRATEGY.md" = ["MD013"]
+"docs/PRIVACY.md" = ["MD013"]
+"docs/insights.md" = ["MD013"]
