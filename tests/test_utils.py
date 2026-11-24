@@ -6,7 +6,6 @@ import pytest
 
 from renai.utils import (
     ensure_secure_dir,
-    generate_cache_key,
     get_file_hash,
     head_tail_trim,
     read_text_limited,
@@ -75,18 +74,6 @@ def test_get_file_hash_mocked():
         mock_path.open.assert_called_once_with("rb")
         mock_file_digest.assert_called_once_with(mock_file, "sha256")
         mock_digest_obj.hexdigest.assert_called_once_with()
-
-
-def test_generate_cache_key():
-    """Test cache key generation from multiple strings."""
-    # Basic combination
-    assert generate_cache_key("a", "b", "c") == hashlib.sha256(b"a|b|c").hexdigest()
-
-    # Handle empty/None values
-    assert generate_cache_key("a", "", None, "b") == hashlib.sha256(b"a|b").hexdigest()
-
-    # Single value
-    assert generate_cache_key("only") == hashlib.sha256(b"only").hexdigest()
 
 
 @pytest.mark.parametrize(

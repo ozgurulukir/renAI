@@ -387,10 +387,6 @@ class OCREngine:
                 image = image.point(lambda x: 0 if x < CONTRAST_THRESHOLD else 255)  # type: ignore[operator]
         return image
 
-    async def _run_tesseract(self, image: Image.Image, pno: int) -> str:
-        """Execute Tesseract OCR and clean up extracted text."""
-        return await self._perform_ocr(image, pno)
-
     async def _perform_ocr(self, image: Image.Image, pno: int) -> str:
         """Calls Tesseract in a thread with configured timeout."""
         try:
@@ -489,7 +485,7 @@ class OCREngine:
 
                         await asyncio.to_thread(_save_debug, image, pno)
 
-                    page_text = await self._run_tesseract(image, pno)
+                    page_text = await self._perform_ocr(image, pno)
                     extracted_text.append(page_text)
                     total_chars += len(page_text)
 

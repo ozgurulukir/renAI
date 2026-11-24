@@ -3,7 +3,7 @@ Comprehensive unit tests for features and refactoring implemented in improvement
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 import typer
@@ -153,19 +153,6 @@ class TestJSONRepair:
 
 class TestOCREngineRefactoring:
     """Test OCREngine process pool and helper methods."""
-
-    @pytest.mark.asyncio
-    async def test_run_tesseract_method(self):
-        """Test _run_tesseract delegates to _perform_ocr."""
-        engine = OCREngine(silent=True)
-        img = Image.new("RGB", (100, 100), color="white")
-
-        with patch.object(
-            engine, "_perform_ocr", new=AsyncMock(return_value="Extracted Text")
-        ) as mock_ocr:
-            text = await engine._run_tesseract(img, 0)
-            assert text == "Extracted Text"
-            mock_ocr.assert_called_once_with(img, 0)
 
     @pytest.mark.asyncio
     async def test_preprocess_image_process_pool(self):

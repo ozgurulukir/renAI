@@ -4,7 +4,7 @@ Contains questionary-based interactive prompts for provider and model configurat
 """
 
 import logging
-from typing import Any
+from collections.abc import Callable
 
 import questionary
 from questionary import Style
@@ -415,7 +415,7 @@ def _configure_vision_selection(
     catalog: dict,
     provider_options: list,
     providers_catalog: dict | None,
-    is_vision_supported_func: Any,
+    is_vision_supported_func: Callable[[str], bool | None],
 ) -> tuple[str | None, str | None]:
     """Prompt user to configure vision provider and vision model."""
     text_supports_vision = is_vision_supported_func(default_model) is not False
@@ -474,7 +474,10 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     except Exception:
         catalog = {}
         providers_catalog = {}
-        is_vision_supported = lambda _m: None  # noqa: E731
+
+        def is_vision_supported(model_name: str) -> bool | None:
+            """Vision support is unknown when the catalog is unavailable."""
+            return None
 
     if catalog:
         all_devs = sorted({k.split("/")[0] for k in catalog if "/" in k})
