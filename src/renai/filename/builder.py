@@ -33,22 +33,79 @@ def _known_template_tokens(model_class: type[BaseMetadata]) -> frozenset[str]:
     return frozenset(set(model_class.model_fields) | _COMPOSITE_TOKENS)
 
 
+_MIN_VALID_YEAR = 1000
+_MAX_VALID_YEAR = 2100
+_LANG_CODE_RE = re.compile(r"^[a-z]{2,3}$")
+
+
+def _clean_template_base(base: str) -> str:
+    """Collapse dangling separators and empty brackets from a rendered template."""
+    base = re.sub(r"\(\s*\)", "", base)
+    base = re.sub(r"\[\s*\]", "", base)
+    base = re.sub(r"\s*--(?:\s*--)+", " -- ", base)
+    base = re.sub(r"^\s*--\s*", "", base)
+    base = re.sub(r"\s*--\s*$", "", base)
+    return re.sub(r"\s{2,}", " ", base).strip()
+
+
+def _sanitize_extension(original_extension: str) -> str:
+    """Ensure original_extension is safe and printable (preserving leading dot)."""
+    if not original_extension:
+        return ""
+    cleaned = "".join(
+        ch for ch in original_extension if ch.isprintable() and ch not in '<>:"/\\|?*'
+    )
+    return cleaned.strip()
+
+
+def _truncate_base_for_suffix(base: str, suffix: str, max_filename_length: int) -> str:
+    """Sanitize and truncate base so ``base + suffix`` fits within ``max_filename_length``."""
+    budget = max(1, int(max_filename_length) - len(suffix))
+    return sanitize_filename(base, budget)
+
+
+def _normalize_lang_code(language: Any) -> str:
+    """Normalize a language tag to a lowercase 2-3 letter ISO code, defaulting to 'en'."""
+    if not language:
+        return "en"
+    code = str(language).strip().lower()
+    return code if _LANG_CODE_RE.match(code) else "en"
+
+
+def _valid_year_label(year_val: Any) -> str | None:
+    """Return ``'(YYYY)'`` when ``year_val`` is an integer in [1000, 2100], else None."""
+    if not year_val:
+        return None
+    try:
+        year_int = int(year_val)
+    except (ValueError, TypeError):
+        return None
+    if _MIN_VALID_YEAR <= year_int <= _MAX_VALID_YEAR:
+        return f"({year_int})"
+    return None
+
+
 def validate_filename_template(template: str, model_class: type[BaseMetadata]) -> str | None:
     """Return the template if it renders against ``model_class`` fields, else None.
 
-    Rejects unknown tokens and malformed braces (which would otherwise crash
-    ``render_filename_template`` at per-file processing time).
+    Rejects unknown tokens, malformed braces, and templates that render to
+    an empty base even when tokens are populated. Templates should not include
+    a file extension (the original extension is appended automatically).
     """
-    unknown = set(_TEMPLATE_TOKEN_RE.findall(template)) - _known_template_tokens(model_class)
+    known = _known_template_tokens(model_class)
+    unknown = set(_TEMPLATE_TOKEN_RE.findall(template)) - known
     if unknown:
         logger.warning(
             "Ignoring template %r: unknown token(s): %s", template, ", ".join(sorted(unknown))
         )
         return None
     try:
-        template.format_map(_EmptyTokenDefaults())
+        trial = template.format_map(_EmptyTokenDefaults(dict.fromkeys(known, "x")))
     except (ValueError, IndexError):
         logger.warning("Ignoring template %r: malformed braces", template)
+        return None
+    if not _clean_template_base(trial):
+        logger.warning("Ignoring template %r: renders to an empty filename", template)
         return None
     return template
 
@@ -71,8 +128,8 @@ def _lang_suffix(language: str, original_extension: str) -> str:
     re-implementing the `` -- ({lang}){ext}`` separator, so the separator and
     suffix contract live in exactly one place.
     """
-    lang_indicator = "tr" if str(language).lower() == "tr" else "en"
-    return f" -- ({lang_indicator}){original_extension}"
+    lang_indicator = _normalize_lang_code(language)
+    return f" -- ({lang_indicator}){_sanitize_extension(original_extension)}"
 
 
 def _normalize_string(value: Any, default: str = "") -> Any:
@@ -103,7 +160,7 @@ def _template_values(metadata: BaseMetadata) -> dict[str, str]:
         normalized = _normalize_string(raw)
         values[field] = str(normalized) if normalized else ""
 
-    values["language"] = "tr" if values.get("language", "").lower() == "tr" else "en"
+    values["language"] = _normalize_lang_code(values.get("language", ""))
     values["series_volume"] = _series_volume_label(
         values.get("series", ""), values.get("volume", "")
     )
@@ -121,20 +178,19 @@ def render_filename_template(
     Empty metadata fields collapse away; dangling ``()``/``[]`` pairs and
     repeated `` -- `` separators are cleaned up. Returns ``None`` when nothing
     usable remains so callers can fall back to the built-in pattern.
+    Templates should not include a file extension; a trailing duplicate
+    ``original_extension`` is stripped if present.
     """
     values = _template_values(metadata)
-    base = template.format_map(_EmptyTokenDefaults(values))
-    base = re.sub(r"\(\s*\)", "", base)
-    base = re.sub(r"\[\s*\]", "", base)
-    base = re.sub(r"\s*--(?:\s*--)+", " -- ", base)
-    base = re.sub(r"^\s*--\s*", "", base)
-    base = re.sub(r"\s*--\s*$", "", base)
-    base = re.sub(r"\s{2,}", " ", base).strip()
+    base = _clean_template_base(template.format_map(_EmptyTokenDefaults(values)))
+    safe_ext = _sanitize_extension(original_extension)
+    if safe_ext and base.lower().endswith(safe_ext.lower()):
+        base = base[: -len(safe_ext)].strip()
 
     if not base:
         return None
-    sanitized = sanitize_filename(base, max_filename_length)
-    return f"{sanitized}{original_extension}" if sanitized else None
+    sanitized = _truncate_base_for_suffix(base, safe_ext, max_filename_length)
+    return f"{sanitized}{safe_ext}" if sanitized else None
 
 
 def _book_name_parts(book_data: BookMetadata) -> list[str]:
@@ -161,16 +217,9 @@ def _book_name_parts(book_data: BookMetadata) -> list[str]:
     if author:
         name_parts.append(author)
 
-    # Handle year separately to ensure correct formatting
-    if year_val:
-        try:
-            year_int = int(year_val)
-            MIN_VALID_YEAR = 1000
-            MAX_VALID_YEAR = 2100
-            if MIN_VALID_YEAR <= year_int <= MAX_VALID_YEAR:  # Sanity check for year
-                name_parts.append(f"({year_int})")
-        except (ValueError, TypeError):
-            pass
+    year_label = _valid_year_label(year_val)
+    if year_label:
+        name_parts.append(year_label)
 
     return name_parts
 
@@ -198,12 +247,15 @@ def build_book_filename(
         if rendered:
             return rendered
 
+    safe_ext = _sanitize_extension(original_extension)
     name_parts = _book_name_parts(book_data)
     if not name_parts:
-        return f"Unknown_Document{original_extension}"
+        sanitized = _truncate_base_for_suffix("Unknown_Document", safe_ext, max_filename_length)
+        return f"{sanitized}{safe_ext}"
 
     new_name_base = " -- ".join(name_parts)
-    return f"{sanitize_filename(new_name_base, max_filename_length)}{original_extension}"
+    sanitized = _truncate_base_for_suffix(new_name_base, safe_ext, max_filename_length)
+    return f"{sanitized}{safe_ext}"
 
 
 def build_image_filename(
@@ -248,8 +300,9 @@ def build_image_filename(
     if not new_name_base:
         new_name_base = "Image"
 
-    sanitized = sanitize_filename(new_name_base, max_filename_length)
-    return f"{sanitized}{_lang_suffix(language, original_extension)}"
+    suffix = _lang_suffix(language, original_extension)
+    sanitized = _truncate_base_for_suffix(new_name_base, suffix, max_filename_length)
+    return f"{sanitized}{suffix}"
 
 
 def extract_category_from_metadata(
@@ -286,7 +339,6 @@ def build_vision_filename(
 
     title = _normalize_string(book_data.title)
     author = _normalize_string(book_data.author)
-    year = str(book_data.year or "")  # raw int|None -> str, do NOT go through _normalize_string
     language = _normalize_string(getattr(book_data, "language", "en"))
     series = _normalize_string(book_data.series)
     volume = _normalize_string(book_data.volume)
@@ -300,12 +352,14 @@ def build_vision_filename(
         name_parts.append(series_label)
     if author:
         name_parts.append(author)
-    if year and year.isdigit():
-        name_parts.append(f"({year})")
+    year_label = _valid_year_label(book_data.year)
+    if year_label:
+        name_parts.append(year_label)
 
     new_name_base = " -- ".join(name_parts)
     if not new_name_base:
         new_name_base = "Document"
 
-    sanitized = sanitize_filename(new_name_base, max_filename_length)
-    return f"{sanitized}{_lang_suffix(language, original_extension)}"
+    suffix = _lang_suffix(language, original_extension)
+    sanitized = _truncate_base_for_suffix(new_name_base, suffix, max_filename_length)
+    return f"{sanitized}{suffix}"

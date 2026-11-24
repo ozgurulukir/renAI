@@ -33,15 +33,23 @@ def generate_cache_key(*args: str | None) -> str:
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+
 def sanitize_filename(filename: str, max_length: int = 200) -> str:
     """
-    Replace invalid characters and remove all control characters.
-    Limits length to stay within filesystem path limits.
+    Replace invalid characters with spaces and remove all control characters.
+    Blocks Windows-reserved device names and limits length to stay within
+    filesystem path limits.
     """
     # Ensure max_length is an int for type safety
     max_val: int = int(max_length)
-    # Remove invalid characters for Windows paths: < > : " / \ | ? *
-    sanitized = RE_INVALID_CHARS.sub("", filename)
+    # Replace invalid characters for Windows paths: < > : " / \ | ? *
+    sanitized = RE_INVALID_CHARS.sub(" ", filename)
 
     # Remove ALL control characters (including \r, \n, \t) and non-printable chars
     sanitized = "".join(char for char in sanitized if char.isprintable())
@@ -59,7 +67,12 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     if not sanitized or sanitized in {".", ".."}:
         sanitized = "unnamed"
 
-    # Limit length (preserving extension if possible)
+    # Block Windows reserved device names (e.g. CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    stem = sanitized.split(".", 1)[0].upper()
+    if stem in _WINDOWS_RESERVED_NAMES:
+        sanitized = f"unnamed_{sanitized}"
+
+    # Limit length
     if len(sanitized) > max_val:
         sanitized = sanitized[:max_val].strip()
 
