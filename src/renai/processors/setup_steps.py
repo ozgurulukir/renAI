@@ -475,7 +475,10 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
         catalog = {}
         providers_catalog = {}
 
-        def is_vision_supported(model_name: str) -> bool | None:
+        def is_vision_supported(model_name: str) -> bool | None:  # noqa: ARG001
+            """Placeholder matching ``models_dev.is_vision_supported`` so pyright
+            sees one consistent declaration for the try/except; the argument is
+            intentionally unused because catalog availability is unknown."""
             """Vision support is unknown when the catalog is unavailable."""
             return None
 
