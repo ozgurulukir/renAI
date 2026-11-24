@@ -1,3 +1,5 @@
+import json
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -291,3 +293,89 @@ def test_quarantine_contains_resolved_paths(tmp_path):
 
     # Empty quarantine contains nothing.
     assert not Quarantine().contains(needs_scan)
+
+
+class TestEvalLog:
+    """Tests for the batched evaluation-log buffer and its flush path."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_eval_log_state(self, tmp_path):
+        import renai.processors.orchestrator as orch
+
+        orch._eval_log_buffer.clear()
+        with patch.object(orch, "EVAL_LOG_FILE", tmp_path / "eval_log.jsonl"):
+            yield
+        orch._eval_log_buffer.clear()
+
+    @pytest.mark.asyncio
+    async def test_log_evaluation_result_buffers_below_threshold(self):
+        """Entries accumulate in the buffer and only flush at the batch threshold."""
+        import renai.processors.orchestrator as orch
+
+        with patch.object(orch, "_flush_eval_log", new_callable=AsyncMock) as mock_flush:
+            for i in range(orch._EVAL_LOG_BATCH_SIZE - 1):
+                await orch.log_evaluation_result(Path(f"b{i}.pdf"), "prov", "model", {"t": i})
+
+        assert len(orch._eval_log_buffer) == orch._EVAL_LOG_BATCH_SIZE - 1
+        mock_flush.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_log_evaluation_result_flushes_at_threshold(self):
+        """Hitting the batch size triggers a flush that empties the buffer."""
+        import renai.processors.orchestrator as orch
+
+        for i in range(orch._EVAL_LOG_BATCH_SIZE + 3):
+            await orch.log_evaluation_result(Path(f"b{i}.pdf"), "prov", "model", {"t": i})
+
+        # The threshold flush wrote 50 entries; the remaining 3 stay buffered for
+        # the end-of-run flush.
+        assert len(orch._eval_log_buffer) == 3
+        log_file = orch.EVAL_LOG_FILE
+        lines = log_file.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == orch._EVAL_LOG_BATCH_SIZE
+        assert json.loads(lines[0])["file"] == "b0.pdf"
+
+    @pytest.mark.asyncio
+    async def test_flush_eval_log_writes_and_clears(self):
+        """A manual flush writes every buffered entry as JSON lines."""
+        import renai.processors.orchestrator as orch
+
+        for i in range(3):
+            await orch.log_evaluation_result(Path(f"f{i}.pdf"), "p", "m", {"title": f"t{i}"})
+        assert len(orch._eval_log_buffer) == 3
+
+        await orch._flush_eval_log()
+
+        log_file = orch.EVAL_LOG_FILE
+        lines = log_file.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 3
+        first = json.loads(lines[0])
+        assert first == {
+            "file": "f0.pdf",
+            "provider": "p",
+            "model": "m",
+            "metadata": {"title": "t0"},
+        }
+        assert orch._eval_log_buffer == []
+
+    @pytest.mark.asyncio
+    async def test_flush_eval_log_noop_when_empty(self):
+        """Flushing an empty buffer writes nothing."""
+        import renai.processors.orchestrator as orch
+
+        log_file = orch.EVAL_LOG_FILE
+        await orch._flush_eval_log()
+        assert not log_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_flush_eval_log_failure_is_logged_and_does_not_raise(self, caplog):
+        """A write failure logs the error instead of raising into the pipeline."""
+        import renai.processors.orchestrator as orch
+
+        await orch.log_evaluation_result(Path("x.pdf"), "p", "m", {})
+
+        with caplog.at_level(logging.ERROR, logger="renai.processors.orchestrator"):
+            with patch.object(orch.Path, "open", side_effect=OSError("disk full")):
+                await orch._flush_eval_log()
+
+        assert "Failed to flush evaluation log" in caplog.text
