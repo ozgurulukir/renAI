@@ -3,7 +3,6 @@ setup.py - Interactive initialization wizard for renAI.
 Handles environment setup, provider configuration, and configuration file creation.
 """
 
-import contextlib
 import importlib.util
 import shutil
 
@@ -90,6 +89,7 @@ def run_init_wizard() -> None:
     try:
         _save_configuration(config, secrets)
     except Exception:
+        console.print(msg.Save.ABORTED)
         return
 
     console.print(msg.Wizard.COMPLETE)
@@ -132,8 +132,10 @@ def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -
             tomli_w.dump(secrets, f)
 
         if hasattr(SECRETS_FILE, "chmod"):
-            with contextlib.suppress(Exception):
+            try:
                 SECRETS_FILE.chmod(0o600)
+            except OSError as e:
+                console.print(msg.Save.SECRETS_PERM_WARN.format(e))
 
         console.print(msg.Save.FINALIZED)
         console.print(msg.Save.USER_SETTINGS.format(SETTINGS_USER_FILE.name))

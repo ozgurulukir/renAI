@@ -40,6 +40,11 @@ class Save:
     SECRETS = "[info]  - Secrets (Keys): {}[/info]"
     DEFAULTS_NOTE = "[info]  - Default files are also available for reference.[/info]"
     FAILED = "[error]Failed to save configuration: {}[/error]"
+    ABORTED = "[error]Setup aborted: configuration could not be saved.[/error]"
+    SECRETS_PERM_WARN = (
+        "[warning]Could not restrict permissions on the secrets file; "
+        "it may be readable by other users on this machine: {}[/warning]"
+    )
 
 
 class Provider:

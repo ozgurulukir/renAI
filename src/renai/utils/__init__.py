@@ -20,19 +20,6 @@ def get_file_hash(file_path: Path) -> str:
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
-def generate_cache_key(*args: str | None) -> str:
-    """Generate a unique cache key from multiple string components.
-
-    Args:
-        *args: Variable number of string components to combine
-
-    Returns:
-        A hex string hash of the combined components
-    """
-    combined = "|".join(str(arg) for arg in args if arg)
-    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
-
-
 _WINDOWS_RESERVED_NAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
     | {f"COM{i}" for i in range(1, 10)}

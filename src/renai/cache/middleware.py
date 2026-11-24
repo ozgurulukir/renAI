@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from renai.cache.manager import MetadataCacheKey, read_metadata_cache, write_metadata_cache
 from renai.config import get_image_extensions
+from renai.models.schemas import FallbackMode
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class MetadataRequest:
     vision_provider: str
     vision_model: str
     use_vision_cache: bool
-    fallback_mode: Any
+    fallback_mode: FallbackMode
     rename_images: bool
     update_metadata: bool
     add_exif_date: bool
