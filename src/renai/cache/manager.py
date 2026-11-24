@@ -12,11 +12,13 @@ from typing import Any, NamedTuple, overload
 from pydantic import BaseModel
 
 from renai.config import CACHE_DIR, DEBUG_DIR
+from renai.utils import ensure_secure_dir
 
 logger = logging.getLogger(__name__)
 
 # Thread-safe lock for all cache database operations
 _cache_lock = threading.Lock()
+_initialized_dbs: set[Path] = set()
 
 
 class TextCacheKey(NamedTuple):
@@ -100,13 +102,17 @@ def _resolve_cache_dir(cache_dir: Path | None) -> Path:
 @contextlib.contextmanager
 def _get_db_connection(db_dir: Path) -> Generator[sqlite3.Connection, None, None]:
     """Create, initialize, and yield a SQLite database connection with WAL mode enabled."""
-    db_dir.mkdir(parents=True, exist_ok=True)
+    ensure_secure_dir(db_dir)
     db_path = db_dir / "cache.db"
+    resolved_db = db_path.resolve()
+    needs_init = not db_path.exists() or resolved_db not in _initialized_dbs
     conn = sqlite3.connect(str(db_path), timeout=30.0)
     try:
-        conn.execute("PRAGMA journal_mode=WAL;")
+        if needs_init:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            _init_db(conn)
+            _initialized_dbs.add(resolved_db)
         conn.execute("PRAGMA synchronous=NORMAL;")
-        _init_db(conn)
         yield conn
     finally:
         conn.close()
@@ -148,8 +154,12 @@ def read_text_cache(key: TextCacheKey, cache_dir: Path | None = None) -> str | N
         except Exception as e:
             logger.warning(f"Failed to read text cache {cache_key}: {e}")
 
-        # Fallback to legacy file reading if present
-        legacy_path = db_dir / "text" / cache_key
+        # Fallback to legacy file reading if present (guarded against path traversal)
+        legacy_root = (db_dir / "text").resolve()
+        legacy_path = (legacy_root / cache_key).resolve()
+        if not legacy_path.is_relative_to(legacy_root):
+            logger.warning("Blocked legacy text-cache path traversal: %s", cache_key)
+            return None
         try:
             if legacy_path.exists():
                 return legacy_path.read_text(encoding="utf-8")
@@ -359,6 +369,7 @@ def read_metadata_cache[V: BaseModel](
     key: MetadataCacheKey,
     model_class: type[V],
     cache_dir: Path | None = None,
+    expected_rule_signature: str | None = None,
 ) -> tuple[V | None, CacheSource | None]: ...
 
 
@@ -367,6 +378,7 @@ def read_metadata_cache(
     key: MetadataCacheKey,
     model_class: None = None,
     cache_dir: Path | None = None,
+    expected_rule_signature: str | None = None,
 ) -> tuple[dict[str, Any] | None, CacheSource | None]: ...
 
 
@@ -374,6 +386,7 @@ def read_metadata_cache[V: BaseModel](
     key: MetadataCacheKey,
     model_class: type[V] | None = None,
     cache_dir: Path | None = None,
+    expected_rule_signature: str | None = None,
 ) -> tuple[Any | None, CacheSource | None]:
     """Read cached metadata together with its persisted extraction provenance.
 
@@ -417,6 +430,12 @@ def read_metadata_cache[V: BaseModel](
                 f"a string, got {type(rule_signature).__name__}; treating as legacy"
             )
             rule_signature = None
+        if (
+            expected_rule_signature is not None
+            and (rule_signature or "") != expected_rule_signature
+        ):
+            return None, None
+
         source = CacheSource(
             is_vision_doc=is_vision_doc,
             rule_signature=rule_signature,

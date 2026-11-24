@@ -624,3 +624,77 @@ class TestUndoJournal:
         monkeypatch.setattr("renai.file_ops.operations.shutil.move", flaky_move)
         assert undo_last_operation(cache_dir=tmp_path) == 1
         assert (tmp_path / "ok_old.txt").exists()
+
+
+def test_undo_dir_created_with_secure_permissions(tmp_path):
+    """Undo journal directory must be created with 0o700 permissions on POSIX."""
+    import stat
+    import sys
+
+    from renai.file_ops.operations import record_undo_entry
+
+    undo_dir = tmp_path / "undo_cache"
+    record_undo_entry(tmp_path / "a.txt", tmp_path / "b.txt", cache_dir=undo_dir)
+
+    if sys.platform != "win32":
+        mode = stat.S_IMODE(undo_dir.stat().st_mode)
+        assert mode == 0o700
+
+
+def test_concurrent_undo_journal_writes_do_not_lose_entries(tmp_path):
+    """Concurrent record_undo_entry calls must not lose or corrupt journal entries."""
+    import concurrent.futures
+
+    from renai.file_ops.operations import _load_undo_entries, record_undo_entry
+
+    def _write(i: int) -> None:
+        record_undo_entry(tmp_path / f"old_{i}.txt", tmp_path / f"new_{i}.txt", cache_dir=tmp_path)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(_write, range(40)))
+
+    entries = _load_undo_entries(tmp_path)
+    assert len(entries) == 40
+
+
+def test_safe_transfer_source_root_blocks_escape(tmp_path):
+    """When source_root is specified, sources outside it must be rejected."""
+    from renai.exceptions import FileOperationError
+    from renai.file_ops.operations import safe_copy_file, safe_move_file
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("data")
+    root = tmp_path / "sandbox"
+    root.mkdir()
+
+    with pytest.raises(FileOperationError, match="escapes the allowed root"):
+        safe_move_file(outside, root / "dest.txt", root_dir=root, source_root=root)
+
+    with pytest.raises(FileOperationError, match="escapes the allowed root"):
+        safe_copy_file(outside, root / "dest.txt", root_dir=root, source_root=root)
+
+
+def test_ensure_unique_path_retries_and_raises_on_exhaustion(tmp_path):
+    """_ensure_unique_path retries on collision and raises FileOperationError if exhausted."""
+    from unittest.mock import patch
+
+    from renai.exceptions import FileOperationError
+    from renai.file_ops.operations import _ensure_unique_path
+
+    dest = tmp_path / "book.pdf"
+    dest.write_text("existing")
+    colliding = tmp_path / "book_aaaaaaaa.pdf"
+    colliding.write_text("collide")
+
+    fake_uuid_a = type("U", (), {"hex": "aaaaaaaa1111"})()
+    fake_uuid_b = type("U", (), {"hex": "bbbbbbbb2222"})()
+
+    with patch("renai.file_ops.operations.uuid.uuid4", side_effect=[fake_uuid_a, fake_uuid_b]):
+        unique = _ensure_unique_path(dest, source_hash="different")
+    assert unique == tmp_path / "book_bbbbbbbb.pdf"
+
+    with (
+        patch("renai.file_ops.operations.uuid.uuid4", return_value=fake_uuid_a),
+        pytest.raises(FileOperationError, match="Failed to generate a unique path"),
+    ):
+        _ensure_unique_path(dest, source_hash="different")

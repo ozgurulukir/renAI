@@ -627,3 +627,89 @@ def test_legacy_rows_without_rule_sig_read_as_legacy_provenance(tmp_path):
     assert source_era.is_vision_doc is True
     # _rule_sig absent -> legacy (None), distinct from "" (global).
     assert source_era.rule_signature is None
+
+
+def test_cache_dir_created_with_secure_permissions(tmp_path):
+    """Cache directory must be created with 0o700 permissions on POSIX."""
+    import stat
+    import sys
+
+    from renai.cache.manager import _get_db_connection
+
+    cache_dir = tmp_path / "secure_cache"
+    with _get_db_connection(cache_dir):
+        pass
+
+    if sys.platform != "win32":
+        mode = stat.S_IMODE(cache_dir.stat().st_mode)
+        assert mode == 0o700
+
+
+def test_read_metadata_cache_enforces_expected_rule_signature(tmp_path):
+    """Direct callers passing expected_rule_signature must not get mismatched rows."""
+    from renai.cache.manager import write_metadata_cache
+
+    key = _meta_key(file_hash="rule-enforce", provider="p", model="m")
+    book = BookMetadata(title="Rule Book", language="en", category="Fiction")
+    write_metadata_cache(key, book, cache_dir=tmp_path, rule_signature="sig-a")
+
+    hit, _ = read_metadata_cache(
+        key, BookMetadata, cache_dir=tmp_path, expected_rule_signature="sig-a"
+    )
+    assert hit is not None and hit.title == "Rule Book"
+
+    miss, miss_src = read_metadata_cache(
+        key, BookMetadata, cache_dir=tmp_path, expected_rule_signature="sig-b"
+    )
+    assert miss is None and miss_src is None
+
+
+def test_read_text_cache_blocks_legacy_path_traversal(tmp_path):
+    """Legacy text-cache fallback must block path-traversal keys."""
+    from renai.cache.manager import TextCacheKey, read_text_cache
+
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOP_SECRET", encoding="utf-8")
+    cache_dir = tmp_path / "cache"
+    (cache_dir / "text").mkdir(parents=True)
+
+    key = TextCacheKey(file_hash="../../secret.txt")
+    assert read_text_cache(key, cache_dir=cache_dir) is None
+
+
+def test_wal_pragma_set_only_at_db_init(tmp_path):
+    """_get_db_connection should only execute WAL pragma once per DB creation."""
+    from renai.cache.manager import _get_db_connection
+
+    executed: list[str] = []
+    real_connect = __import__("sqlite3").connect
+
+    class SpyConn:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, sql, *args, **kwargs):
+            executed.append(sql)
+            return self._conn.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._conn, name)
+
+        def __enter__(self):
+            self._conn.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._conn.__exit__(*args)
+
+    with __import__("unittest.mock").mock.patch(
+        "renai.cache.manager.sqlite3.connect",
+        side_effect=lambda *a, **kw: SpyConn(real_connect(*a, **kw)),
+    ):
+        with _get_db_connection(tmp_path):
+            pass
+        with _get_db_connection(tmp_path):
+            pass
+
+    wal_calls = [s for s in executed if "journal_mode=WAL" in s]
+    assert len(wal_calls) == 1
