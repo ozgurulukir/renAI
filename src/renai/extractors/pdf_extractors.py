@@ -169,10 +169,9 @@ class PyPDFExtractor(BaseExtractor):
             with file_path.open("rb") as f:
                 reader = PdfReader(f)
                 total_pages = len(reader.pages)
-                page_texts = [p.extract_text() or "" for p in reader.pages]
 
                 def get_page(idx: int) -> str:
-                    return page_texts[idx] if idx < len(page_texts) else ""
+                    return reader.pages[idx].extract_text() or ""
 
                 return _extract_head_tail(
                     get_page, total_pages, target_chars, head_ratio, max_pages_per_side
@@ -204,18 +203,15 @@ class PyPdfium2Extractor(BaseExtractor):
 
             with pdfium.PdfDocument(file_path) as pdf:
                 total_pages = len(pdf)
-                page_texts: list[str] = []
-                for i in range(total_pages):
-                    page = pdf[i]
-                    textpage = page.get_textpage()
-                    try:
-                        page_texts.append(textpage.get_text_bounded() or "")
-                    finally:
-                        textpage.close()
-                    page.close()
 
                 def get_page(idx: int) -> str:
-                    return page_texts[idx] if idx < len(page_texts) else ""
+                    page = pdf[idx]
+                    textpage = page.get_textpage()
+                    try:
+                        return textpage.get_text_bounded() or ""
+                    finally:
+                        textpage.close()
+                        page.close()
 
                 return _extract_head_tail(
                     get_page, total_pages, target_chars, head_ratio, max_pages_per_side

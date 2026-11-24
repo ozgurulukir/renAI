@@ -76,3 +76,17 @@ class TestAsyncRateLimiterAcquire:
         await rl.acquire()
         elapsed = time.perf_counter() - start
         assert elapsed < 0.05
+
+    @pytest.mark.asyncio
+    async def test_token_bucket_burst_capacity(self):
+        rl = AsyncRateLimiter(rpm=60, capacity=2)
+        start = time.perf_counter()
+        await rl.acquire()
+        await rl.acquire()
+        burst_elapsed = time.perf_counter() - start
+        assert burst_elapsed < 0.05
+
+        start_third = time.perf_counter()
+        await rl.acquire()
+        third_elapsed = time.perf_counter() - start_third
+        assert third_elapsed >= 0.9

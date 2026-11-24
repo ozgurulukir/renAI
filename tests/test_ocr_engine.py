@@ -54,13 +54,31 @@ class TestOCREngineInit:
 class TestExtractText:
     @pytest.mark.asyncio
     async def test_extract_text_exception(self, caplog):
-        """Test exception handling in extract_text."""
+        """Test exception handling in extract_text for expected runtime/OS failures."""
         engine = OCREngine()
 
-        with patch("pymupdf.open", side_effect=Exception("Failed")):
+        with patch("pymupdf.open", side_effect=RuntimeError("Failed")):
             result = await engine.extract_text(Path("nonexistent.pdf"))
             assert result == ""
             assert "OCR Pipeline failed" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_extract_text_propagates_programming_errors(self):
+        """Unexpected programming errors (e.g. TypeError) must not be silently swallowed."""
+        engine = OCREngine()
+
+        with (
+            patch("pymupdf.open", side_effect=TypeError("bad argument")),
+            pytest.raises(TypeError, match="bad argument"),
+        ):
+            await engine.extract_text(Path("nonexistent.pdf"))
+
+    def test_max_workers_is_instance_isolated(self):
+        """Constructing a second OCREngine must not overwrite the first's max_workers."""
+        e1 = OCREngine(max_workers=2)
+        e2 = OCREngine(max_workers=8)
+        assert e1.max_workers == 2
+        assert e2.max_workers == 8
 
     @pytest.mark.asyncio
     async def test_extract_text_early_termination(self):

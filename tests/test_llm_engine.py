@@ -2,7 +2,6 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import OpenAIError
 
 from renai.engines.llm import LLMEngine
 from renai.exceptions import LLMError
@@ -115,17 +114,20 @@ async def test_call_llm_json_decode_error_retry(llm_engine):
 
 @pytest.mark.asyncio
 async def test_call_llm_openai_error_retry(llm_engine):
-    """Test retry logic when an OpenAIError occurs."""
+    """Test retry logic when a retryable OpenAIError (e.g. APIConnectionError) occurs."""
+    import httpx
+    from openai import APIConnectionError
+
     mock_response = MagicMock()
     mock_response.choices[
         0
     ].message.content = '{"title": "Test Book", "category": "Fiction", "language": "en"}'
 
-    llm_engine.client.chat.completions.create = AsyncMock(
-        side_effect=[OpenAIError("API Error"), mock_response]
-    )
+    conn_err = APIConnectionError(request=httpx.Request("POST", "https://api.openai.com"))
+    llm_engine.client.chat.completions.create = AsyncMock(side_effect=[conn_err, mock_response])
 
-    result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
 
     assert result.title == "Test Book"
     assert llm_engine.client.chat.completions.create.await_count == 2
@@ -394,7 +396,7 @@ class TestBroadenedBackoff:
     @pytest.mark.asyncio
     async def test_backoff_does_not_retry_400(self, llm_engine):
         llm_engine.client.chat.completions.create = AsyncMock(side_effect=self._status_err(400))
-        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep, pytest.raises(LLMError):
             await llm_engine._call_llm("prompt", "system", model_class=BookMetadata)
         mock_sleep.assert_not_awaited()
 
@@ -468,3 +470,51 @@ async def test_aclose_releases_http_client(llm_engine):
     """aclose must shut down the underlying AsyncOpenAI/httpx pool."""
     await llm_engine.aclose()
     assert llm_engine.client.is_closed()
+
+
+@pytest.mark.asyncio
+async def test_generate_json_completion_propagates_llm_error(llm_engine):
+    """Transport LLMError must propagate out of _generate_json_completion without retry."""
+    from renai.models.schemas import BookMetadata
+
+    llm_engine._execute_completion_with_backoff = AsyncMock(
+        side_effect=LLMError("Connection/timeout retries exhausted")
+    )
+
+    with pytest.raises(LLMError, match="Connection/timeout retries exhausted"):
+        await llm_engine._generate_json_completion(
+            messages=[{"role": "user", "content": "test"}],
+            model_class=BookMetadata,
+            context_name="doc.pdf",
+        )
+
+    assert llm_engine._execute_completion_with_backoff.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_acquired_once_per_logical_request(llm_engine):
+    """Rate limiter must be acquired once per logical request, not per transport retry."""
+    import httpx
+    from openai import APIConnectionError
+
+    mock_limiter = AsyncMock()
+    llm_engine.rate_limiter = mock_limiter
+
+    conn_err = APIConnectionError(request=httpx.Request("POST", "https://api.openai.com"))
+    ok_completion = MagicMock()
+    ok_completion.choices = [MagicMock(message=MagicMock(content='{"title": "OK"}'))]
+
+    llm_engine.client.chat.completions.create = AsyncMock(
+        side_effect=[conn_err, conn_err, ok_completion]
+    )
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await llm_engine._execute_completion_with_backoff(
+            messages=[{"role": "user", "content": "hi"}],
+            temperature=0.3,
+            headers=None,
+            context_name="doc.pdf",
+        )
+
+    assert result == '{"title": "OK"}'
+    assert mock_limiter.acquire.await_count == 1

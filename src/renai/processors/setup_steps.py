@@ -3,6 +3,7 @@ setup_steps.py - Step implementations for renAI interactive initialization wizar
 Contains questionary-based interactive prompts for provider and model configuration.
 """
 
+import logging
 from typing import Any
 
 import questionary
@@ -26,6 +27,8 @@ from .model_catalog import (  # noqa: F401
     _map_openrouter_model,
     get_provider_model_name,
 )
+
+logger = logging.getLogger(__name__)
 
 # Custom theme for setup messages
 custom_theme = Theme(
@@ -226,9 +229,11 @@ async def _validate_api_key_async(base_url: str, api_key: str) -> tuple[bool, st
         # Invalid API key
         return False, str(e)
     except APIConnectionError as e:
+        logger.warning("API key validation connection error: %s", e)
         return True, msg.Provider.CONNECTION_WARN.format(e)
     except Exception as e:
-        return True, msg.Provider.VALID_GENERIC_WARN.format(e)
+        logger.warning("Unexpected error during API key validation: %s", e)
+        return False, msg.Provider.VALID_GENERIC_WARN.format(e)
 
 
 def _validate_api_key(base_url: str, api_key: str) -> tuple[bool, str]:
@@ -249,7 +254,8 @@ def _validate_api_key(base_url: str, api_key: str) -> tuple[bool, str]:
         else:
             return asyncio.run(_validate_api_key_async(base_url, api_key))
     except Exception as e:
-        return True, msg.Provider.VALID_WRAPPER_WARN.format(e)
+        logger.warning("API key validation wrapper failed: %s", e)
+        return False, msg.Provider.VALID_WRAPPER_WARN.format(e)
 
 
 def _prompt_and_validate_api_key(

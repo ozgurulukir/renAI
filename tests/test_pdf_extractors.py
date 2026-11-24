@@ -289,3 +289,64 @@ class TestCheckSymlinkGuard:
         # A regular file is NOT rejected by the symlink guard, so extraction
         # runs to completion and returns an extracted string (not None).
         assert isinstance(result, str)
+
+
+class TestLazyHeadTailSampling:
+    """Verify PyPDFExtractor and PyPdfium2Extractor decode only sampled pages."""
+
+    def test_pypdf_extracts_only_head_tail_pages(self, tmp_path):
+        pdf_file = tmp_path / "large.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4")
+
+        pages = [MagicMock() for _ in range(50)]
+        for i, p in enumerate(pages):
+            p.extract_text.return_value = f"Page {i} text " * 20
+
+        mock_reader = MagicMock()
+        mock_reader.pages = pages
+        mock_pypdf = MagicMock()
+        mock_pypdf.PdfReader.return_value = mock_reader
+
+        with patch.dict("sys.modules", {"pypdf": mock_pypdf}):
+            result = PyPDFExtractor().extract_text(
+                pdf_file, target_chars=500, head_ratio=0.7, max_pages_per_side=2
+            )
+
+        assert result is not None
+        called_pages = [i for i, p in enumerate(pages) if p.extract_text.called]
+        assert len(called_pages) < 10
+
+    def test_pypdfium2_extracts_only_head_tail_pages(self, tmp_path):
+        pdf_file = tmp_path / "large.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4")
+
+        accessed_indices: list[int] = []
+
+        class FakePdf:
+            def __len__(self):
+                return 50
+
+            def __getitem__(self, idx: int):
+                accessed_indices.append(idx)
+                page = MagicMock()
+                tp = MagicMock()
+                tp.get_text_bounded.return_value = f"Page {idx} text " * 20
+                page.get_textpage.return_value = tp
+                return page
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        mock_pdfium = MagicMock()
+        mock_pdfium.PdfDocument.return_value = FakePdf()
+
+        with patch.dict("sys.modules", {"pypdfium2": mock_pdfium}):
+            result = PyPdfium2Extractor().extract_text(
+                pdf_file, target_chars=500, head_ratio=0.7, max_pages_per_side=2
+            )
+
+        assert result is not None
+        assert len(accessed_indices) < 10
