@@ -10,6 +10,7 @@ Tests the TOML-based configuration system:
 
 import builtins
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -775,51 +776,76 @@ class TestSettingsAccessorFunctions:
 class TestGetApiKey:
     """Test get_api_key function."""
 
+    @staticmethod
+    def _isolated_settings(provider_settings_stub):
+        """Patch settings sources so tests never observe the machine's real config."""
+        app_stub = SimpleNamespace(providers={})
+        return patch(
+            "renai.config.providers._get_settings",
+            return_value=(app_stub, provider_settings_stub),
+        )
+
+    @staticmethod
+    def _empty_provider_settings(**overrides):
+        defaults = {
+            "deepinfra_api_key": None,
+            "openrouter_api_key": None,
+            "openai_api_key": None,
+            "custom_api_key": None,
+        }
+        defaults.update(overrides)
+        return SimpleNamespace(**defaults)
+
     def test_get_api_key_from_provider_settings(self):
         """Should return API key from provider_settings."""
         from renai.config import get_api_key
 
-        with patch("renai.config.provider_settings.deepinfra_api_key", "test_di_key"):
-            with patch.dict("os.environ", {}, clear=True):
-                assert get_api_key("deepinfra") == "test_di_key"
+        prov = self._empty_provider_settings(deepinfra_api_key="test_di_key")
+        with self._isolated_settings(prov), patch.dict("os.environ", {}, clear=True):
+            assert get_api_key("deepinfra") == "test_di_key"
 
     def test_get_api_key_from_os_environ_fallback(self):
         """Should fallback to OS environ if provider_settings is None."""
         from renai.config import get_api_key
 
-        with patch("renai.config.provider_settings.openrouter_api_key", None):
-            with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test_or_key"}, clear=True):
-                assert get_api_key("openrouter") == "test_or_key"
+        prov = self._empty_provider_settings()
+        with (
+            self._isolated_settings(prov),
+            patch.dict("os.environ", {"OPENROUTER_API_KEY": "test_or_key"}, clear=True),
+        ):
+            assert get_api_key("openrouter") == "test_or_key"
 
     def test_get_api_key_all_providers(self):
         """Should retrieve keys for all standard providers."""
         from renai.config import get_api_key
 
-        with (
-            patch("renai.config.provider_settings.deepinfra_api_key", "key1"),
-            patch("renai.config.provider_settings.openrouter_api_key", "key2"),
-            patch("renai.config.provider_settings.openai_api_key", "key3"),
-            patch("renai.config.provider_settings.custom_api_key", "key4"),
-        ):
-            with patch.dict("os.environ", {}, clear=True):
-                assert get_api_key("deepinfra") == "key1"
-                assert get_api_key("openrouter") == "key2"
-                assert get_api_key("openai") == "key3"
-                assert get_api_key("custom") == "key4"
+        prov = self._empty_provider_settings(
+            deepinfra_api_key="key1",
+            openrouter_api_key="key2",
+            openai_api_key="key3",
+            custom_api_key="key4",
+        )
+        with self._isolated_settings(prov), patch.dict("os.environ", {}, clear=True):
+            assert get_api_key("deepinfra") == "key1"
+            assert get_api_key("openrouter") == "key2"
+            assert get_api_key("openai") == "key3"
+            assert get_api_key("custom") == "key4"
 
     def test_get_api_key_custom_default(self):
         """Should return 'not-required' for custom if not set anywhere."""
         from renai.config import get_api_key
 
-        with patch("renai.config.provider_settings.custom_api_key", None):
-            with patch.dict("os.environ", {}, clear=True):
-                assert get_api_key("custom") == "not-required"
+        prov = self._empty_provider_settings()
+        with self._isolated_settings(prov), patch.dict("os.environ", {}, clear=True):
+            assert get_api_key("custom") == "not-required"
 
     def test_get_api_key_invalid_provider(self):
         """Should return None for an unknown provider."""
         from renai.config import get_api_key
 
-        assert get_api_key("invalid_provider") is None
+        prov = self._empty_provider_settings()
+        with self._isolated_settings(prov), patch.dict("os.environ", {}, clear=True):
+            assert get_api_key("invalid_provider") is None
 
 
 class TestEffectiveModel:
