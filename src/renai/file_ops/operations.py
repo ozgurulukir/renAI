@@ -8,36 +8,37 @@ import logging
 import os
 import shutil
 import tempfile
+import threading
 import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from ..exceptions import FileOperationError
-from ..utils import get_file_hash
+from ..utils import ensure_secure_dir, get_file_hash
 
 logger = logging.getLogger(__name__)
 
 UNDO_JOURNAL_NAME = "undo_journal.jsonl"
 LEGACY_HISTORY_NAME = "undo_history.json"
+_undo_lock = threading.Lock()
 
 # Hex-char width of the random suffix used to break filename collisions.
-# 8 hex chars (2^32 space) makes a second collision practically impossible,
-# which matters because the suffix is applied in a single attempt without retry.
 COLLISION_SUFFIX_LENGTH = 8
+MAX_UNIQUE_PATH_ATTEMPTS = 16
 
 
-def ensure_within_root(dest_path: Path, root_dir: Path) -> None:
-    """Ensure dest_path resolves inside root_dir, blocking path-traversal escapes.
+def ensure_within_root(path: Path, root_dir: Path) -> None:
+    """Ensure ``path`` resolves inside ``root_dir``, blocking path-traversal escapes.
 
     Single source of truth for root-boundary enforcement in file operations:
-    both safe_move_file and safe_copy_file consult it whenever a caller passes
-    a root_dir, so every destination is validated no matter which code path
-    computed it.
+    both ``safe_move_file`` and ``safe_copy_file`` consult it whenever a caller
+    passes ``root_dir`` (which constrains ``dest_path``) or ``source_root``
+    (which constrains ``source_path``).
     """
-    if not dest_path.resolve().is_relative_to(root_dir.resolve()):
+    if not path.resolve().is_relative_to(root_dir.resolve()):
         raise FileOperationError(
-            f"Target path {dest_path} escapes the allowed root {root_dir}. Path traversal blocked."
+            f"Target path {path} escapes the allowed root {root_dir}. Path traversal blocked."
         )
 
 
@@ -52,8 +53,16 @@ def _ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path
     if existing_hash == new_hash:
         return dest_path
 
-    unique_id = uuid.uuid4().hex[:COLLISION_SUFFIX_LENGTH]
-    return dest_path.parent / f"{dest_path.stem}_{unique_id}{dest_path.suffix}"
+    for _ in range(MAX_UNIQUE_PATH_ATTEMPTS):
+        unique_id = uuid.uuid4().hex[:COLLISION_SUFFIX_LENGTH]
+        candidate = dest_path.parent / f"{dest_path.stem}_{unique_id}{dest_path.suffix}"
+        if not candidate.exists():
+            return candidate
+
+    raise FileOperationError(
+        f"Failed to generate a unique path for {dest_path} "
+        f"after {MAX_UNIQUE_PATH_ATTEMPTS} attempts."
+    )
 
 
 def _load_undo_entries(cache_dir: Path) -> list[dict]:
@@ -96,7 +105,7 @@ def _load_undo_entries(cache_dir: Path) -> list[dict]:
 
 def _persist_undo_entries(cache_dir: Path, entries: list[dict]) -> None:
     """Atomically rewrite the journal (temp file + os.replace)."""
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    ensure_secure_dir(cache_dir)
     journal_path = cache_dir / UNDO_JOURNAL_NAME
     fd, tmp_name = tempfile.mkstemp(dir=cache_dir, prefix=".undo_journal_", suffix=".tmp")
     tmp_path = Path(tmp_name)
@@ -129,9 +138,11 @@ def record_undo_entry(
         "operation_type": operation_type,
     }
     try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        with (cache_dir / UNDO_JOURNAL_NAME).open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with _undo_lock:
+            ensure_secure_dir(cache_dir)
+            with (cache_dir / UNDO_JOURNAL_NAME).open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                f.flush()
     except Exception as e:
         logger.warning("Failed to record undo entry: %s", e)
 
@@ -143,31 +154,32 @@ def undo_last_operation(cache_dir: Path | None = None) -> int:
 
         cache_dir = CACHE_DIR
 
-    try:
-        entries = _load_undo_entries(cache_dir)
-    except Exception as e:
-        logger.error(f"Failed to load undo journal from {cache_dir}: {e}")
-        return 0
-    if not entries:
-        return 0
-    reverted_count = 0
-    while entries:
-        last_entry = entries.pop()
-        old_path = Path(last_entry["old_path"])
-        new_path = Path(last_entry["new_path"])
-        if new_path.exists():
-            try:
-                old_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(new_path), str(old_path))
-            except Exception as e:
-                logger.error(f"Failed to undo {new_path} -> {old_path}: {e}")
-                continue
-            reverted_count += 1
+    with _undo_lock:
         try:
-            _persist_undo_entries(cache_dir, entries)
-        except OSError as e:
-            logger.warning(f"Failed to persist remaining undo journal entries: {e}")
-    return reverted_count
+            entries = _load_undo_entries(cache_dir)
+        except Exception as e:
+            logger.error(f"Failed to load undo journal from {cache_dir}: {e}")
+            return 0
+        if not entries:
+            return 0
+        reverted_count = 0
+        while entries:
+            last_entry = entries.pop()
+            old_path = Path(last_entry["old_path"])
+            new_path = Path(last_entry["new_path"])
+            if new_path.exists():
+                try:
+                    old_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(new_path), str(old_path))
+                except Exception as e:
+                    logger.error(f"Failed to undo {new_path} -> {old_path}: {e}")
+                    continue
+                reverted_count += 1
+            try:
+                _persist_undo_entries(cache_dir, entries)
+            except OSError as e:
+                logger.warning(f"Failed to persist remaining undo journal entries: {e}")
+        return reverted_count
 
 
 def _safe_transfer(
@@ -180,6 +192,7 @@ def _safe_transfer(
     source_hash: str | None = None,
     dry_run: bool = False,
     root_dir: Path | None = None,
+    source_root: Path | None = None,
     record_undo: bool = False,
     cache_dir: Path | None = None,
 ) -> Path:
@@ -191,11 +204,15 @@ def _safe_transfer(
     and the dry-run gate. Only the terminal ``transfer`` step differs between
     move and copy, so a fix to the dedup/dry-run logic lands exactly once.
 
-    When root_dir is given, the destination is validated against it before any
+    When ``root_dir`` is given, ``dest_path`` is validated against it before any
     filesystem work, so a traversal destination fails even in dry-run mode.
+    When ``source_root`` is given, ``source_path`` is also validated against it.
     """
     if not source_path.exists():
         raise FileNotFoundError(f"Source file {source_path} does not exist")
+
+    if source_root is not None:
+        ensure_within_root(source_path, source_root)
 
     if root_dir is not None:
         ensure_within_root(dest_path, root_dir)
@@ -238,11 +255,13 @@ def safe_move_file(
     dry_run: bool = False,
     cache_dir: Path | None = None,
     root_dir: Path | None = None,
+    source_root: Path | None = None,
 ) -> Path:
     """Safely move a file with duplicate detection, dry-run support, and undo recording.
 
-    When root_dir is given, the destination is validated against it before any
+    When ``root_dir`` is given, ``dest_path`` is validated against it before any
     filesystem work, so a traversal destination fails even in dry-run mode.
+    When ``source_root`` is given, ``source_path`` is also validated against it.
     """
     return _safe_transfer(
         source_path,
@@ -253,6 +272,7 @@ def safe_move_file(
         source_hash=source_hash,
         dry_run=dry_run,
         root_dir=root_dir,
+        source_root=source_root,
         record_undo=True,
         cache_dir=cache_dir,
     )
@@ -266,14 +286,16 @@ def safe_copy_file(
     source_hash: str | None = None,
     dry_run: bool = False,
     root_dir: Path | None = None,
+    source_root: Path | None = None,
 ) -> Path:
     """Safely copy a file with duplicate detection, dry-run support, and error handling.
 
     Copies never record undo entries: the source stays in place, so there is
     nothing to revert.
 
-    When root_dir is given, the destination is validated against it before any
+    When ``root_dir`` is given, ``dest_path`` is validated against it before any
     filesystem work, so a traversal destination fails even in dry-run mode.
+    When ``source_root`` is given, ``source_path`` is also validated against it.
     """
     return _safe_transfer(
         source_path,
@@ -284,6 +306,7 @@ def safe_copy_file(
         source_hash=source_hash,
         dry_run=dry_run,
         root_dir=root_dir,
+        source_root=source_root,
     )
 
 
