@@ -302,91 +302,91 @@ def process_cmd(
         ),
     ] = "rename",
     provider: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--provider",
             "-p",
             help=msg.Help.PROVIDER,
         ),
-    ] = app_settings.provider,
+    ] = None,
     model: Annotated[
         str | None,
         typer.Option(
             "--model",
             help=msg.Help.MODEL,
         ),
-    ] = app_settings.model,
+    ] = None,
     workers: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--workers",
             "-w",
             help=msg.Help.WORKERS,
         ),
-    ] = app_settings.workers,
+    ] = None,
     ocr_enhanced: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--ocr-enhanced/--no-ocr-enhanced",
             help=msg.Help.OCR_ENHANCED,
         ),
-    ] = app_settings.ocr_enhanced,
+    ] = None,
     debug_ocr: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--debug-ocr",
             help=msg.Help.DEBUG_OCR,
         ),
-    ] = app_settings.debug_ocr,
+    ] = None,
     use_mutool: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--use-mutool/--no-mutool",
             help=msg.Help.USE_MUTOOL,
         ),
-    ] = app_settings.use_mutool,
+    ] = None,
     mutool_path: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--mutool-path",
             help=msg.Help.MUTOOL_PATH,
         ),
-    ] = app_settings.mutool_path,
+    ] = None,
     extractor: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--extractor",
             help=msg.Help.EXTRACTOR,
         ),
-    ] = app_settings.extractor,
+    ] = None,
     text_length: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--text-length",
             help=msg.Help.TEXT_LENGTH,
         ),
-    ] = app_settings.text_length,
+    ] = None,
     text_extraction: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--text-extraction",
             help=msg.Help.TEXT_EXTRACTION,
         ),
-    ] = app_settings.text_extraction,
+    ] = None,
     extraction_pages: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--extraction-pages",
             help=msg.Help.EXTRACTION_PAGES,
         ),
-    ] = app_settings.extraction_pages,
+    ] = None,
     recursive: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--recursive/--no-recursive",
             help=msg.Help.RECURSIVE,
         ),
-    ] = app_settings.recursive,
+    ] = None,
     update_metadata: Annotated[
         bool,
         typer.Option(
@@ -402,26 +402,26 @@ def process_cmd(
         ),
     ] = None,
     move_scan_failures: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--move-scan-failures",
             help=msg.Help.MOVE_SCAN_FAILURES,
         ),
-    ] = app_settings.move_scan_failures,
+    ] = None,
     rename_images: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--rename-images",
             help=msg.Help.RENAME_IMAGES,
         ),
-    ] = app_settings.rename_images,
+    ] = None,
     exif: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--exif",
             help=msg.Help.EXIF,
         ),
-    ] = app_settings.exif,
+    ] = None,
     benchmark: Annotated[
         bool,
         typer.Option(
@@ -430,26 +430,26 @@ def process_cmd(
         ),
     ] = False,
     vision_max_pages: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--vision-max-pages",
             help=msg.Help.VISION_MAX_PAGES,
         ),
-    ] = app_settings.vision_max_pages,
+    ] = None,
     vision_provider: Annotated[
         str | None,
         typer.Option(
             "--vision-provider",
             help=msg.Help.VISION_PROVIDER,
         ),
-    ] = app_settings.vision_provider,
+    ] = None,
     vision_model: Annotated[
         str | None,
         typer.Option(
             "--vision-model",
             help=msg.Help.VISION_MODEL,
         ),
-    ] = app_settings.vision_model,
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -459,6 +459,19 @@ def process_cmd(
     ] = False,
 ) -> None:
     """Process files in a directory."""
+    # Resolve omitted CLI options from app_settings at runtime rather than
+    # at import time so malformed config or post-import overrides work cleanly.
+    resolved_provider = provider if provider is not None else app_settings.provider
+    resolved_model = model if model is not None else app_settings.model
+    resolved_recursive = recursive if recursive is not None else app_settings.recursive
+    resolved_rename_images = (
+        rename_images if rename_images is not None else app_settings.rename_images
+    )
+    resolved_vision_provider = (
+        vision_provider if vision_provider is not None else app_settings.vision_provider
+    )
+    resolved_vision_model = vision_model if vision_model is not None else app_settings.vision_model
+
     # Reject only the explicit CLI flag; settings/env "none" stays an accepted
     # internal sentinel that BookProcessor remaps to OCR.
     final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
@@ -466,35 +479,51 @@ def process_cmd(
     _validate_cli_flags(root_dir, fallback_mode)
 
     # Check Vision Model Guard before running pipeline
-    check_vision_model_guard(final_fallback, rename_images, vision_provider, vision_model)
-
-    config = _build_processing_config(
-        mode=mode,
-        workers=workers,
-        recursive=recursive,
-        ocr_enhanced=ocr_enhanced,
-        debug_ocr=debug_ocr,
-        use_mutool=use_mutool,
-        mutool_path=mutool_path,
-        extractor=extractor,
-        text_length=text_length,
-        text_extraction=text_extraction,
-        extraction_pages=extraction_pages,
-        fallback_mode=final_fallback,
-        move_scan_failures=move_scan_failures,
-        rename_images=rename_images,
-        exif=exif,
-        update_metadata=update_metadata,
-        benchmark=benchmark,
-        vision_max_pages=vision_max_pages,
-        vision_provider=vision_provider,
-        vision_model=vision_model,
-        dry_run=dry_run,
+    check_vision_model_guard(
+        final_fallback, resolved_rename_images, resolved_vision_provider, resolved_vision_model
     )
 
-    _print_process_header(root_dir, mode, provider, model)
-    display_warnings(mode, recursive, provider, model, final_fallback, rename_images)
-    _run_process_pipeline(config, root_dir, provider, model)
+    overrides: dict[str, Any] = {
+        "mode": mode,
+        "fallback_mode": final_fallback,
+        "update_metadata": update_metadata,
+        "benchmark": benchmark,
+        "dry_run": dry_run,
+    }
+    optional_overrides = {
+        "workers": workers,
+        "recursive": recursive,
+        "ocr_enhanced": ocr_enhanced,
+        "debug_ocr": debug_ocr,
+        "use_mutool": use_mutool,
+        "mutool_path": mutool_path,
+        "extractor": extractor,
+        "text_length": text_length,
+        "text_extraction": text_extraction,
+        "extraction_pages": extraction_pages,
+        "move_scan_failures": move_scan_failures,
+        "rename_images": rename_images,
+        "exif": exif,
+        "vision_max_pages": vision_max_pages,
+        "vision_provider": vision_provider,
+        "vision_model": vision_model,
+    }
+    for key, val in optional_overrides.items():
+        if val is not None:
+            overrides[key] = val
+
+    config = _build_processing_config(**overrides)
+
+    _print_process_header(root_dir, mode, resolved_provider, resolved_model)
+    display_warnings(
+        mode,
+        resolved_recursive,
+        resolved_provider,
+        resolved_model,
+        final_fallback,
+        resolved_rename_images,
+    )
+    _run_process_pipeline(config, root_dir, resolved_provider, resolved_model)
 
 
 @app.command("evaluate")
@@ -513,14 +542,15 @@ def evaluate_cmd(
         ),
     ] = None,
     workers: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--workers",
             help=msg.Help.EVAL_WORKERS,
         ),
-    ] = app_settings.workers,
+    ] = None,
 ) -> None:
     """Evaluate multiple models and providers."""
+    resolved_workers = workers if workers is not None else app_settings.workers
     target_dir = Path(directory or ".").resolve()
     if not target_dir.is_dir():
         console.print(msg.Info.DIR_NOT_FOUND.format(target_dir))
@@ -531,7 +561,7 @@ def evaluate_cmd(
             run_evaluation_pipeline(
                 root_dir=target_dir,
                 provider_filter=provider,
-                workers=workers,
+                workers=resolved_workers,
             )
         )
     except ConfigurationError as exc:
@@ -561,7 +591,11 @@ def clear_cache_cmd(
 ) -> None:
     """Clear the cache directory."""
     if not confirm:
-        response = input(msg.Prompt.CACHE_CONFIRM)
+        try:
+            response = input(msg.Prompt.CACHE_CONFIRM)
+        except (KeyboardInterrupt, EOFError):
+            console.print(msg.Prompt.CACHE_CANCELLED)
+            raise typer.Exit(code=0) from None
         if response.lower() not in ("y", "yes"):
             console.print(msg.Prompt.CACHE_CANCELLED)
             raise typer.Exit()
