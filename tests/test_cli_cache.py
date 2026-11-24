@@ -92,3 +92,22 @@ def test_clear_cache_command_yes_flag():
         cli_module.clear_cache_cmd(confirm=True)
 
         assert mock_handle.call_count == 1
+
+
+def test_clear_cache_command_eof_and_keyboard_interrupt():
+    import pytest
+    import typer
+
+    import renai.cli as cli_module
+
+    for exc in (EOFError(), KeyboardInterrupt()):
+        with (
+            patch("renai.cli.handle_clear_cache") as mock_handle,
+            patch("renai.cli.console") as mock_console,
+            patch("builtins.input", side_effect=exc),
+        ):
+            with pytest.raises(typer.Exit) as exc_info:
+                cli_module.clear_cache_cmd(confirm=False)
+            assert exc_info.value.exit_code == 0
+            mock_handle.assert_not_called()
+            mock_console.print.assert_called_once_with(cli_module.msg.Prompt.CACHE_CANCELLED)

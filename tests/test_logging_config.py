@@ -223,6 +223,28 @@ def test_analyze_exception():
     assert _analyze_exception(ValueError("Unknown crash")) == (err.DEFAULT_WHY, err.DEFAULT_HOW)
 
 
+def test_analyze_exception_structured_fields():
+    from renai.exceptions import ConfigurationError, ExtractionError, OCRError
+    from renai.logging_config import _analyze_exception
+    from renai.messages import errors as err
+
+    # Structured fields work regardless of exception message text
+    assert _analyze_exception(
+        ConfigurationError("authentication failed", missing_api_key=True)
+    ) == (
+        err.API_KEY_WHY,
+        err.API_KEY_HOW,
+    )
+    assert _analyze_exception(OCRError("binary unavailable", missing_tool="tesseract")) == (
+        err.TOOL_MISSING_WHY,
+        err.TOOL_MISSING_HOW,
+    )
+    assert _analyze_exception(ExtractionError("renderer missing", missing_tool="mutool")) == (
+        err.TOOL_MISSING_WHY,
+        err.TOOL_MISSING_HOW,
+    )
+
+
 def test_handle_unhandled_exception():
     from rich.panel import Panel
 

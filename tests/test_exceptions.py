@@ -42,3 +42,29 @@ def test_llm_error():
     err = LLMError("llm timeout")
     assert str(err) == "llm timeout"
     assert isinstance(err, RenAIError)
+
+
+def test_exception_structured_context():
+    from pathlib import Path
+
+    from renai.exceptions import OCRError
+
+    cause = ValueError("root cause")
+    err = ExtractionError(
+        "extract failed",
+        file_path=Path("/tmp/doc.pdf"),
+        provider="openai",
+        cause=cause,
+        missing_tool="mutool",
+    )
+    assert err.file_path == Path("/tmp/doc.pdf")
+    assert err.provider == "openai"
+    assert err.cause is cause
+    assert err.missing_tool == "mutool"
+
+    cfg_err = ConfigurationError("bad key", provider="openrouter", missing_api_key=True)
+    assert cfg_err.missing_api_key is True
+    assert cfg_err.provider == "openrouter"
+
+    ocr_err = OCRError("no binary", missing_tool="tesseract")
+    assert ocr_err.missing_tool == "tesseract"

@@ -65,6 +65,24 @@ class TestNewSettingsDefaults:
             AppSettings(llm_backoff_max=0)
 
 
+def test_env_overrides_toml_precedence(tmp_path, monkeypatch):
+    """Env vars take precedence over TOML config in AppSettings and ProviderSettings."""
+    from renai.config.settings import ProviderSettings
+
+    toml_file = tmp_path / "settings.toml"
+    toml_file.write_text("workers = 4\n", encoding="utf-8")
+    secrets_file = tmp_path / "secrets.toml"
+    secrets_file.write_text('openai_api_key = "sk-from-toml"\n', encoding="utf-8")
+
+    monkeypatch.setenv("RENAI_WORKERS", "8")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    monkeypatch.setitem(AppSettings.model_config, "toml_file", (toml_file,))
+
+    with patch("renai.config.constants.SECRETS_FILE", secrets_file):
+        assert AppSettings().workers == 8
+        assert ProviderSettings().openai_api_key == "sk-from-env"
+
+
 # =============================================================================
 # LLM transport knobs
 # =============================================================================

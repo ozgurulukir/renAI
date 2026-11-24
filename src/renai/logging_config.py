@@ -108,45 +108,44 @@ def _analyze_exception(exc_value: BaseException) -> tuple[str, str]:
     )
     from renai.messages import errors as err
 
-    why = err.DEFAULT_WHY
-    how = err.DEFAULT_HOW
     exc_str = str(exc_value)
+    result: tuple[str, str] | None = None
 
-    if "API Key" in exc_str or "api_key" in exc_str:
-        why = err.API_KEY_WHY
-        how = err.API_KEY_HOW
-    elif "Tesseract" in exc_str or "mutool" in exc_str:
-        why = err.TOOL_MISSING_WHY
-        how = err.TOOL_MISSING_HOW
+    if isinstance(exc_value, ConfigurationError) and exc_value.missing_api_key:
+        result = (err.API_KEY_WHY, err.API_KEY_HOW)
+    elif isinstance(exc_value, (OCRError, ExtractionError)) and exc_value.missing_tool:
+        result = (err.TOOL_MISSING_WHY, err.TOOL_MISSING_HOW)
     elif isinstance(exc_value, FileNotFoundError):
-        why = err.FILE_NOT_FOUND_WHY.format(exc_value.filename or exc_str)
-        how = err.FILE_NOT_FOUND_HOW
-    elif isinstance(exc_value, PermissionError):
-        why = err.PERMISSION_WHY
-        how = err.PERMISSION_HOW
-    elif isinstance(exc_value, ConfigurationError):
-        why = err.CONFIG_WHY
-        how = err.CONFIG_HOW
-    elif isinstance(exc_value, LLMError):
-        why = err.LLM_WHY
-        how = err.LLM_HOW
-    elif isinstance(exc_value, OCRError):
-        why = err.OCR_WHY
-        how = err.OCR_HOW
-    elif isinstance(exc_value, ExtractionError):
-        why = err.EXTRACTION_WHY
-        how = err.EXTRACTION_HOW
-    elif isinstance(exc_value, CacheError):
-        why = err.CACHE_WHY
-        how = err.CACHE_HOW
-    elif isinstance(exc_value, FileOperationError):
-        why = err.FILE_OP_WHY
-        how = err.FILE_OP_HOW
-    elif isinstance(exc_value, RenAIError):
-        why = err.REN_AI_WHY
-        how = err.REN_AI_HOW.format(exc_str)
+        result = (
+            err.FILE_NOT_FOUND_WHY.format(exc_value.filename or exc_str),
+            err.FILE_NOT_FOUND_HOW,
+        )
+    else:
+        type_map: tuple[tuple[type[BaseException], str, str], ...] = (
+            (PermissionError, err.PERMISSION_WHY, err.PERMISSION_HOW),
+            (ConfigurationError, err.CONFIG_WHY, err.CONFIG_HOW),
+            (LLMError, err.LLM_WHY, err.LLM_HOW),
+            (OCRError, err.OCR_WHY, err.OCR_HOW),
+            (ExtractionError, err.EXTRACTION_WHY, err.EXTRACTION_HOW),
+            (CacheError, err.CACHE_WHY, err.CACHE_HOW),
+            (FileOperationError, err.FILE_OP_WHY, err.FILE_OP_HOW),
+            (RenAIError, err.REN_AI_WHY, err.REN_AI_HOW.format(exc_str)),
+        )
+        for exc_type, why, how in type_map:
+            if isinstance(exc_value, exc_type):
+                result = (why, how)
+                break
 
-    return why, how
+    if result is None:
+        # Fallback string matching only for untyped third-party exceptions
+        if "API Key" in exc_str or "api_key" in exc_str:
+            result = (err.API_KEY_WHY, err.API_KEY_HOW)
+        elif "Tesseract" in exc_str or "mutool" in exc_str:
+            result = (err.TOOL_MISSING_WHY, err.TOOL_MISSING_HOW)
+        else:
+            result = (err.DEFAULT_WHY, err.DEFAULT_HOW)
+
+    return result
 
 
 def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
