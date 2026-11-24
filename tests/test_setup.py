@@ -201,8 +201,21 @@ def test_validate_api_key_other_exception():
         "openai.resources.models.AsyncModels.list", side_effect=ValueError("Unexpected Error")
     ):
         res, msg = _validate_api_key("https://api.openai.com/v1", "key-with-other-error")
-        assert res is True
+        assert res is False
         assert "Warning" in msg
+
+
+def test_validate_api_key_wrapper_exception():
+    from renai.processors.setup_steps import _validate_api_key
+
+    def _close_coro_and_raise(coro):
+        coro.close()
+        raise RuntimeError("Loop failure")
+
+    with patch("asyncio.run", side_effect=_close_coro_and_raise):
+        res, msg = _validate_api_key("https://api.openai.com/v1", "key-with-wrapper-error")
+        assert res is False
+        assert "Loop failure" in msg
 
 
 def test_prompt_and_validate_api_key_retry():

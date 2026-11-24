@@ -304,14 +304,17 @@ class LLMEngine:
             f"</initial_metadata>"
         )
 
-        refined_model = await self._call_llm(
-            prompt=refinement_prompt,
-            system_role=system_role,
-            model_class=BookMetadata,
-            allowed_categories=allowed_categories,
-        )
-
-        return refined_model if refined_model else initial_model
+        try:
+            refined_model = await self._call_llm(
+                prompt=refinement_prompt,
+                system_role=system_role,
+                model_class=BookMetadata,
+                allowed_categories=allowed_categories,
+            )
+            return refined_model if refined_model else initial_model
+        except LLMError as e:
+            logger.warning("Metadata refinement failed (%s); keeping initial metadata.", e)
+            return initial_model
 
     async def get_book_metadata_from_image(
         self,
@@ -565,11 +568,11 @@ class LLMEngine:
         max_backoff_sec = self.call_policy.backoff_max
         max_attempts = self.call_policy.transport_max_attempts
 
+        if self.rate_limiter:
+            await self.rate_limiter.acquire()
+
         for attempt in range(max_attempts):
             try:
-                if self.rate_limiter:
-                    await self.rate_limiter.acquire()
-
                 completion = await self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
@@ -658,6 +661,8 @@ class LLMEngine:
                             "content": f"Category must be ONLY from: {', '.join(allowed)}",
                         }
                     )
+            except LLMError:
+                raise
             except Exception as e:
                 logger.error(f"Failed to generate JSON completion for {context_name}: {e}")
 

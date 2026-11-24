@@ -29,6 +29,7 @@ from ..config import (
     get_ocr_lang,
     get_subprocess_timeout,
 )
+from ..exceptions import OCRError
 from ..utils import ensure_secure_dir, sanitize_filename
 from .render import RenderedPage, create_page_renderer, get_subprocess_kwargs
 
@@ -111,7 +112,6 @@ class OCREngine:
         self.subprocess_timeout = (
             subprocess_timeout if subprocess_timeout is not None else get_subprocess_timeout()
         )
-        OCREngine._max_workers = max_workers
 
         # Validate mutool if requested
         if self.use_mutool:
@@ -510,7 +510,7 @@ class OCREngine:
             )
             return "\n\n".join(extracted_text).strip()
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, OCRError) as e:
             logger.error(f"OCR Pipeline failed for {file_path.name}: {e}")
             return ""
         finally:
