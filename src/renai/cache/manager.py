@@ -16,9 +16,59 @@ from renai.utils import ensure_secure_dir
 
 logger = logging.getLogger(__name__)
 
-# Thread-safe lock for all cache database operations
+# Thread-safe lock for all cache database operations. Held by the public
+# read/write/clear operations; ``_get_db_connection`` expects it to be held
+# by its caller and must not acquire it again (Lock is not reentrant).
 _cache_lock = threading.Lock()
-_initialized_dbs: set[Path] = set()
+
+
+class _CacheStore:
+    """Owns the persistent SQLite connection for one cache directory.
+
+    One connection is opened per cache root (lazily, on first use) and reused
+    for every operation, instead of opening a fresh connection and re-running
+    the secure-dir setup, DDL, and PRAGMAs on each call. All use is serialized
+    by ``_cache_lock`` held by the public operations, so a single connection
+    with ``check_same_thread=False`` is safe across worker threads. A broken
+    connection is discarded so the next operation opens a fresh one rather
+    than poisoning the store for the rest of the run.
+    """
+
+    def __init__(self, db_dir: Path) -> None:
+        self._db_dir = db_dir
+        self._conn: sqlite3.Connection | None = None
+
+    @contextlib.contextmanager
+    def connection(self) -> Generator[sqlite3.Connection, None, None]:
+        if self._conn is None:
+            self._conn = self._open()
+        try:
+            yield self._conn
+        except sqlite3.DatabaseError:
+            self._close_quietly()
+            raise
+
+    def _open(self) -> sqlite3.Connection:
+        ensure_secure_dir(self._db_dir)
+        conn = sqlite3.connect(
+            str(self._db_dir / "cache.db"),
+            timeout=30.0,
+            check_same_thread=False,
+        )
+        conn.execute("PRAGMA journal_mode=WAL;")
+        _init_db(conn)
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        return conn
+
+    def _close_quietly(self) -> None:
+        if self._conn is not None:
+            with contextlib.suppress(Exception):
+                self._conn.close()
+            self._conn = None
+
+
+# One persistent store per resolved cache root for the life of the process.
+_stores: dict[Path, _CacheStore] = {}
 
 
 class TextCacheKey(NamedTuple):
@@ -99,23 +149,19 @@ def _resolve_cache_dir(cache_dir: Path | None) -> Path:
     return CACHE_DIR if cache_dir is None else cache_dir
 
 
-@contextlib.contextmanager
-def _get_db_connection(db_dir: Path) -> Generator[sqlite3.Connection, None, None]:
-    """Create, initialize, and yield a SQLite database connection with WAL mode enabled."""
-    ensure_secure_dir(db_dir)
-    db_path = db_dir / "cache.db"
-    resolved_db = db_path.resolve()
-    needs_init = not db_path.exists() or resolved_db not in _initialized_dbs
-    conn = sqlite3.connect(str(db_path), timeout=30.0)
-    try:
-        if needs_init:
-            conn.execute("PRAGMA journal_mode=WAL;")
-            _init_db(conn)
-            _initialized_dbs.add(resolved_db)
-        conn.execute("PRAGMA synchronous=NORMAL;")
-        yield conn
-    finally:
-        conn.close()
+def _get_db_connection(db_dir: Path) -> contextlib.AbstractContextManager[sqlite3.Connection]:
+    """Return the persistent-connection context manager for ``db_dir``.
+
+    The connection is opened (secure dir, WAL, DDL, synchronous pragma) on
+    first use and reused for every subsequent operation against the same
+    cache root. The caller must hold ``_cache_lock``.
+    """
+    key = db_dir.resolve()
+    store = _stores.get(key)
+    if store is None:
+        store = _CacheStore(db_dir)
+        _stores[key] = store
+    return store.connection()
 
 
 def _init_db(conn: sqlite3.Connection) -> None:
