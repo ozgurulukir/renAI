@@ -18,7 +18,7 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from ..config import get_allowed_categories, get_image_categories
 from ..config.folder_rules import resolve_allowed_bucket, resolve_fallback_category
-from ..exceptions import LLMError
+from ..exceptions import ConfigurationError, LLMError
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
 from ..utils.rate_limiter import AsyncRateLimiter
 
@@ -163,15 +163,19 @@ class LLMEngine:
         for name in template_names:
             path = self.prompts_dir / f"{name}.txt"
             try:
-                if path.exists():
-                    with path.open(encoding="utf-8") as f:
-                        templates[name] = f.read()
-                else:
-                    logger.error(f"Prompt template not found: {path}")
-                    templates[name] = ""
-            except Exception as e:
-                logger.error(f"Failed to load prompt template {name}: {e}")
-                templates[name] = ""
+                with path.open(encoding="utf-8") as f:
+                    content = f.read().strip()
+            except OSError as e:
+                raise ConfigurationError(
+                    f"Failed to read prompt template {path}: {e}. "
+                    "The renAI installation appears to be incomplete or corrupted."
+                ) from e
+            if not content:
+                raise ConfigurationError(
+                    f"Prompt template is empty: {path}. "
+                    "The renAI installation appears to be incomplete or corrupted."
+                )
+            templates[name] = content
         return templates
 
     def _format_category_table(self, categories: dict[str, list]) -> str:
@@ -583,24 +587,24 @@ class LLMEngine:
                 return completion.choices[0].message.content
             except Exception as err:
                 retryable, label = _classify_llm_error(err)
+                target = f"{context_name} [{self.provider}/{self.model_name}]"
                 if not retryable:
-                    logger.error("%s for %s: %s", label, context_name, err)
-                    raise LLMError(f"{label} for {context_name}: {err}") from err
+                    logger.error("%s for %s: %s", label, target, err)
+                    raise LLMError(f"{label} for {target}: {err}") from err
                 if attempt == max_attempts - 1:
                     logger.error(
                         "%s retries exhausted (%d attempts) for %s.",
                         label,
                         max_attempts,
-                        context_name,
+                        target,
                     )
                     raise LLMError(
-                        f"{label} retries exhausted ({max_attempts} attempts) "
-                        f"for {context_name}: {err}"
+                        f"{label} retries exhausted ({max_attempts} attempts) for {target}: {err}"
                     ) from err
                 logger.warning(
                     "%s for %s. Retrying in %.1fs... Error: %s",
                     label,
-                    context_name,
+                    target,
                     backoff_sec,
                     err,
                 )

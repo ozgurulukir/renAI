@@ -218,16 +218,42 @@ class TestLoadAllTemplates:
         assert "image_analyzer" in llm_engine._templates
         assert len(llm_engine._templates["system_base"]) > 0
 
-    def test_load_all_templates_io_error_returns_empty_string(self, llm_engine):
-        """Test that IO errors during template loading return empty string."""
+    def test_load_all_templates_io_error_raises_configuration_error(self, llm_engine):
+        """Test that IO errors during template loading fail fast with ConfigurationError."""
         from pathlib import Path as _Path
 
-        with patch.object(_Path, "open", side_effect=OSError("Permission denied")):
-            templates = llm_engine._load_all_templates()
-            assert templates.get("system_base") == ""
-            assert templates.get("book_extractor") == ""
-            assert templates.get("refinement") == ""
-            assert templates.get("image_analyzer") == ""
+        import pytest
+
+        from renai.exceptions import ConfigurationError
+
+        with (
+            pytest.raises(ConfigurationError, match="Failed to read prompt template"),
+            patch.object(_Path, "open", side_effect=OSError("Permission denied")),
+        ):
+            llm_engine._load_all_templates()
+
+    def test_load_all_templates_missing_file_raises_configuration_error(self, llm_engine, tmp_path):
+        """Test that a missing template file fails fast with ConfigurationError."""
+        import pytest
+
+        from renai.exceptions import ConfigurationError
+
+        llm_engine.prompts_dir = tmp_path
+        # FileNotFoundError is an OSError, so it surfaces via the read-failure branch.
+        with pytest.raises(ConfigurationError, match="Failed to read prompt template"):
+            llm_engine._load_all_templates()
+
+    def test_load_all_templates_empty_file_raises_configuration_error(self, llm_engine, tmp_path):
+        """Test that an empty template file fails fast with ConfigurationError."""
+        import pytest
+
+        from renai.exceptions import ConfigurationError
+
+        llm_engine.prompts_dir = tmp_path
+        for name in ("system_base", "book_extractor", "refinement", "image_analyzer"):
+            (tmp_path / f"{name}.txt").write_text("  \n", encoding="utf-8")
+        with pytest.raises(ConfigurationError, match="Prompt template is empty"):
+            llm_engine._load_all_templates()
 
 
 @pytest.mark.asyncio
