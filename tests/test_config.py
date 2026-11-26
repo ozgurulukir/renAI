@@ -326,6 +326,35 @@ class TestTesseractPath:
                     assert Path(result).as_posix() == "/usr/bin/tesseract"
 
 
+def _tty_stdin(data):
+    """A terminal-looking stdin so display_warnings shows its prompt (#257)."""
+    import io
+
+    class _TtyStdin(io.StringIO):
+        def isatty(self):
+            return True
+
+    return _TtyStdin(data)
+
+
+def _tty_stdin_raises(exc):
+    """A terminal-looking stdin whose read raises, simulating EOF/Ctrl-D."""
+    import io
+
+    class _TtyStdinRaises(io.StringIO):
+        def __init__(self):
+            super().__init__("")
+            self._exc = exc
+
+        def isatty(self):
+            return True
+
+        def readline(self):
+            raise self._exc
+
+    return _TtyStdinRaises()
+
+
 class TestDisplayWarnings:
     """Test display_warnings function."""
 
@@ -343,7 +372,7 @@ class TestDisplayWarnings:
 
         from renai.messages import cli as msg
 
-        with patch("builtins.input", return_value=""), patch("renai.cli.console.print") as mock:
+        with patch("sys.stdin", _tty_stdin("\n")), patch("renai.cli.console.print") as mock:
             display_warnings("rename", False)
             assert mock.call_count == 2
             panel = mock.call_args_list[0][0][0]
@@ -356,7 +385,7 @@ class TestDisplayWarnings:
 
         from renai.messages import cli as msg
 
-        with patch("builtins.input", return_value=""), patch("renai.cli.console.print") as mock:
+        with patch("sys.stdin", _tty_stdin("\n")), patch("renai.cli.console.print") as mock:
             display_warnings("organize", False)
             assert mock.call_count == 2
             panel = mock.call_args_list[0][0][0]
@@ -372,7 +401,7 @@ class TestDisplayWarnings:
 
         from renai.messages import cli as msg
 
-        with patch("builtins.input", return_value=""), patch("renai.cli.console.print") as mock:
+        with patch("sys.stdin", _tty_stdin("\n")), patch("renai.cli.console.print") as mock:
             display_warnings("rename", True)
             assert mock.call_count == 2
             panel = mock.call_args_list[0][0][0]
@@ -383,23 +412,23 @@ class TestDisplayWarnings:
             )
 
     def test_display_warnings_cancel_keyboard_interrupt(self):
-        """Should log cancellation and exit with typer.Exit(0) when KeyboardInterrupt is raised."""
-        with patch("builtins.input", side_effect=KeyboardInterrupt):
+        """Should log cancellation and exit non-zero on KeyboardInterrupt (#257)."""
+        with patch("sys.stdin", _tty_stdin_raises(KeyboardInterrupt)):
             with patch("renai.cli.console.print") as mock_print:
                 with pytest.raises(typer.Exit) as exc_info:
                     display_warnings("rename", False)
-                assert exc_info.value.exit_code == 0
+                assert exc_info.value.exit_code == 1
                 assert any(
                     "cancelled" in str(args).lower() for args, _ in mock_print.call_args_list
                 )
 
     def test_display_warnings_cancel_eof_error(self):
-        """Should log cancellation and exit with typer.Exit(0) when EOFError is raised."""
-        with patch("builtins.input", side_effect=EOFError):
+        """Should log cancellation and exit non-zero when EOFError is raised (#257)."""
+        with patch("sys.stdin", _tty_stdin_raises(EOFError)):
             with patch("renai.cli.console.print") as mock_print:
                 with pytest.raises(typer.Exit) as exc_info:
                     display_warnings("rename", False)
-                assert exc_info.value.exit_code == 0
+                assert exc_info.value.exit_code == 1
                 assert any(
                     "cancelled" in str(args).lower() for args, _ in mock_print.call_args_list
                 )

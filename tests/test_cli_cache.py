@@ -1,3 +1,4 @@
+import io
 from unittest.mock import MagicMock, patch
 
 # Mock rich before importing renai.cli if it's not available
@@ -61,7 +62,19 @@ def test_clear_cache_command_confirm():
         assert mock_handle.call_count == 1
 
 
+def _tty_stdin(data):
+    """A stdin double that looks like a terminal, so prompts are shown."""
+    import io
+
+    class _TtyStdin(io.StringIO):
+        def isatty(self):
+            return True
+
+    return _TtyStdin(data)
+
+
 def test_clear_cache_command_cancel():
+    import pytest
     import typer
 
     import renai.cli as cli_module
@@ -69,14 +82,14 @@ def test_clear_cache_command_cancel():
     with (
         patch("renai.cli.handle_clear_cache") as mock_handle,
         patch("renai.cli.console"),
-        patch("builtins.input", return_value="n"),
+        patch("sys.stdin", _tty_stdin("n\n")),
     ):
-        # Test 'cache' command with cancellation
-        import pytest
-
-        with pytest.raises(typer.Exit):
+        # Test 'cache' command with cancellation on a TTY stdin
+        with pytest.raises(typer.Exit) as exc_info:
             cli_module.clear_cache_cmd(confirm=False)
 
+        # A cancelled run exits non-zero (#257).
+        assert exc_info.value.exit_code == 1
         mock_handle.assert_not_called()
 
 
@@ -100,14 +113,28 @@ def test_clear_cache_command_eof_and_keyboard_interrupt():
 
     import renai.cli as cli_module
 
+    class _EofStdin(io.StringIO):
+        """Terminal-looking stdin at EOF and a side-effecting readline."""
+
+        def __init__(self, exc):
+            super().__init__("")
+            self._exc = exc
+
+        def isatty(self):
+            return True
+
+        def readline(self):
+            raise self._exc
+
     for exc in (EOFError(), KeyboardInterrupt()):
         with (
             patch("renai.cli.handle_clear_cache") as mock_handle,
             patch("renai.cli.console") as mock_console,
-            patch("builtins.input", side_effect=exc),
+            patch("sys.stdin", _EofStdin(exc)),
         ):
             with pytest.raises(typer.Exit) as exc_info:
                 cli_module.clear_cache_cmd(confirm=False)
-            assert exc_info.value.exit_code == 0
+            # A cancelled run exits non-zero (#257).
+            assert exc_info.value.exit_code == 1
             mock_handle.assert_not_called()
             mock_console.print.assert_called_once_with(cli_module.msg.Prompt.CACHE_CANCELLED)
