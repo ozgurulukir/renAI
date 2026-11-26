@@ -30,7 +30,8 @@ from renai.config.constants import (
     FOLDER_RULES_USER_FILE,
     PACKAGE_CONFIG_DIR,
 )
-from renai.filename.builder import validate_filename_template
+from renai.filename.builder import filename_template_rejection_reason
+from renai.messages import config as config_msg
 from renai.models.schemas import BookMetadata, ImageMetadata
 
 logger = logging.getLogger(__name__)
@@ -152,12 +153,19 @@ def _normalize_category_map(value: Any) -> dict[str, list[str]] | None:
 def _validated_template(
     value: Any, rule_label: str, key: str, model_class: type[BookMetadata] | type[ImageMetadata]
 ) -> str | None:
-    """Validate a template against the metadata model it will be rendered with."""
+    """Validate a template against the metadata model it will be rendered with.
+
+    An invalid template drops ONLY the template (the rule keeps its
+    categories); the warning names the rule, the template and the reason.
+    """
     if value is None:
         return None
-    template = validate_filename_template(str(value), model_class)
-    if template is None:
-        logger.warning("Folder rule %s: ignoring %s", rule_label, key)
+    template = str(value)
+    reason = filename_template_rejection_reason(template, model_class)
+    if reason is not None:
+        logger.warning(
+            config_msg.Warn.folder_rule_template_ignored(rule_label, key, template, reason)
+        )
         return None
     return template
 

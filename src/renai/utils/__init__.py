@@ -27,11 +27,35 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 )
 
 
+def _truncate_to_utf8_budget(text: str, max_bytes: int) -> str:
+    """Truncate ``text`` to a UTF-8 BYTE budget, stepping back to a valid boundary.
+
+    Filesystems cap a filename component at 255 bytes (not characters), so a
+    CJK/emoji title truncated in characters can still exceed the limit. The
+    cut is made in bytes and then walked back up to 3 bytes to land on a
+    complete UTF-8 character boundary.
+    """
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    clipped = encoded[:max_bytes]
+    while clipped:
+        try:
+            return clipped.decode("utf-8")
+        except UnicodeDecodeError:
+            clipped = clipped[:-1]
+    return ""
+
+
 def sanitize_filename(filename: str, max_length: int = 200) -> str:
     """
     Replace invalid characters with spaces and remove all control characters.
     Blocks Windows-reserved device names and limits length to stay within
     filesystem path limits.
+
+    ``max_length`` is interpreted as a UTF-8 BYTE budget (matching the 255-byte
+    filename component limit on Linux/macOS), and truncation steps back to a
+    valid character boundary so multi-byte titles never end mid-character.
     """
     # Ensure max_length is an int for type safety
     max_val: int = int(max_length)
@@ -59,9 +83,15 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     if stem in _WINDOWS_RESERVED_NAMES:
         sanitized = f"unnamed_{sanitized}"
 
-    # Limit length
-    if len(sanitized) > max_val:
-        sanitized = sanitized[:max_val].strip()
+    # Limit length in UTF-8 BYTES (filesystem component limit), stepping back
+    # to a character boundary so CJK/emoji names never end mid-character.
+    if len(sanitized.encode("utf-8")) > max_val:
+        sanitized = _truncate_to_utf8_budget(sanitized, max_val).strip()
+
+    # Byte truncation followed by stripping can theoretically yield "" (or a
+    # lone dot); fall back rather than returning an unusable name.
+    if not sanitized or sanitized in {".", ".."}:
+        sanitized = "unnamed"
 
     return sanitized
 

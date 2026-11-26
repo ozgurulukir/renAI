@@ -437,3 +437,37 @@ def test_ensure_secure_dir_windows_exception(
     # Exception should be caught and logged as debug
     assert mock_debug.call_count == 1
     assert "Failed to set secure permissions" in mock_debug.call_args[0][0]
+
+
+def test_sanitize_filename_truncates_to_utf8_byte_budget():
+    """max_length is a UTF-8 BYTE budget, not a character count."""
+    # 200 CJK characters = 600 bytes in UTF-8, must be cut to <= 200 bytes
+    cjk_title = "あ" * 200
+    sanitized = sanitize_filename(cjk_title, max_length=200)
+    assert len(sanitized.encode("utf-8")) <= 200
+    # The cut lands on a valid character boundary (66 full 3-byte chars = 198 bytes)
+    assert sanitized == "あ" * 66
+
+    # Emoji (4 bytes each) also respects the byte budget
+    emoji_title = "😀" * 100  # 400 bytes
+    sanitized = sanitize_filename(emoji_title, max_length=200)
+    assert len(sanitized.encode("utf-8")) <= 200
+    assert sanitized == "😀" * 50
+
+    # Turkish text (2 bytes per char) also capped in bytes
+    tr_title = "şğ" * 100  # 400 bytes
+    sanitized = sanitize_filename(tr_title, max_length=200)
+    assert len(sanitized.encode("utf-8")) <= 200
+
+    # ASCII short enough names pass through unchanged
+    assert sanitize_filename("plain-name.pdf", max_length=200) == "plain-name.pdf"
+
+
+def test_sanitize_filename_byte_budget_produces_openable_file(tmp_path):
+    """A long CJK/emoji name sanitized through the sanitizer creates a real file."""
+    long_title = "日本語のとても長いタイトル" + "🙂" * 50 + " -- 著者名 -- (2024).pdf"
+    sanitized = sanitize_filename(long_title, max_length=200)
+    target = tmp_path / sanitized
+    target.write_text("x", encoding="utf-8")  # would raise OSError(36) if > 255 bytes
+    assert target.exists()
+    assert len(sanitized.encode("utf-8")) <= 255
