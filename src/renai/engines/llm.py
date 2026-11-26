@@ -47,10 +47,46 @@ _METADATA_PLACEHOLDERS = frozenset(
 # 5xx) from fail-fast client errors (< threshold, i.e. 4xx other than 429).
 _RETRYABLE_STATUS_THRESHOLD = 500
 
-# Fallback category map used by ``resolve_fallback_category`` when no per-folder
-# restriction applies. Wrapped in the same ``dict[str, list[str]]`` shape so a
-# single owner (folder_rules) decides fallback-category semantics.
-_GLOBAL_FALLBACK_CATEGORIES: dict[str, list[str]] = {"tr": ["Diğer"], "en": ["Other"]}
+# Closing-tag sequences that must be neutralised before they are used as
+# prompt wrappers, so embedded occurrences cannot terminate the block early.
+_CLOSING_TAG_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("</document_content>", "[/document_content]"),
+    ("</initial_metadata>", "[/initial_metadata]"),
+)
+
+
+def _neutralise_closing_tags(text: str) -> str:
+    """Defuse closing-tag sequences in untrusted text before prompt wrapping.
+
+    A document (or an LLM-produced metadata string) containing e.g.
+    ``</document_content>`` could otherwise close the wrapper early and inject
+    content outside it. Occurrences are replaced with a bracketed, inert form.
+    """
+    for tag, replacement in _CLOSING_TAG_REPLACEMENTS:
+        text = text.replace(tag, replacement)
+        text = re.sub(re.escape(tag).replace("<", r"<\s*"), replacement, text, flags=re.IGNORECASE)
+    return text
+
+
+def _extract_retry_after_seconds(err: RateLimitError) -> float | None:
+    """Read the ``Retry-After`` header off a 429 response, in seconds.
+
+    Returns ``None`` when the header is absent or unparseable; the caller then
+    falls back to the regular exponential backoff.
+    """
+    headers = getattr(getattr(err, "response", None), "headers", None)
+    if headers is None:
+        return None
+    try:
+        value = headers.get("retry-after")
+    except Exception:  # pragma: no cover - defensive: unusual header mapping
+        return None
+    if not value:
+        return None
+    try:
+        return max(float(value), 0.0)
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclass(frozen=True)
@@ -87,9 +123,40 @@ _BACKOFF_MULTIPLIER = 2.0
 def _filter_model_fields(
     raw_data: dict[str, Any], model_class: type[BaseMetadata]
 ) -> dict[str, Any]:
-    """Drop keys not present on the Pydantic model (SSoT field filtering)."""
+    """Drop keys not present on the Pydantic model (SSoT field filtering).
+
+    ``exif_date`` is always dropped: it is an internal, processor-only field
+    populated from real EXIF data (visual.py), never something an LLM response
+    may supply (a model could fabricate a plausible-looking date).
+    """
     model_fields = model_class.model_fields.keys()
-    return {k: v for k, v in raw_data.items() if k in model_fields}
+    return {
+        k: v
+        for k, v in raw_data.items()
+        if k in model_fields and not (k == "exif_date" and model_class is ImageMetadata)
+    }
+
+
+def _is_placeholder_value(value: Any) -> bool:
+    """True for null or placeholder-ish string values ("Unknown", "-", ...)."""
+    if value is None:
+        return True
+    return isinstance(value, str) and value.strip().lower() in _METADATA_PLACEHOLDERS
+
+
+def _merge_refined_metadata[T: BaseMetadata](initial: T, refined: T) -> T:
+    """Merge refined metadata field by field; nulls never erase found values.
+
+    A refined value replaces the initial one only when it is a real value
+    (non-null, non-placeholder). Where the refinement pass could not improve a
+    field, the first pass's value is preserved (issue #250).
+    """
+    merged = initial.model_dump()
+    for field, value in refined.model_dump().items():
+        if _is_placeholder_value(value):
+            continue
+        merged[field] = value
+    return type(initial)(**merged)
 
 
 def _classify_llm_error(err: Exception) -> tuple[bool, str]:
@@ -132,6 +199,10 @@ class LLMEngine:
             # Fail a hung endpoint in bounded time instead of the SDK's implicit
             # 600s; every other timeout in the app is settings-backed too.
             timeout=self.call_policy.timeout,
+            # SDK-level retries are disabled: engine-level retries are the only
+            # retries, so each HTTP attempt consumes exactly one rate-limiter
+            # token and the "retries exhausted (N attempts)" count is accurate.
+            max_retries=0,
         )
         self.rate_limiter = rate_limiter
         self.allowed_categories = get_allowed_categories()
@@ -258,6 +329,7 @@ class LLMEngine:
     @staticmethod
     def _build_document_prompt(text: str) -> str:
         """Build LLM prompt with head/tail markers if separator is present."""
+        text = _neutralise_closing_tags(text)
         separator = "\n---\n"
         if separator in text:
             head_text, tail_text = text.split(separator, 1)
@@ -304,7 +376,7 @@ class LLMEngine:
         )
         refinement_prompt = (
             f"<initial_metadata>\n"
-            f"{initial_model.model_dump_json(ensure_ascii=False)}\n"
+            f"{_neutralise_closing_tags(initial_model.model_dump_json(ensure_ascii=False))}\n"
             f"</initial_metadata>"
         )
 
@@ -315,7 +387,9 @@ class LLMEngine:
                 model_class=BookMetadata,
                 allowed_categories=allowed_categories,
             )
-            return refined_model if refined_model else initial_model
+            if not refined_model:
+                return initial_model
+            return _merge_refined_metadata(initial_model, refined_model)
         except LLMError as e:
             logger.warning("Metadata refinement failed (%s); keeping initial metadata.", e)
             return initial_model
@@ -529,21 +603,22 @@ class LLMEngine:
     ) -> T | None:
         """Fall back to a forced category if validation initially failed.
 
-        With a per-folder restriction, the fallback category is resolved from
-        the restricted list (preferring "Other"/"Diğer", else the first entry).
+        The fallback category is always resolved from the same list the
+        metadata was validated against (per-folder restriction when present,
+        otherwise the engine's active category list), preferring
+        "Other"/"Diğer" and falling back to that list's first entry — the
+        result can never carry a category outside the allowlist (issue #251).
         """
         if not last_parsed_data:
             return None
         try:
             filtered_data = _filter_model_fields(last_parsed_data, model_class)
-            if categories_override:
-                filtered_data["category"] = resolve_fallback_category(
-                    filtered_data.get("language", "en"), categories_override
-                )
-            else:
-                filtered_data["category"] = resolve_fallback_category(
-                    filtered_data.get("language", "en"), _GLOBAL_FALLBACK_CATEGORIES
-                )
+            allowed_dict = categories_override or (
+                get_image_categories() if model_class is ImageMetadata else self.allowed_categories
+            )
+            filtered_data["category"] = resolve_fallback_category(
+                filtered_data.get("language", "en"), allowed_dict
+            )
             return model_class(**filtered_data)
         except Exception as e:
             logger.debug(
@@ -567,15 +642,19 @@ class LLMEngine:
         than 429) fail fast with LLMError. Error classification lives in
         :func:`_classify_llm_error` so retry behavior is testable without
         patching globals or sleeping.
+
+        The rate limiter is acquired once per HTTP attempt (the SDK client is
+        created with ``max_retries=0``, so attempt == request), keeping one
+        token per request. On a 429 the wait honours the ``Retry-After``
+        header when present, falling back to the exponential backoff.
         """
         backoff_sec = self.call_policy.backoff_initial
         max_backoff_sec = self.call_policy.backoff_max
         max_attempts = self.call_policy.transport_max_attempts
 
-        if self.rate_limiter:
-            await self.rate_limiter.acquire()
-
         for attempt in range(max_attempts):
+            if self.rate_limiter:
+                await self.rate_limiter.acquire()
             try:
                 completion = await self.client.chat.completions.create(
                     model=self.model_name,
@@ -601,14 +680,19 @@ class LLMEngine:
                     raise LLMError(
                         f"{label} retries exhausted ({max_attempts} attempts) for {target}: {err}"
                     ) from err
+                sleep_for = backoff_sec
+                if isinstance(err, RateLimitError):
+                    retry_after = _extract_retry_after_seconds(err)
+                    if retry_after is not None:
+                        sleep_for = max(sleep_for, retry_after)
                 logger.warning(
                     "%s for %s. Retrying in %.1fs... Error: %s",
                     label,
                     target,
-                    backoff_sec,
+                    sleep_for,
                     err,
                 )
-                await asyncio.sleep(backoff_sec)
+                await asyncio.sleep(sleep_for)
                 backoff_sec = min(backoff_sec * _BACKOFF_MULTIPLIER, max_backoff_sec)
         raise LLMError(f"LLM call returned no completion for {context_name}")
 

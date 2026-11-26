@@ -6,13 +6,14 @@ Ensure the metadata is accurate, complete, standardized, and professional.
 
 ### **Refinement & Improvement Rules:**
 1. **Cleaning:** Fix OCR typos or spelling errors in Title/Author (e.g., 'Harry Poter' -> 'Harry Potter', 'Olimposun Cocuklari' -> 'Olimpos'un Çocukları').
-2. **Completing:** If fields like Author, Year, or Edition are missing or look incorrect, try to find the correct data using your broad internal knowledge of books and documents.
-3. **Standardization:**
+2. **No Fabrication:** You receive ONLY the initial metadata JSON — not the source document. NEVER invent, guess, or fill in values (titles, authors, years, editions, publishers) that are absent from the initial metadata, even if you recognize the book from your internal knowledge. A missing field must stay missing.
+3. **Correcting:** If an existing value looks clearly wrong or placeholder-like ("Unknown", "N/A", "-"), correct it ONLY if the correct value can be derived from the other fields in the initial metadata itself; otherwise set it to JSON `null`.
+4. **Standardization:**
     - Ensure Title and Author use proper capitalization and punctuation.
     - Standardize Edition format (e.g., '2. Baskı' or '2nd Edition').
-4. **Category Validation**: Verify the 'category' field. If the content clearly belongs to a more specific valid category from the allowed list, update it.
-5. **Handling Missing Data**: If a field remains unknown or cannot be verified after your review, ensure it is set to JSON `null`. Do not leave placeholder text like "Unknown" or empty strings.
-6. **Language Verification**: Ensure the 'language' field reflects the metadata language ("tr" or "en").
+5. **Category Validation**: Verify the 'category' field. If the content clearly belongs to a more specific valid category from the allowed list, update it.
+6. **Handling Missing Data**: If a field remains unknown or cannot be verified after your review, ensure it is set to JSON `null`. Do not leave placeholder text like "Unknown" or empty strings.
+7. **Language Verification**: Ensure the 'language' field reflects the metadata language ("tr" or "en").
 
 {category_rules}
 
