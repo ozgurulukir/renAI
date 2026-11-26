@@ -94,12 +94,17 @@ def handle_clear_cache() -> None:
     ensure_secure_dir(CACHE_DIR)
     results = clear_all_cache(CACHE_DIR)
 
+    # A corrupt DB reset is reported honestly (#248): it is an action taken,
+    # not "already empty", even though it reclaims no counted rows.
+    db_reset = results.pop("db_reset", 0)
     total = sum(results.values())
     if total > 0:
         details = ", ".join([f"{count} {ctype}" for ctype, count in results.items() if count > 0])
         console.print(msg.Info.CACHE_CLEARED.format(total, details))
-    else:
+    elif not db_reset:
         console.print(msg.Info.CACHE_EMPTY)
+    if db_reset:
+        console.print(msg.Info.CACHE_DB_RESET)
 
 
 def display_warnings(

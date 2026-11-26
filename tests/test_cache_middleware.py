@@ -289,10 +289,17 @@ async def test_middleware_legacy_record_without_marker_reconstructs(tmp_path: Pa
         file_hash="legacy", provider="vision_provider", model="vision_model", use_vision=True
     )
 
-    # Write a record the old way: no is_vision_doc marker.
-    from renai.cache.manager import write_metadata_cache
+    # Write a record without an is_vision_doc marker but carrying current
+    # validity markers (signature + version) so it is served.
+    from renai.cache.manager import metadata_version_fingerprint, write_metadata_cache
+    from renai.config.folder_rules import global_categories_signature
 
-    write_metadata_cache(vision_cache_key, DummyMetadata(title="Legacy"))
+    write_metadata_cache(
+        vision_cache_key,
+        DummyMetadata(title="Legacy"),
+        rule_signature=global_categories_signature(mode="doc"),
+        version_fingerprint=metadata_version_fingerprint(),
+    )
 
     request = _make_request(vision_cache_key, DummyMetadata, use_vision_cache=True)
     result, is_vision = await processor.extract(request)
@@ -488,9 +495,10 @@ async def test_vision_produced_record_invalidated_by_vision_model_change(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_middleware_legacy_row_without_producing_identity_still_reads(tmp_path: Path):
-    """A true legacy row (no _prod_* markers, pre-provenance key format) is still
-    served when its stored identity matches the requested engine identity."""
+async def test_middleware_legacy_row_without_producing_identity_is_invalidated(tmp_path: Path):
+    """A true legacy row (no _prod_* markers, pre-provenance key format) carries
+    no version fingerprint, so it is a MISS under #247: it is re-extracted and
+    the row is rewritten with full provenance and the current fingerprint."""
     import json as json_lib
 
     from renai.cache.manager import _encode_legacy_metadata_key, _get_db_connection
@@ -512,8 +520,153 @@ async def test_middleware_legacy_row_without_producing_identity_still_reads(tmp_
         )
 
     request = _make_request(test_cache_key, DummyMetadata, use_vision_cache=True)
-    result, is_vision = await processor.extract(request)
+    result, _ = await processor.extract(request)
+    # #247: no version fingerprint -> cannot prove the row was extracted under
+    # the current prompts/schema -> re-extract instead of serving it.
+    assert processor.call_count == 1
+    assert result is not None and result.title == "Extracted Title"
+    # The rewritten row is now a hit.
+    result, _ = await processor.extract(request)
+    assert processor.call_count == 1
+    assert result.title == "Extracted Title"
+
+
+@pytest.mark.asyncio
+async def test_middleware_version_fingerprint_mismatch_reextracts(tmp_path):
+    """A row written under a different version fingerprint is a miss (#247)."""
+    from renai.cache.manager import write_metadata_cache
+
+    processor = DummyProcessor()
+    key = MetadataCacheKey(file_hash="vf-mismatch", provider="test_provider", model="test_model")
+
+    write_metadata_cache(
+        key,
+        DummyMetadata(title="Stale Version"),
+        version_fingerprint="stale-v1",
+    )
+    result, _ = await processor.extract(_make_request(key, DummyMetadata))
+    assert processor.call_count == 1  # re-extracted despite a present row
+    assert result.title == "Extracted Title"
+
+    # The re-extraction rewrote the row under the current fingerprint: now a hit.
+    await processor.extract(_make_request(key, DummyMetadata))
+    assert processor.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_middleware_legacy_row_without_version_reextracts(tmp_path):
+    """Rows predating the version fingerprint are misses, not hits (#247)."""
+    import json as _json
+    import sqlite3
+
+    key = MetadataCacheKey(file_hash="vf-legacy", provider="test_provider", model="test_model")
+    legacy_data = {"title": "Legacy Row"}
+    from renai.cache.manager import _get_db_connection
+
+    with _get_db_connection(tmp_path):
+        pass  # ensure the store (and its tables) exists before hand-inserting
+    conn = sqlite3.connect(str(tmp_path / "cache.db"))
+    conn.execute(
+        "INSERT OR REPLACE INTO metadata_cache (cache_key, provider, model, metadata_json) "
+        "VALUES (?, ?, ?, ?)",
+        ("doc_vf-legacy.json", "test_provider", "test_model", _json.dumps(legacy_data)),
+    )
+    conn.commit()
+    conn.close()
+
+    processor = DummyProcessor()
+    result, _ = await processor.extract(_make_request(key, DummyMetadata))
+    assert processor.call_count == 1
+    assert result.title == "Extracted Title"
+
+
+@pytest.mark.asyncio
+async def test_middleware_versioned_row_is_served(tmp_path):
+    """A row carrying the current version fingerprint is a hit (#247)."""
+    from renai.cache.manager import metadata_version_fingerprint, write_metadata_cache
+
+    processor = DummyProcessor()
+    key = MetadataCacheKey(file_hash="vf-hit", provider="test_provider", model="test_model")
+    from renai.config.folder_rules import global_categories_signature
+
+    write_metadata_cache(
+        key,
+        DummyMetadata(title="Current Version"),
+        rule_signature=global_categories_signature(mode="doc"),
+        version_fingerprint=metadata_version_fingerprint(),
+    )
+
+    result, _ = await processor.extract(_make_request(key, DummyMetadata))
     assert processor.call_count == 0
-    assert result is not None and result.title == "Legacy Row"
-    # Legacy vision-request reconstruction: vision template.
-    assert is_vision is True
+    assert result.title == "Current Version"
+
+
+@pytest.mark.asyncio
+async def test_middleware_signed_global_categories_gate_rows(tmp_path):
+    """Rows are gated on the signed global category list like rule rows (#247).
+
+    A row written under the current global signature is served; a row written
+    under a stale signature (the list changed) is a miss and re-extracts.
+    """
+    from renai.cache.manager import write_metadata_cache
+    from renai.config.folder_rules import global_categories_signature
+    from renai.models.schemas import BookMetadata
+
+    class BookProcessor(DummyProcessor):
+        @with_metadata_cache()
+        async def extract(self, request: MetadataRequest) -> tuple[BookMetadata, bool]:
+            self.call_count += 1
+            return BookMetadata(title="Fresh", language="en", category="Science"), False
+
+    processor = BookProcessor()
+    key = MetadataCacheKey(file_hash="global-sig", provider="test_provider", model="test_model")
+
+    # Row carrying the CURRENT global signature: served without extraction.
+    write_metadata_cache(
+        key,
+        BookMetadata(title="Signed Book", language="en", category="Fiction"),
+        rule_signature=global_categories_signature(mode="doc"),
+    )
+    result, _ = await processor.extract(_make_request(key, BookMetadata))
+    assert processor.call_count == 0
+    assert result.title == "Signed Book"
+
+    # Row carrying a STALE global signature (user edited the global list):
+    # the middleware re-extracts and rewrites the row under the new signature.
+    stale_key = MetadataCacheKey(file_hash="global-sig2", provider="p2", model="m2")
+    write_metadata_cache(
+        stale_key,
+        BookMetadata(title="Stale Universe", language="en", category="Fiction"),
+        rule_signature="stale-global-signature",
+    )
+    result, _ = await processor.extract(_make_request(stale_key, BookMetadata))
+    assert processor.call_count == 1
+
+    result, _ = await processor.extract(_make_request(stale_key, BookMetadata))
+    assert processor.call_count == 1  # rewritten row is now served
+
+
+@pytest.mark.asyncio
+async def test_concurrent_identical_requests_share_one_call(tmp_path):
+    """asyncio.gather over identical requests must trigger ONE extraction (#249)."""
+    import asyncio
+
+    class SlowProcessor(DummyProcessor):
+        @with_metadata_cache()
+        async def extract(self, request: MetadataRequest) -> tuple[DummyMetadata, bool]:
+            self.call_count += 1
+            await asyncio.sleep(0.05)  # let every concurrent caller pile up
+            return DummyMetadata(title="Extracted Title"), False
+
+    processor = SlowProcessor()
+    key = MetadataCacheKey(file_hash="dedup", provider="test_provider", model="test_model")
+    request = _make_request(key, DummyMetadata)
+
+    results = await asyncio.gather(*[processor.extract(request) for _ in range(8)])
+
+    assert processor.call_count == 1
+    assert all(result.title == "Extracted Title" for result, _ in results)
+
+    # A later sequential request is served from the written cache row.
+    await processor.extract(request)
+    assert processor.call_count == 1

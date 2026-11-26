@@ -9,6 +9,7 @@ from typing import NamedTuple
 from renai.cache.manager import (
     TextCacheKey,
     read_text_cache,
+    text_settings_fingerprint,
     write_text_cache,
 )
 from renai.config import (
@@ -176,10 +177,26 @@ class TextExtractor:
             if file_hash is None:
                 file_hash = await asyncio.to_thread(get_file_hash, file_path)
 
+            # The key carries the fallback mode ALWAYS (#246): OCR, vision and
+            # move-to-folder runs produce different text for the same file, so
+            # they must never share a row. The settings fingerprint covers every
+            # knob that changes the produced text (length, mode, head ratio,
+            # pages, extractor backend, OCR language/DPI/PSM).
             cache_key = TextCacheKey(
                 file_hash=file_hash,
-                ocr=self.ocr_engine.enhanced if fallback == FallbackMode.OCR else False,
-                mutool=self.ocr_engine.use_mutool if fallback == FallbackMode.OCR else False,
+                fallback=fallback.value,
+                settings_fingerprint=text_settings_fingerprint(
+                    text_length=target_length,
+                    extraction_mode=self.text_extraction_mode,
+                    head_ratio=self.head_ratio,
+                    extraction_pages=self.extraction_pages,
+                    extractor=self.extractor_name,
+                    ocr_lang=self.ocr_engine.ocr_lang or "",
+                    ocr_dpi=int(self.ocr_engine.cfg.get("dpi", 0)),
+                    ocr_psm=self.ocr_engine.psm,
+                    ocr_enhanced=self.ocr_engine.enhanced,
+                    use_mutool=self.ocr_engine.use_mutool,
+                ),
             )
 
             cached_text = await asyncio.to_thread(read_text_cache, cache_key)

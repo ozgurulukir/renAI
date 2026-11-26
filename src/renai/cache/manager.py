@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 import threading
 from collections.abc import Generator
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, NamedTuple, overload
 
@@ -50,9 +51,11 @@ class _CacheStore:
 
     def _open(self) -> sqlite3.Connection:
         ensure_secure_dir(self._db_dir)
+        # Short busy timeout: a foreign exclusive lock must not stall workers
+        # for tens of seconds; failing fast degrades to a (logged) cache miss.
         conn = sqlite3.connect(
             str(self._db_dir / "cache.db"),
-            timeout=30.0,
+            timeout=_BUSY_TIMEOUT_SECONDS,
             check_same_thread=False,
         )
         conn.execute("PRAGMA journal_mode=WAL;")
@@ -70,18 +73,75 @@ class _CacheStore:
 # One persistent store per resolved cache root for the life of the process.
 _stores: dict[Path, _CacheStore] = {}
 
+# Short busy timeout (seconds) for the SQLite connection so a foreign lock
+# cannot stall worker threads; see #248.
+_BUSY_TIMEOUT_SECONDS = 5.0
+
+# Bumped whenever the on-disk row grammar or invalidation contract changes in a
+# way old rows cannot honor (see #246/#247). Stored via ``PRAGMA user_version``.
+CACHE_SCHEMA_VERSION = 2
+
 
 class TextCacheKey(NamedTuple):
     """Structured identity of a cached text-extraction result.
 
-    Mirrors every component the on-disk key grammar encodes
-    (``{hash}_ocr_mutool.txt``): the file hash plus the two OCR fallback flags
-    that change the produced text.
+    The on-disk key grammar (``{hash}_v2_{fallback}_{fingerprint}.txt``) encodes:
+
+    - ``file_hash``: content identity of the source file.
+    - ``fallback``: the requested :class:`FallbackMode` value, ALWAYS part of
+      the key — OCR, vision and move-to-folder runs produce different text for
+      the same file and must not share a row (previously the fallback was only
+      encoded via the OCR enhancement flags, which default to off, so an
+      OCR-produced row was served to vision requests; #246).
+    - ``settings_fingerprint``: digest of the extraction settings that change
+      the produced text (target length, extraction mode, head ratio, page
+      limit, extractor backend, OCR language/DPI/PSM). See
+      :func:`text_settings_fingerprint`.
+
+    The ``v2`` marker makes rows written by earlier versions (keyed
+    ``{hash}.txt`` / ``{hash}_ocr_mutool.txt``) natural misses that are simply
+    repopulated on the next extraction — no migration needed.
     """
 
     file_hash: str
-    ocr: bool = False
-    mutool: bool = False
+    fallback: str = "ocr"
+    settings_fingerprint: str = ""
+
+
+def text_settings_fingerprint(
+    *,
+    text_length: int,
+    extraction_mode: str,
+    head_ratio: float,
+    extraction_pages: int,
+    extractor: str,
+    ocr_lang: str,
+    ocr_dpi: int,
+    ocr_psm: int,
+    ocr_enhanced: bool = False,
+    use_mutool: bool = False,
+) -> str:
+    """Stable fingerprint of the settings that change extracted text (#246).
+
+    Any change to one of these settings must produce a text-cache miss so the
+    previously trimmed/cached text is re-extracted under the new settings.
+    """
+    payload = json.dumps(
+        [
+            int(text_length),
+            str(extraction_mode),
+            float(head_ratio),
+            int(extraction_pages),
+            str(extractor),
+            str(ocr_lang or ""),
+            int(ocr_dpi),
+            int(ocr_psm),
+            bool(ocr_enhanced),
+            bool(use_mutool),
+        ],
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 class MetadataCacheKey(NamedTuple):
@@ -111,11 +171,13 @@ def _provider_model_key(provider: str, model: str) -> str:
 
 
 def _encode_text_key(key: TextCacheKey) -> str:
-    """Encode a :class:`TextCacheKey` to its on-disk/cache-row key."""
-    ocr_suffix = "_ocr" if key.ocr else ""
-    mutool_suffix = "_mutool" if key.mutool else ""
-    suffix = f"{ocr_suffix}{mutool_suffix}" if ocr_suffix or mutool_suffix else ""
-    return f"{key.file_hash}{suffix}.txt"
+    """Encode a :class:`TextCacheKey` to its on-disk/cache-row key.
+
+    The ``v2`` segment means pre-#246 rows (``{hash}.txt`` etc.) can never
+    match a current key: they are invalid by construction and repopulated on
+    the next extraction.
+    """
+    return f"{key.file_hash}_v2_{key.fallback}_{key.settings_fingerprint}.txt"
 
 
 def _encode_metadata_key(key: MetadataCacheKey) -> str:
@@ -144,6 +206,30 @@ def _encode_legacy_metadata_key(key: MetadataCacheKey) -> str:
     return f"{key.mode}_{key.file_hash}_{provider_model_key}{vision_suffix}.json"
 
 
+@lru_cache(maxsize=1)
+def metadata_version_fingerprint() -> str:
+    """Version fingerprint binding metadata rows to prompts, schemas and app (#247).
+
+    Digest of (application version, sorted ``prompts/*.txt`` contents,
+    ``BookMetadata``/``ImageMetadata`` ``model_json_schema()``). Stored with
+    every metadata row; a mismatch on read is treated as a cache miss, so a
+    prompt edit, schema change, or app upgrade invalidates affected rows even
+    when the Pydantic validation would still pass.
+    """
+    import renai
+    from renai.models.schemas import BookMetadata, ImageMetadata
+
+    digest = hashlib.sha256()
+    digest.update(renai.__version__.encode("utf-8"))
+    prompts_dir = Path(__file__).parent.parent / "prompts"
+    for prompt_path in sorted(prompts_dir.glob("*.txt")):
+        digest.update(prompt_path.name.encode("utf-8"))
+        digest.update(prompt_path.read_bytes())
+    for schema_model in (BookMetadata, ImageMetadata):
+        digest.update(json.dumps(schema_model.model_json_schema(), sort_keys=True).encode("utf-8"))
+    return digest.hexdigest()[:16]
+
+
 def _resolve_cache_dir(cache_dir: Path | None) -> Path:
     """Default the storage root to the package CACHE_DIR when not given."""
     return CACHE_DIR if cache_dir is None else cache_dir
@@ -165,7 +251,12 @@ def _get_db_connection(db_dir: Path) -> contextlib.AbstractContextManager[sqlite
 
 
 def _init_db(conn: sqlite3.Connection) -> None:
-    """Initialize database tables for text and metadata caching."""
+    """Initialize database tables for text and metadata caching.
+
+    The physical schema version is recorded in ``PRAGMA user_version`` so the
+    store self-describes its layout (#247). The cached-content validity is
+    handled separately per row (key grammar + ``_version_fp`` fingerprint).
+    """
     with conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS text_cache (
@@ -183,6 +274,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        conn.execute(f"PRAGMA user_version = {CACHE_SCHEMA_VERSION};")
 
 
 def read_text_cache(key: TextCacheKey, cache_dir: Path | None = None) -> str | None:
@@ -408,6 +500,7 @@ class CacheSource(NamedTuple):
     rule_signature: str | None
     produced_by_provider: str | None = None
     produced_by_model: str | None = None
+    version_fingerprint: str | None = None
 
 
 @overload
@@ -415,7 +508,6 @@ def read_metadata_cache[V: BaseModel](
     key: MetadataCacheKey,
     model_class: type[V],
     cache_dir: Path | None = None,
-    expected_rule_signature: str | None = None,
 ) -> tuple[V | None, CacheSource | None]: ...
 
 
@@ -424,7 +516,6 @@ def read_metadata_cache(
     key: MetadataCacheKey,
     model_class: None = None,
     cache_dir: Path | None = None,
-    expected_rule_signature: str | None = None,
 ) -> tuple[dict[str, Any] | None, CacheSource | None]: ...
 
 
@@ -432,7 +523,6 @@ def read_metadata_cache[V: BaseModel](
     key: MetadataCacheKey,
     model_class: type[V] | None = None,
     cache_dir: Path | None = None,
-    expected_rule_signature: str | None = None,
 ) -> tuple[Any | None, CacheSource | None]:
     """Read cached metadata together with its persisted extraction provenance.
 
@@ -445,6 +535,11 @@ def read_metadata_cache[V: BaseModel](
     the cache key is identity-free and the producing identity is validated by
     the caller. They are used only for rows written before provenance was
     stored: locating their legacy keys and the historical compare-and-invalidate.
+
+    Validity judgments (rule signature, producing identity, version
+    fingerprint) live with the caller — the cache middleware is the single
+    place that applies them (#247); this function only surfaces the stored
+    provenance.
     """
     with _cache_lock:
         cache_dir = _resolve_cache_dir(cache_dir)
@@ -476,17 +571,20 @@ def read_metadata_cache[V: BaseModel](
                 f"a string, got {type(rule_signature).__name__}; treating as legacy"
             )
             rule_signature = None
-        if (
-            expected_rule_signature is not None
-            and (rule_signature or "") != expected_rule_signature
-        ):
-            return None, None
+        version_fingerprint = cache_data.pop("_version_fp", None) if cache_data else None
+        if version_fingerprint is not None and not isinstance(version_fingerprint, str):
+            logger.warning(
+                f"Corrupt version fingerprint in metadata cache row {cache_key}: expected "
+                f"a string, got {type(version_fingerprint).__name__}; treating as legacy"
+            )
+            version_fingerprint = None
 
         source = CacheSource(
             is_vision_doc=is_vision_doc,
             rule_signature=rule_signature,
             produced_by_provider=produced[0] if produced else None,
             produced_by_model=produced[1] if produced else None,
+            version_fingerprint=version_fingerprint,
         )
         if cache_data is None:
             return None, None
@@ -507,6 +605,7 @@ def write_metadata_cache(
     cache_dir: Path | None = None,
     produced_provider: str | None = None,
     produced_model: str | None = None,
+    version_fingerprint: str | None = None,
 ) -> bool:
     """Write metadata to SQLite cache atomically.
 
@@ -522,7 +621,10 @@ def write_metadata_cache(
     cache hits can replay the fact instead of reconstructing it from request
     flags. The category-universe ``rule_signature`` is always persisted (empty
     string for global categories) so rule-scoped runs can tell their records
-    apart from global ones.
+    apart from global ones. ``version_fingerprint`` (see
+    :func:`metadata_version_fingerprint`) is persisted under ``_version_fp``;
+    it defaults to the current fingerprint so rows always carry the prompts,
+    schemas and app version they were extracted under (#247).
     """
     with _cache_lock:
         db_dir = _resolve_cache_dir(cache_dir)
@@ -536,6 +638,11 @@ def write_metadata_cache(
             if is_vision_doc is not None:
                 data["_is_vision_doc"] = is_vision_doc
             data["_rule_sig"] = rule_signature or ""
+            data["_version_fp"] = (
+                version_fingerprint
+                if version_fingerprint is not None
+                else metadata_version_fingerprint()
+            )
             metadata_json = json.dumps(data, ensure_ascii=False, indent=4)
 
             with _get_db_connection(db_dir) as conn, conn:
@@ -562,13 +669,20 @@ def write_metadata_cache(
 
 
 def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
-    """Clear all caches (text, metadata, and ocr_debug) without double-counting."""
+    """Clear all caches (text, metadata, and ocr_debug) without double-counting.
+
+    On a corrupt database the ``cache.db`` (plus WAL/SHM sidecars) is removed
+    and an empty store recreated, reported honestly via the ``db_reset`` count
+    instead of silently reporting "already empty" (#248). After a successful
+    delete a ``VACUUM`` reclaims the freed pages so clearing shrinks the file.
+    """
     with _cache_lock:
         if cache_dir is None:
             cache_dir = CACHE_DIR
 
         text_keys: set[str] = set()
         metadata_keys: set[str] = set()
+        db_reset = 0
 
         db_path = cache_dir / "cache.db"
         if db_path.exists():
@@ -584,6 +698,10 @@ def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
                     with conn:
                         conn.execute("DELETE FROM text_cache")
                         conn.execute("DELETE FROM metadata_cache")
+                    conn.execute("VACUUM;")
+            except sqlite3.DatabaseError as e:
+                logger.warning(f"Cache database is corrupt ({e}); resetting it from scratch")
+                db_reset = _reset_corrupt_db(cache_dir)
             except Exception as e:
                 logger.warning(f"Failed to clear DB cache: {e}")
 
@@ -601,14 +719,46 @@ def clear_all_cache(cache_dir: Path | None = None) -> dict[str, int]:
                     logger.warning(f"Failed to clear cache directory at {target_path}: {e}")
 
         ocr_count = _clear_debug_cache()
-        models_dev_count = _clear_models_dev_cache()
+        models_dev_count = _clear_models_dev_cache(cache_dir)
 
         return {
             "text": len(text_keys),
             "metadata": len(metadata_keys),
             "ocr_debug": ocr_count,
             "models_dev": models_dev_count,
+            "db_reset": db_reset,
         }
+
+
+def _reset_corrupt_db(cache_dir: Path) -> int:
+    """Delete a corrupt ``cache.db`` (with sidecars) and recreate an empty store.
+
+    The caller holds ``_cache_lock``. Returns 1 on a successful reset, 0 when
+    the corrupt files could not be removed (the failure is reported honestly
+    by the caller surfacing ``db_reset = 0``).
+    """
+    key = cache_dir.resolve()
+    store = _stores.pop(key, None)
+    if store is not None:
+        store._close_quietly()
+    removed = True
+    for name in ("cache.db", "cache.db-wal", "cache.db-shm"):
+        path = cache_dir / name
+        if path.exists():
+            try:
+                path.unlink()
+            except OSError as e:
+                logger.warning(f"Failed to remove corrupt cache file {path}: {e}")
+                removed = False
+    if not removed:
+        return 0
+    try:
+        with _get_db_connection(cache_dir):
+            pass  # recreate the store (DDL + PRAGMA user_version) immediately
+    except Exception as e:
+        logger.warning(f"Failed to recreate cache database after reset: {e}")
+        return 0
+    return 1
 
 
 def _clear_debug_cache() -> int:
@@ -627,11 +777,15 @@ def _clear_debug_cache() -> int:
         return 0
 
 
-def _clear_models_dev_cache() -> int:
-    """Clear models.dev cache file."""
-    from renai.config.constants import APP_DATA_DIR
+def _clear_models_dev_cache(cache_dir: Path) -> int:
+    """Clear the models.dev cache file.
 
-    models_dev_file = APP_DATA_DIR / "models_dev_cache.json"
+    The path is derived from the same root as the passed ``cache_dir``
+    (``CACHE_DIR`` lives directly under ``APP_DATA_DIR``) instead of the
+    global ``APP_DATA_DIR`` constant, so tests pointing ``cache_dir`` at a
+    temporary directory cannot delete the developer's real cache (#248).
+    """
+    models_dev_file = cache_dir.parent / "models_dev_cache.json"
     if models_dev_file.exists():
         try:
             models_dev_file.unlink()

@@ -22,20 +22,24 @@ Both cache layers use content-based addressing combined with configuration-aware
 The text cache key is generated using:
 
 ```text
-{file_hash}[_ocr][_mutool].txt
+{file_hash}_v2_{fallback}_{settings_fingerprint}.txt
 ```
 
-| Component   | Description                        | Example        |
-| :---------- | :--------------------------------- | :------------- |
-| `file_hash` | SHA256 hash of file content        | `abc123def456` |
-| `_ocr`      | OCR fallback was used              | `_ocr`         |
-| `_mutool`   | mutool was used for PDF conversion | `_mutool`      |
+| Component              | Description                                                                                                                                                                          | Example             |
+| :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------ |
+| `file_hash`            | SHA256 hash of file content                                                                                                                                                          | `abc123def456`      |
+| `fallback`             | The requested fallback mode (`ocr`/`vision`/`move`/`none`) — always present, because each mode produces different text for the same file (#246)                                      | `ocr`               |
+| `settings_fingerprint` | 16-hex SHA256 prefix over the settings that change extracted text: text length, extraction mode, head ratio, page limit, extractor, OCR language/DPI/PSM, OCR-enhanced and mutool flags | `9f2c1e07a4b3d6f8` |
 
 **Examples:**
 
-- `abc123def456.txt` - Plain text extraction
-- `abc123def456_ocr.txt` - OCR fallback extraction
-- `abc123def456_ocr_mutool.txt` - OCR fallback with mutool PDF conversion
+- `abc123def456_v2_ocr_.txt` - OCR-mode extraction with default settings (empty fingerprint slot)
+- `abc123def456_v2_vision_4f1d2a9c8b7e6d5f.txt` - Vision-mode extraction under a specific settings fingerprint
+
+> **v2 marker (issue #246).** The previous grammar (`{file_hash}[_ocr][_mutool].txt`) shared
+> one key across fallback modes and ignored extraction settings. Rows written in the old
+> format can never match a `v2` key: they are natural misses and are simply repopulated on
+> the next extraction — no migration step.
 
 ### Metadata Cache Key
 
@@ -82,9 +86,10 @@ Current rows are keyed by file and mode only. The engine that actually produced 
 
 - `_prod_provider` / `_prod_model`: producing engine identity, validated on read.
 - `_is_vision_doc`: whether the record came from the vision path, so cached runs replay the same filename template cold and warm.
-- `_rule_sig`: the folder-rule category universe the record was extracted under.
+- `_rule_sig`: the category-universe signature the record was extracted under — a folder rule's signature, or (since #247) the signature of the effective **global** category list (`config.folder_rules.global_categories_signature`).
+- `_version_fp`: a version fingerprint over the application version, the `prompts/*.txt` templates and the Pydantic `model_json_schema()` of `BookMetadata`/`ImageMetadata` (`cache.manager.metadata_version_fingerprint`).
 
-On read, a row is a hit only when its producing identity matches the engine that would produce the record for this request **and** its rule signature matches the current one. A mismatch logs the reason and re-extracts under the same key, overwriting the row.
+On read, a row is a hit only when its producing identity matches the engine that would produce the record for this request, **and** its rule signature matches the effective one for the request (rule override or signed global list), **and** its version fingerprint matches the current one. A mismatch logs the reason and re-extracts under the same key, overwriting the row.
 
 This identity-free key is what lets a text-produced record for a PDF survive a vision-model change under `--fallback vision`, while a change to the text model that produced it correctly invalidates it.
 
@@ -102,8 +107,8 @@ Cache entries are automatically invalidated when:
 
 | Cache Type     | Invalidated When                                                                                                                                                       |
 | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Text Cache     | File content changes, OCR mode changes (enhanced/basic), mutool usage changes                                                                                          |
-| Metadata Cache | File content changes, producing-engine identity changes, folder-rule signature changes, namespace changes (`doc`/`img` or `_vision`), or `--update-metadata` is set      |
+| Text Cache     | File content changes, fallback mode changes, or any text-affecting setting changes (text length, extraction mode, head ratio, page limit, extractor, OCR language/DPI/PSM)                                                                                          |
+| Metadata Cache | File content changes, producing-engine identity changes, category-universe signature changes (folder rule **or global list**), version fingerprint changes (prompts, schemas, app version), namespace changes (`doc`/`img` or `_vision`), or `--update-metadata` is set      |
 
 For legacy rows without a producing-identity marker, a requested provider/model change still invalidates the record. Current rows are overwritten in place rather than accumulating one entry per provider/model pair.
 
@@ -343,6 +348,7 @@ renai cache
 | 2026-07-26 | **v2.2.1+**: Migrated cache backend to SQLite WAL mode for concurrent-safe high-performance caching |
 | 2026-11-05 | Folder-rule signature keys metadata cache; corrupt `cache.db` fails loudly instead of silently falling back to legacy JSON |
 | 2026-11-14 | **v2.4.0**: Structured cache keys replaced path-based helpers; metadata keys became identity-free with producing-engine provenance validation |
+| 2026-11-26 | **#246**: Text keys carry the fallback mode and a fingerprint of text-affecting settings (`v2` grammar; old rows are natural misses). **#247**: Metadata rows carry a prompt/schema/app-version fingerprint and a signed global category list; `PRAGMA user_version` records the store schema. **#248**: `renai cache` resets a corrupt DB honestly, `VACUUM`s to reclaim space, derives the models.dev path from the cache root, and uses a short busy timeout. **#249**: Concurrent identical metadata requests share one underlying extraction call |
 
 ## Status
 
