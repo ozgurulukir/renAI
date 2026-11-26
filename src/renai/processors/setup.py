@@ -4,7 +4,9 @@ Handles environment setup, provider configuration, and configuration file creati
 """
 
 import importlib.util
+import logging
 import shutil
+from pathlib import Path
 
 import questionary
 from rich.console import Console
@@ -33,6 +35,7 @@ custom_theme = Theme(
     }
 )
 console = Console(theme=custom_theme)
+logger = logging.getLogger(__name__)
 
 
 def run_init_wizard() -> None:
@@ -114,22 +117,33 @@ def _print_dependency_diagnostics() -> None:
     console.print("")
 
 
+def _atomic_write_toml(path: Path, data: dict) -> None:
+    """Serialise *data* to TOML and atomically replace *path*.
+
+    ``None`` values are dropped first (TOML has no null type), and the payload
+    is fully serialised to a string before any file is touched, so a failure
+    can never leave a truncated file behind.
+    """
+    import tomli_w
+
+    clean = {key: value for key, value in data.items() if value is not None}
+    payload = tomli_w.dumps(clean)
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text(payload, encoding="utf-8")
+    tmp_path.replace(path)
+
+
 def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -> None:
     """Save user configuration and secrets files, copy defaults."""
     try:
-        import tomli_w
-
         console.print(msg.Save.PROPAGATING)
         for default_file in PACKAGE_CONFIG_DIR.glob("*.default.toml"):
             dest = CONFIG_DIR / default_file.name
             shutil.copy2(default_file, dest)
             console.print(msg.Save.PROPAGATED.format(dest.name))
 
-        with SETTINGS_USER_FILE.open("wb") as f:
-            tomli_w.dump(config, f)
-
-        with SECRETS_FILE.open("wb") as f:
-            tomli_w.dump(secrets, f)
+        _atomic_write_toml(SETTINGS_USER_FILE, config)
+        _atomic_write_toml(SECRETS_FILE, secrets)
 
         if hasattr(SECRETS_FILE, "chmod"):
             try:
@@ -143,5 +157,6 @@ def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -
         console.print(msg.Save.DEFAULTS_NOTE)
 
     except Exception as e:
+        logger.exception("Failed to save renAI configuration: %s", e)
         console.print(msg.Save.FAILED.format(e))
         raise

@@ -14,6 +14,7 @@ from rich.theme import Theme
 from renai.messages import setup as msg
 
 from ..config import app_settings
+from ..config.settings import AppSettings
 from ..exceptions import ConfigurationError
 
 # Pure catalog mapping lives in model_catalog.py; re-exported here so existing
@@ -377,32 +378,32 @@ def _build_final_config_and_secrets(
     vision_provider: str | None = None,
     vision_model: str | None = None,
 ) -> tuple[dict, dict]:
-    """Build the final configuration and secrets dictionaries from user selections."""
+    """Build the final configuration and secrets dictionaries from user selections.
+
+    API keys are written ONLY to the secrets dict; settings.toml never contains
+    credentials. ``None`` values (e.g. a declined vision configuration) are
+    omitted so the result stays TOML-serialisable.
+    """
     secrets = {}
-    config = {
+    config: dict = {
         "provider": default_provider,
         "model": default_model,
-        "vision_provider": vision_provider,
-        "vision_model": vision_model,
         "providers": {},
     }
 
+    if vision_provider is not None:
+        config["vision_provider"] = vision_provider
+    if vision_model is not None:
+        config["vision_model"] = vision_model
+
     for name, data in configured.items():
         secrets[f"{name}_api_key"] = data["api_key"]
-
-        if name == "custom":
-            config["custom_api_base_url"] = data["base_url"]
-            config["custom_model"] = data["models"][0]
-            config["custom_api_key"] = data["api_key"]
-        else:
-            config["providers"][name] = {
-                "base_url": data["base_url"],
-                "default_model": data["models"][0] if name != default_provider else default_model,
-            }
-            config["providers"][name]["api_key"] = data["api_key"]
-
-            if not data["api_key"].strip():
-                console.print(msg.Provider.NO_KEY_WARN.format(name.upper()))
+        config["providers"][name] = {
+            "base_url": data["base_url"],
+            "default_model": data["models"][0] if name != default_provider else default_model,
+        }
+        if not data["api_key"].strip():
+            console.print(msg.Provider.NO_KEY_WARN.format(name.upper()))
 
     return config, secrets
 
@@ -563,12 +564,37 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     )
 
 
+def _workers_bounds() -> tuple[int, int]:
+    """Return the allowed (min, max) worker range from AppSettings constraints."""
+    metadata = AppSettings.model_fields["workers"].metadata
+    lower = 1
+    upper = 32
+    for constraint in metadata:
+        ge = getattr(constraint, "ge", None)
+        le = getattr(constraint, "le", None)
+        if ge is not None:
+            lower = ge
+        if le is not None:
+            upper = le
+    return lower, upper
+
+
+def _validate_workers_input(text: str) -> bool | str:
+    """Validate the workers prompt answer against the configured allowed range."""
+    if not text.isdigit():
+        return msg.Settings.WORKERS_INVALID
+    lower, upper = _workers_bounds()
+    if not lower <= int(text) <= upper:
+        return msg.Settings.WORKERS_RANGE_INVALID.format(lower, upper)
+    return True
+
+
 def _configure_advanced_settings() -> dict[str, str | int]:
     """Prompt the user for advanced application settings."""
     workers_str = questionary.text(
         msg.Settings.WORKERS_PROMPT,
         default=str(app_settings.workers),
-        validate=lambda text: text.isdigit() or msg.Settings.WORKERS_INVALID,
+        validate=_validate_workers_input,
         style=custom_style,
     ).ask()
     if workers_str is None:

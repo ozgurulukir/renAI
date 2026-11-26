@@ -327,3 +327,171 @@ class TestExtractorRegistry:
     def test_collision_suffix_length_shared(self):
         # Quarantine and rename paths must share one collision-resistance width
         assert COLLISION_SUFFIX_LENGTH == 8
+
+
+# =============================================================================
+# Issue #256: providers merge, API key precedence, vision model resolution
+# =============================================================================
+
+
+class TestProviderTableMerge:
+    """A user [providers.x] table must merge with, not replace, the default one."""
+
+    def test_user_table_merges_with_default(self, tmp_path, monkeypatch):
+        default_file = tmp_path / "settings.default.toml"
+        default_file.write_text(
+            '[providers.deepinfra]\nbase_url = "https://api.deepinfra.com/v1/openai"\n'
+            'default_model = "meta-llama/Llama-3.3-70B-Instruct"\n'
+            '[providers.openai]\nbase_url = "https://api.openai.com/v1"\n'
+            'default_model = "gpt-4o-mini"\n',
+            encoding="utf-8",
+        )
+        user_file = tmp_path / "settings.toml"
+        user_file.write_text(
+            '[providers.openai]\nbase_url = "https://custom.example.com/v1"\n'
+            'default_model = "gpt-4o"\n',
+            encoding="utf-8",
+        )
+
+        monkeypatch.setitem(AppSettings.model_config, "toml_file", (default_file, user_file))
+        settings = AppSettings()
+
+        assert "deepinfra" in settings.providers
+        assert "openai" in settings.providers
+        assert settings.providers["openai"].base_url == "https://custom.example.com/v1"
+        assert settings.providers["openai"].default_model == "gpt-4o"
+        assert settings.providers["deepinfra"].default_model == (
+            "meta-llama/Llama-3.3-70B-Instruct"
+        )
+
+
+class TestApiKeyPrecedence:
+    """Environment > secrets.toml > providers table, with a multi-source warning."""
+
+    def _patched_settings(self, table_key, secret_key, monkeypatch):
+        from renai.config.settings import ProviderConfig, ProviderSettings
+
+        app = AppSettings.model_construct(
+            providers={
+                "openai": ProviderConfig(
+                    base_url="https://api.openai.com/v1", api_key=table_key, default_model="m"
+                )
+            }
+        )
+        prov = ProviderSettings.model_construct(openai_api_key=secret_key)
+        monkeypatch.setattr("renai.config.providers._settings_ref", (app, prov))
+        monkeypatch.setattr("renai.config.providers._KEY_PRECEDENCE_WARNED", set())
+
+    def test_env_beats_secrets_and_table(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "key-from-env")
+        self._patched_settings("key-from-table", "key-from-secrets", monkeypatch)
+
+        from renai.config.providers import get_api_key
+
+        assert get_api_key("openai") == "key-from-env"
+
+    def test_secrets_beat_table(self, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        self._patched_settings("key-from-table", "key-from-secrets", monkeypatch)
+
+        from renai.config.providers import get_api_key
+
+        assert get_api_key("openai") == "key-from-secrets"
+
+    def test_table_used_as_last_resort(self, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        self._patched_settings("key-from-table", None, monkeypatch)
+
+        from renai.config.providers import get_api_key
+
+        assert get_api_key("openai") == "key-from-table"
+
+    def test_multi_source_warning_logged_once(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("OPENAI_API_KEY", "key-from-env")
+        self._patched_settings("key-from-table", "key-from-secrets", monkeypatch)
+
+        from renai.config.providers import get_api_key
+
+        with caplog.at_level(logging.WARNING, logger="renai.config.providers"):
+            get_api_key("openai")
+            get_api_key("openai")
+
+        warnings = [r for r in caplog.records if "multiple places" in r.message]
+        assert len(warnings) == 1
+
+
+class TestEffectiveVisionModel:
+    """get_effective_vision_model must honour an explicit differing provider."""
+
+    def _patched_settings(self, monkeypatch):
+        from renai.config.settings import ProviderConfig, ProviderSettings
+
+        def _provider(default_model):
+            return ProviderConfig(base_url="https://example.com/v1", default_model=default_model)
+
+        app = AppSettings.model_construct(
+            provider="openai",
+            model="gpt-4o",
+            vision_provider="openai",
+            vision_model="gpt-4o-mini",
+            providers={
+                "openai": _provider("gpt-4o"),
+                "openrouter": _provider("google/gemini-2.0-flash-exp:free"),
+            },
+        )
+        prov = ProviderSettings.model_construct(
+            deepinfra_model=None, openrouter_model=None, openai_model=None
+        )
+        monkeypatch.setattr("renai.config.providers._settings_ref", (app, prov))
+
+    def test_stored_model_used_for_matching_provider(self, monkeypatch):
+        self._patched_settings(monkeypatch)
+
+        from renai.config.providers import get_effective_vision_model
+
+        assert get_effective_vision_model("openai") == "gpt-4o-mini"
+
+    def test_explicit_provider_gets_its_own_model(self, monkeypatch):
+        self._patched_settings(monkeypatch)
+
+        from renai.config.providers import get_effective_vision_model
+
+        assert get_effective_vision_model("openrouter") != "gpt-4o-mini"
+        assert get_effective_vision_model("openrouter") == "google/gemini-2.0-flash-exp:free"
+
+    def test_no_vision_model_stored_falls_back_to_provider_default(self, monkeypatch):
+        from renai.config.settings import ProviderConfig, ProviderSettings
+
+        app = AppSettings.model_construct(
+            provider="deepinfra",
+            model=None,
+            vision_provider=None,
+            vision_model=None,
+            providers={
+                "deepinfra": ProviderConfig(
+                    base_url="https://api.deepinfra.com/v1/openai",
+                    default_model="meta-llama/Llama-3.3-70B-Instruct",
+                )
+            },
+        )
+        prov = ProviderSettings.model_construct()
+        monkeypatch.setattr("renai.config.providers._settings_ref", (app, prov))
+
+        from renai.config.providers import get_effective_vision_model
+
+        assert get_effective_vision_model() == "meta-llama/Llama-3.3-70B-Instruct"
+
+
+class TestFallbackModeLiteral:
+    """fallback_mode is a Literal; invalid values must fail validation."""
+
+    @pytest.mark.parametrize("value", ["none", "ocr", "vision", "move"])
+    def test_valid_modes_accepted(self, value):
+        assert AppSettings(fallback_mode=value).fallback_mode == value
+
+    @pytest.mark.parametrize("value", ["bogus", "", "OCR", "none "])
+    def test_invalid_modes_rejected(self, value):
+        with pytest.raises(ValidationError):
+            AppSettings(fallback_mode=value)

@@ -62,18 +62,55 @@ def load_providers_config() -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Providers for which a multi-source key warning has already been emitted, so
+# the warning fires once per provider instead of on every call.
+_KEY_PRECEDENCE_WARNED: set[str] = set()
+
+# Sentinel stored in ProviderSettings when no custom key was entered.
+_CUSTOM_KEY_SENTINEL = "not-required"
+
+
+def _secret_api_key(prov, provider: str) -> str | None:
+    """Return the key loaded from secrets.toml for *provider*, if meaningfully set."""
+    value = getattr(prov, f"{provider}_api_key", None)
+    if provider == "custom" and value == _CUSTOM_KEY_SENTINEL:
+        return None
+    return value or None
+
+
 def get_api_key(provider: str) -> str | None:
-    """Get API key for the specified provider."""
+    """Get API key for the specified provider.
+
+    Precedence (matching README/SECURITY.md): environment variable, then
+    secrets.toml, then the ``providers.<name>.api_key`` table. A warning is
+    logged once per provider when several sources are set at once.
+    """
     app, prov = _get_settings()
-    if provider in app.providers and app.providers[provider].api_key:
-        return app.providers[provider].api_key
-    key_map = {
-        "deepinfra": prov.deepinfra_api_key or os.getenv("DEEPINFRA_API_KEY"),
-        "openrouter": prov.openrouter_api_key or os.getenv("OPENROUTER_API_KEY"),
-        "openai": prov.openai_api_key or os.getenv("OPENAI_API_KEY"),
-        "custom": prov.custom_api_key or os.getenv("CUSTOM_API_KEY", "not-required"),
-    }
-    return key_map.get(provider)
+    env_key = os.getenv(f"{provider.upper()}_API_KEY")
+    secret_key = _secret_api_key(prov, provider)
+    table_key = app.providers[provider].api_key if provider in app.providers else None
+    table_key = table_key or None
+
+    sources = [
+        (env_key, "environment"),
+        (secret_key, "secrets.toml"),
+        (table_key, "settings.toml providers table"),
+    ]
+    chosen = next((value for value, _ in sources if value), None)
+
+    configured = [label for value, label in sources if value]
+    if len(configured) > 1 and provider not in _KEY_PRECEDENCE_WARNED:
+        _KEY_PRECEDENCE_WARNED.add(provider)
+        logger.warning(
+            "API key for provider '%s' is set in multiple places (%s); "
+            "using the first by precedence: environment > secrets.toml > settings.toml.",
+            provider,
+            ", ".join(configured),
+        )
+
+    if chosen:
+        return chosen
+    return _CUSTOM_KEY_SENTINEL if provider == "custom" else None
 
 
 def get_base_url(provider: str) -> str:
@@ -125,12 +162,18 @@ def get_effective_vision_provider() -> str:
 
 
 def get_effective_vision_model(vision_provider: str | None = None) -> str | None:
-    """Get effective vision model to use (explicit vision_model or fallback)."""
+    """Get effective vision model to use (explicit vision_model or fallback).
+
+    The stored ``vision_model`` only applies when it belongs to the effective
+    vision provider; an explicit *vision_provider* that differs from the stored
+    one resolves that provider's own default model instead.
+    """
     app, prov = _get_settings()
-    if app.vision_model:
+    v_provider = vision_provider or get_effective_vision_provider()
+
+    if app.vision_model and (vision_provider is None or v_provider == app.vision_provider):
         return app.vision_model
 
-    v_provider = vision_provider or get_effective_vision_provider()
     provider_model_map = {
         "deepinfra": prov.deepinfra_model,
         "openrouter": prov.openrouter_model,
