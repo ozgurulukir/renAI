@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +15,7 @@ from renai.config import (
 )
 from renai.engines.ocr import OCREngine
 from renai.extractors import get_extractor
-from renai.file_ops.operations import COLLISION_SUFFIX_LENGTH
+from renai.file_ops.operations import COLLISION_SUFFIX_LENGTH, safe_move_file
 from renai.models.schemas import FallbackMode
 from renai.utils import (
     get_file_hash,
@@ -391,18 +390,21 @@ class TextExtractor:
         return ""
 
     def _move_to_quarantine(self, file_path: Path, dest_dir: Path) -> None:
-        """Move a document into a quarantine folder, avoiding name collisions."""
-        try:
-            target_path = dest_dir / file_path.name
-            if target_path.exists():
-                # Avoid collision — same suffix width as safe_move_file
-                # (COLLISION_SUFFIX_LENGTH) so quarantine and rename paths
-                # share one collision-resistance guarantee.
-                suffix = f"_{uuid.uuid4().hex[:COLLISION_SUFFIX_LENGTH]}{file_path.suffix}"
-                target_path = dest_dir / f"{file_path.stem}{suffix}"
+        """Move a document into a quarantine folder, avoiding name collisions.
 
-            shutil.move(str(file_path), str(target_path))
-            logger.debug(f"Moved {file_path.name} to {dest_dir.name} directory")
+        Routed through ``safe_move_file`` so quarantine moves are recorded in
+        the undo journal (issue #245) and share the collision-resistance and
+        duplicate-detection guarantees of the rename path.
+        """
+        try:
+            target_path = safe_move_file(file_path, dest_dir / file_path.name)
+            if file_path.exists():
+                # safe_move_file skipped the transfer because an identical
+                # file is already quarantined there; move under a unique name
+                # so the source still ends up quarantined.
+                suffix = f"_{uuid.uuid4().hex[:COLLISION_SUFFIX_LENGTH]}{file_path.suffix}"
+                target_path = safe_move_file(file_path, dest_dir / f"{file_path.stem}{suffix}")
+            logger.debug(f"Moved {file_path.name} to {target_path.parent.name} directory")
         except Exception as e:
             logger.error(f"Failed to move {file_path.name} to {dest_dir}: {e}")
 

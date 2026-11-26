@@ -26,7 +26,17 @@ class FileOrganizer:
     def __init__(self, root_dir: Path | None = None, *, max_filename_length: int):
         self.root_dir = root_dir
         self.max_filename_length = max_filename_length
-        self.file_operation_lock = asyncio.Lock()
+        # Per-destination-directory locks (issue #244): file operations that
+        # target different directories (and their SHA-256 uniqueness checks)
+        # can proceed in parallel instead of serialising behind one global
+        # lock. Dict access happens on the event loop thread only.
+        self._dir_locks: dict[Path, asyncio.Lock] = {}
+        self._dir_locks_guard = asyncio.Lock()
+
+    async def _lock_for(self, dest_dir: Path) -> asyncio.Lock:
+        """Return the per-directory lock guarding file ops into ``dest_dir``."""
+        async with self._dir_locks_guard:
+            return self._dir_locks.setdefault(dest_dir, asyncio.Lock())
 
     async def organize_file(
         self,
@@ -90,41 +100,32 @@ class FileOrganizer:
                     category=category,
                 )
 
-            async with self.file_operation_lock:
-                # Copy vs move distinction:
-                # - "move" transfers the source to the destination and (on success) the
-                #   source is gone, because shutil.move removes the original.
-                # - "copy" duplicates the source bytes and MUST leave the original intact.
-                # Branch on the mode here so a copy is never routed through safe_move_file,
-                # which would silently delete the source (the original data-loss bug).
-                # Both helpers respect `dry_run`, so in a dry run we only log what would
-                # happen and never touch the filesystem.
-                # Note: the default rename/organize paths still move the file. Only the
-                # explicit "copy" mode duplicates the source without deleting it.
-                if mode == "copy":
+            # Copy vs move distinction:
+            # - "move" transfers the source to the destination and (on success) the
+            #   source is gone, because the move removes the original.
+            # - "copy" duplicates the source bytes and MUST leave the original intact.
+            # Branch on the mode here so a copy is never routed through safe_move_file,
+            # which would silently delete the source (the original data-loss bug).
+            # Note: the default rename/organize paths still move the file. Only the
+            # explicit "copy" mode duplicates the source without deleting it.
+            transfer = safe_copy_file if mode == "copy" else safe_move_file
 
-                    def _do_copy():
-                        return safe_copy_file(
-                            file_path,
-                            target_dest,
-                            source_hash=file_hash,
-                            dry_run=dry_run,
-                            root_dir=self.root_dir,
-                        )
+            def _do_transfer():
+                return transfer(
+                    file_path,
+                    target_dest,
+                    source_hash=file_hash,
+                    dry_run=dry_run,
+                    root_dir=self.root_dir,
+                )
 
-                    final_path = await asyncio.to_thread(_do_copy)
-                else:
-
-                    def _do_move():
-                        return safe_move_file(
-                            file_path,
-                            target_dest,
-                            source_hash=file_hash,
-                            dry_run=dry_run,
-                            root_dir=self.root_dir,
-                        )
-
-                    final_path = await asyncio.to_thread(_do_move)
+            if dry_run:
+                # Dry runs never touch the filesystem, so no lock is needed.
+                final_path = _do_transfer()
+            else:
+                dir_lock = await self._lock_for(target_dest.parent)
+                async with dir_lock:
+                    final_path = await asyncio.to_thread(_do_transfer)
 
             logger.debug(f"SUCCESS ({mode}): {file_path.name} -> {final_path.name}")
             m_data = (

@@ -44,6 +44,7 @@ class Info:
     VERSION = "renAI version [bold cyan]{}[/bold cyan]"
     CACHE_CLEARED = "[green]Cache cleared: {} items removed ({})[/green]"
     CACHE_EMPTY = "[green]Cache is already empty. Nothing to clear.[/green]"
+    CACHE_DB_RESET = "[yellow]Corrupt cache database was removed and recreated empty.[/yellow]"
     DIR_NOT_FOUND = "[red]Error: Directory not found: {}[/red]"
     HEADER_TITLE = "[bold cyan]renAI[/bold cyan] [dim]v{}[/dim]"
     HEADER_DIR = "[blue]📂 Dir:[/blue] {}"
@@ -54,6 +55,14 @@ class Info:
     COL_MODEL = "Model Default"
     UNDO_REVERTED = "[green]Successfully reverted {} file operations.[/green]"
     UNDO_NOTHING = "[yellow]No recent operations to undo.[/yellow]"
+    UNDO_RUN = (
+        "[cyan]Reverting most recent run [bold]{}[/bold] ({} file operation(s) attempted).[/cyan]"
+    )
+    UNDO_FAILED = "[red]{} operation(s) could not be reverted and remain in the undo journal.[/red]"
+    UNDO_SKIPPED = (
+        "[yellow]{} operation(s) skipped (target already exists, or the journal entry was "
+        "malformed).[/yellow]"
+    )
 
 
 class Error:

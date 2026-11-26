@@ -67,20 +67,45 @@ def test_init_cmd():
 
 def test_undo_cmd_success():
     """Test undo command when operations exist."""
-    with patch("renai.file_ops.operations.undo_last_operation", return_value=5):
+    from renai.file_ops.operations import UndoResult
+
+    with patch(
+        "renai.file_ops.operations.undo_last_operation",
+        return_value=UndoResult(run_id="abc123", reverted=5),
+    ):
         with patch("renai.cli.console.print") as mock_print:
             result = runner.invoke(app, ["undo"])
             assert result.exit_code == 0
-            mock_print.assert_called_with("[green]Successfully reverted 5 file operations.[/green]")
+            prints = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+            assert "[green]Successfully reverted 5 file operations.[/green]" in prints
+            assert any("abc123" in p for p in prints)
 
 
 def test_undo_cmd_no_ops():
     """Test undo command when no operations exist."""
-    with patch("renai.file_ops.operations.undo_last_operation", return_value=0):
+    from renai.file_ops.operations import UndoResult
+
+    with patch("renai.file_ops.operations.undo_last_operation", return_value=UndoResult()):
         with patch("renai.cli.console.print") as mock_print:
             result = runner.invoke(app, ["undo"])
             assert result.exit_code == 0
             mock_print.assert_called_with("[yellow]No recent operations to undo.[/yellow]")
+
+
+def test_undo_cmd_reports_failed_and_skipped():
+    """Failed reverts and skips are reported alongside the run id."""
+    from renai.file_ops.operations import UndoResult
+
+    with patch(
+        "renai.file_ops.operations.undo_last_operation",
+        return_value=UndoResult(run_id="deadbeef", reverted=1, failed=2, skipped=3),
+    ):
+        with patch("renai.cli.console.print") as mock_print:
+            result = runner.invoke(app, ["undo"])
+            assert result.exit_code == 0
+            prints = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+            assert any("2 operation(s) could not be reverted" in p for p in prints)
+            assert any("3 operation(s) skipped" in p for p in prints)
 
 
 def test_main():

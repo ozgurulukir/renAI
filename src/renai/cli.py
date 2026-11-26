@@ -617,11 +617,18 @@ def undo_cmd() -> None:
     """Undo operations from the most recent renaming or organizing run."""
     from renai.file_ops.operations import undo_last_operation
 
-    reverted = undo_last_operation()
-    if reverted > 0:
-        console.print(msg.Info.UNDO_REVERTED.format(reverted))
-    else:
+    result = undo_last_operation()
+    if result.run_id is None:
         console.print(msg.Info.UNDO_NOTHING)
+        return
+    attempted = result.reverted + result.skipped + result.failed
+    console.print(msg.Info.UNDO_RUN.format(result.run_id, attempted))
+    if result.reverted > 0:
+        console.print(msg.Info.UNDO_REVERTED.format(result.reverted))
+    if result.failed > 0:
+        console.print(msg.Info.UNDO_FAILED.format(result.failed))
+    if result.skipped > 0:
+        console.print(msg.Info.UNDO_SKIPPED.format(result.skipped))
 
 
 def main() -> None:
