@@ -242,10 +242,13 @@ class TestMutoolBackendContract:
 class TestExtractTextFallbackChain:
     """The bulk -> per-page mutool -> pymupdf fallback chain is preserved."""
 
-    async def test_bulk_failure_falls_back_to_pymupdf(self, tmp_path):
-        """Mutool bulk miss must be retried per page, then fall back to pymupdf."""
+    async def test_bulk_failure_falls_back_to_pymupdf(self, tmp_path, caplog):
+        """A failed bulk mutool call must NOT be retried per page; pymupdf covers all pages."""
+        import logging
+
         from renai.engines.ocr import OCREngine
 
+        caplog.set_level(logging.WARNING, logger="renai.engines.ocr")
         engine = OCREngine(use_mutool=False, silent=True)
         engine.use_mutool = True
         engine.mutool_path = "mutool"
@@ -253,7 +256,7 @@ class TestExtractTextFallbackChain:
         calls: list[str] = []
 
         mutool_renderer = MagicMock()
-        mutool_renderer.render_pages = AsyncMock(return_value={})  # bulk + retry miss
+        mutool_renderer.render_pages = AsyncMock(return_value={})  # bulk failure
         pymupdf_renderer = MagicMock()
 
         async def pymupdf_render(file_path, pages, dpi):
@@ -284,7 +287,9 @@ class TestExtractTextFallbackChain:
         assert result == "\n\n".join(["text"] * 8)
         # 10-page doc: head 5 (0-4) + tail 3 (7-9) = 8 sampled pages
         assert calls[0] == "factory:mutool"
-        assert mutool_renderer.render_pages.await_count == 9  # 1 bulk + 8 per-page retries
+        # Zero per-page mutool retries after the failed bulk call (issue #252)
+        assert mutool_renderer.render_pages.await_count == 1
+        assert "skipping per-page mutool retries" in caplog.text
         pymupdf_calls = [c for c in calls if c.startswith("pymupdf:")]
         assert len(pymupdf_calls) == 8
         assert all(":dpi=150" in c for c in pymupdf_calls)

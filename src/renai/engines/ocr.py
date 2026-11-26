@@ -68,6 +68,10 @@ ENHANCED_UNSHARP_PERCENT = 150
 ENHANCED_UNSHARP_THRESHOLD = 3
 # Tesseract OCR engine mode: 3 = default, OEM-chosen (LSTM where available).
 TESSERACT_OEM = 3
+# Fraction of the character budget reserved for head pages during OCR; the
+# remainder is spent on tail pages so ISBN/colophon pages are OCR'd even when
+# the head pages are dense (mirrors text extraction's default head_ratio).
+OCR_HEAD_CHARS_RATIO = 0.7
 
 
 class OCREngine:
@@ -353,7 +357,18 @@ class OCREngine:
                 OCREngine._process_pool, self._sync_preprocess_image, image
             )
         except Exception as e:
-            logger.debug(f"ProcessPool execution fallback to thread: {e}")
+            # A broken pool (e.g. BrokenProcessPool) must not stay installed as
+            # the class attribute: shut it down and clear it so the next call
+            # recreates a fresh pool instead of failing on every page.
+            with OCREngine._process_pool_lock:
+                pool = OCREngine._process_pool
+                OCREngine._process_pool = None
+            if pool is not None:
+                with contextlib.suppress(Exception):
+                    pool.shutdown(wait=False)
+                logger.warning(f"Process pool failed ({e}); pool reset, falling back to thread")
+            else:
+                logger.debug(f"ProcessPool execution fallback to thread: {e}")
             return await asyncio.to_thread(self._sync_preprocess_image, image)
 
     def _sync_preprocess_image(self, image: Image.Image) -> Image.Image:
@@ -446,10 +461,30 @@ class OCREngine:
                 bulk_pages = await mutool_renderer.render_pages(
                     file_path, pages_to_extract, int(self.cfg["dpi"])
                 )
+                if not bulk_pages:
+                    # The bulk mutool call failed outright (nonzero exit or
+                    # timeout). Do NOT retry mutool once per sampled page for
+                    # this file -- a hanging mutool would otherwise cost one
+                    # full subprocess_timeout per page. Fall through to the
+                    # pymupdf renderer only (zero extra mutool attempts).
+                    logger.warning(
+                        "mutool bulk render failed for %s; skipping per-page mutool retries",
+                        file_path.name,
+                    )
+                    mutool_renderer = None
 
-            extracted_text = []
-            total_chars = 0
-            for pno in pages_to_extract:
+            # Head pages and tail pages get separate character budgets so a
+            # dense head never crowds out the tail pages (ISBN/colophon),
+            # which previously were never reached.
+            head_budget = int(target_chars * OCR_HEAD_CHARS_RATIO)
+            tail_budget = target_chars - head_budget
+            head_count = min(self.head_pages, total_pages)
+            head_list = [pno for pno in pages_to_extract if pno < head_count]
+            tail_list = [pno for pno in pages_to_extract if pno >= head_count]
+
+            extracted_text: list[str] = []
+
+            async def _ocr_page(pno: int) -> str:
                 page_result = bulk_pages.get(pno)
                 page_temp: Path | None = None
 
@@ -474,32 +509,40 @@ class OCREngine:
                     if page_temp:
                         per_page_temps.append(page_temp)
 
-                if page_result is not None and page_result.image is not None:
-                    image = await self._preprocess_image(page_result.image)
+                if page_result is None or page_result.image is None:
+                    return ""
 
-                    if self.debug and file_debug_dir:
+                image = await self._preprocess_image(page_result.image)
 
-                        def _save_debug(img, p_idx):
-                            quality_tag = "enhanced" if self.enhanced else "minimal"
-                            img.save(file_debug_dir / f"page_{p_idx + 1}_{quality_tag}.png")
+                if self.debug and file_debug_dir:
+                    debug_dir = file_debug_dir
 
-                        await asyncio.to_thread(_save_debug, image, pno)
+                    def _save_debug(img, p_idx):
+                        quality_tag = "enhanced" if self.enhanced else "minimal"
+                        img.save(debug_dir / f"page_{p_idx + 1}_{quality_tag}.png")
 
-                    page_text = await self._perform_ocr(image, pno)
+                    await asyncio.to_thread(_save_debug, image, pno)
+
+                page_text = await self._perform_ocr(image, pno)
+
+                # Only per-page rendered temps are cleaned here; bulk temps
+                # are caller-owned until the finally block below.
+                if page_temp and page_temp.exists():
+                    try:
+                        image.close()
+                        await asyncio.to_thread(page_temp.unlink)
+                    except Exception as e:
+                        logger.debug(f"Cleanup of temp_img failed: {e}")
+                return page_text
+
+            for group, budget in ((head_list, head_budget), (tail_list, tail_budget)):
+                group_chars = 0
+                for pno in group:
+                    page_text = await _ocr_page(pno)
                     extracted_text.append(page_text)
-                    total_chars += len(page_text)
-
-                    # Only per-page rendered temps are cleaned here; bulk temps
-                    # are caller-owned until the finally block below.
-                    if page_temp and page_temp.exists():
-                        try:
-                            image.close()
-                            await asyncio.to_thread(page_temp.unlink)
-                        except Exception as e:
-                            logger.debug(f"Cleanup of temp_img failed: {e}")
-
-                if total_chars > target_chars:
-                    break
+                    group_chars += len(page_text)
+                    if group_chars > budget:
+                        break
 
             logger.debug(
                 f"OCR extracted text from {len(pages_to_extract)} pages of {file_path.name}"
