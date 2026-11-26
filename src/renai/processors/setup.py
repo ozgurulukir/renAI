@@ -117,12 +117,14 @@ def _print_dependency_diagnostics() -> None:
     console.print("")
 
 
-def _atomic_write_toml(path: Path, data: dict) -> None:
+def _atomic_write_toml(path: Path, data: dict, *, mode: int | None = None) -> None:
     """Serialise *data* to TOML and atomically replace *path*.
 
     ``None`` values are dropped first (TOML has no null type), and the payload
     is fully serialised to a string before any file is touched, so a failure
-    can never leave a truncated file behind.
+    can never leave a truncated file behind. When *mode* is given, the temp
+    file is restricted to it BEFORE the replace, so credentials never sit
+    briefly world-readable at the temp path.
     """
     import tomli_w
 
@@ -130,6 +132,8 @@ def _atomic_write_toml(path: Path, data: dict) -> None:
     payload = tomli_w.dumps(clean)
     tmp_path = path.with_name(path.name + ".tmp")
     tmp_path.write_text(payload, encoding="utf-8")
+    if mode is not None:
+        tmp_path.chmod(mode)
     tmp_path.replace(path)
 
 
@@ -143,7 +147,7 @@ def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -
             console.print(msg.Save.PROPAGATED.format(dest.name))
 
         _atomic_write_toml(SETTINGS_USER_FILE, config)
-        _atomic_write_toml(SECRETS_FILE, secrets)
+        _atomic_write_toml(SECRETS_FILE, secrets, mode=0o600)
 
         if hasattr(SECRETS_FILE, "chmod"):
             try:

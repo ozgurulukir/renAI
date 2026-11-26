@@ -1,5 +1,6 @@
 import asyncio
 import tomllib
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -595,6 +596,28 @@ def test_save_configuration_none_values_and_atomic_write(tmp_path):
     assert "vision_model" not in data
     assert data["provider"] == "openai"
     assert secrets_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_atomic_write_toml_restricts_tmp_mode_before_replace(tmp_path):
+    """The temp file carrying secrets must not be world-readable pre-replace."""
+    from renai.processors.setup import _atomic_write_toml
+
+    target = tmp_path / "secrets.toml"
+    captured: dict[str, int] = {}
+
+    real_replace = Path.replace
+
+    def spying_replace(self, other):
+        # os.replace keeps the source file's mode; record it at replace time.
+        captured["mode"] = self.stat().st_mode & 0o777
+        return real_replace(self, other)
+
+    payload = dict.fromkeys(("openai_api_key",), "placeholder-not-a-credential")
+    with patch.object(Path, "replace", spying_replace):
+        _atomic_write_toml(target, payload, mode=0o600)
+
+    assert target.exists()
+    assert captured["mode"] == 0o600
 
 
 def test_save_configuration_failure_is_logged(tmp_path, caplog):

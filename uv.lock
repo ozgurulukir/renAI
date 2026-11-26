@@ -1217,7 +1217,7 @@ requires-dist = [
     { name = "pillow" },
     { name = "platformdirs" },
     { name = "pydantic", specifier = ">=2.0" },
-    { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.7" },
     { name = "pymupdf" },
     { name = "pypdf", marker = "extra == 'pdf-extra'" },
     { name = "pypdfium2", marker = "extra == 'pdf-extra'" },
