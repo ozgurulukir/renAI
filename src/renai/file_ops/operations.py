@@ -29,6 +29,10 @@ _undo_lock = threading.Lock()
 COLLISION_SUFFIX_LENGTH = 8
 MAX_UNIQUE_PATH_ATTEMPTS = 16
 
+# Synthetic run id grouping journal entries written before run scoping existed
+# (no ``run_id`` key). One ``undo`` reverts the whole legacy batch.
+LEGACY_RUN_ID = "legacy"
+
 # Run id currently associated with the active pipeline run. Recorded on every
 # undo entry so ``undo_last_operation`` can revert only the most recent run.
 _current_run_id: str | None = None
@@ -231,10 +235,13 @@ def undo_last_operation(cache_dir: Path | None = None) -> UndoResult:
             return result
 
         # Newest run is decided by entry order: the run id of the last entry.
-        target_run_id = entries[-1].get("run_id")
-        result.run_id = target_run_id if isinstance(target_run_id, str) else None
-        current_run = [e for e in entries if e.get("run_id") == target_run_id]
-        remaining = [e for e in entries if e.get("run_id") != target_run_id]
+        # Legacy journals (pre-run-scoping) carry no run ids, so their entries
+        # collapse into one synthetic run and are still reported and reverted.
+        raw_target = entries[-1].get("run_id")
+        target_run_id = raw_target if isinstance(raw_target, str) else LEGACY_RUN_ID
+        result.run_id = target_run_id
+        current_run = [e for e in entries if (e.get("run_id") or LEGACY_RUN_ID) == target_run_id]
+        remaining = [e for e in entries if (e.get("run_id") or LEGACY_RUN_ID) != target_run_id]
 
         for entry in reversed(current_run):
             old_raw = entry.get("old_path")

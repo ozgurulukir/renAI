@@ -526,13 +526,32 @@ class TestUndoJournal:
         assert old.exists() and not new.exists()
 
     def test_legacy_json_array_readable(self, tmp_path):
-        from renai.file_ops.operations import _load_undo_entries, undo_last_operation
+        from renai.file_ops.operations import (
+            LEGACY_RUN_ID,
+            _load_undo_entries,
+            undo_last_operation,
+        )
 
         old, new = tmp_path / "a.txt", tmp_path / "b.txt"
         new.write_text("data")
         (tmp_path / "undo_history.json").write_text(json.dumps([self._entry(old, new)]))
         assert len(_load_undo_entries(tmp_path)) == 1
-        assert undo_last_operation(cache_dir=tmp_path).reverted == 1
+        result = undo_last_operation(cache_dir=tmp_path)
+        assert result.reverted == 1
+        assert result.run_id == LEGACY_RUN_ID
+        assert old.exists() and not new.exists()
+
+    def test_legacy_journal_reports_run_and_reverts(self, tmp_path):
+        """Pre-run-scoping journals (no run_id keys) revert as one reported run."""
+        from renai.file_ops.operations import LEGACY_RUN_ID, undo_last_operation
+
+        old, new = tmp_path / "a.txt", tmp_path / "b.txt"
+        new.write_text("data")
+        with (tmp_path / "undo_journal.jsonl").open("w", encoding="utf-8") as f:
+            f.write(json.dumps(self._entry(old, new)) + "\n")
+        result = undo_last_operation(cache_dir=tmp_path)
+        assert result.run_id == LEGACY_RUN_ID
+        assert result.reverted == 1
         assert old.exists() and not new.exists()
 
     def test_missing_cache_dir_handled(self, tmp_path):
