@@ -30,9 +30,11 @@ class TestHashingOptimization:
 
             assert result == "cached text"
             mock_get_hash.assert_not_called()
-            mock_read_cache.assert_called_once_with(
-                TextCacheKey(file_hash=provided_hash, ocr=False, mutool=False)
-            )
+            mock_read_cache.assert_called_once()
+            key = mock_read_cache.call_args[0][0]
+            assert isinstance(key, TextCacheKey)
+            assert key.file_hash == provided_hash
+            assert key.fallback == "ocr"  # extract() default fallback
 
     @pytest.mark.asyncio
     async def test_extract_computes_hash_if_not_provided(self):
@@ -56,6 +58,7 @@ class TestHashingOptimization:
 
             assert result == "cached text"
             mock_get_hash.assert_called_once_with(file_path)
-            mock_read_cache.assert_called_once_with(
-                TextCacheKey(file_hash=computed_hash, ocr=False, mutool=False)
-            )
+            mock_read_cache.assert_called_once()
+            key = mock_read_cache.call_args[0][0]
+            assert isinstance(key, TextCacheKey)
+            assert key.file_hash == computed_hash

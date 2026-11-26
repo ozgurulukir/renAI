@@ -76,16 +76,37 @@ def rule_cache_signature(rule: FolderRule | None, *, mode: str) -> str | None:
     they shape filenames, not extracted metadata. Returns ``None`` when the
     rule does not restrict categories for ``mode`` ("doc"/"img").
 
-    Note: the global category list itself is not signed — edits to the global categories do
-    not invalidate rows written under the global universe.
+    When the rule does not restrict categories for ``mode``, callers fall back
+    to :func:`global_categories_signature` so the effective global list is
+    signed exactly like a rule's list (#247).
     """
     if rule is None:
         return None
     categories = rule.image_categories if mode == "img" else rule.categories
     if not categories:
         return None
+    return _categories_signature(categories)
+
+
+def _categories_signature(categories: dict[str, list[str]]) -> str:
     payload = json.dumps(categories, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+@lru_cache(maxsize=2)
+def global_categories_signature(*, mode: str) -> str:
+    """Stable signature of the effective global category list (#247).
+
+    Signs whatever ``config.providers.get_allowed_categories`` /
+    ``get_image_categories`` resolve for ``mode`` ("doc"/"img") — user TOML
+    overrides included — so editing the global category list invalidates
+    metadata rows written under the previous list, exactly like a folder-rule
+    category change does.
+    """
+    from renai.config.providers import get_allowed_categories, get_image_categories
+
+    categories = get_image_categories() if mode == "img" else get_allowed_categories()
+    return _categories_signature(categories)
 
 
 def resolve_allowed_bucket(allowed_dict: dict[str, list[str]], language: str) -> list[str]:

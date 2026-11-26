@@ -9,11 +9,22 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from renai.cache.manager import MetadataCacheKey, read_metadata_cache, write_metadata_cache
+from renai.cache.manager import (
+    MetadataCacheKey,
+    metadata_version_fingerprint,
+    read_metadata_cache,
+    write_metadata_cache,
+)
 from renai.config import get_image_extensions
+from renai.config.folder_rules import global_categories_signature
 from renai.models.schemas import FallbackMode
 
 logger = logging.getLogger(__name__)
+
+# Per-key in-flight bookkeeping (#249): concurrent identical MetadataRequests
+# share one underlying extraction call instead of each missing the cache and
+# paying for an LLM round-trip. Keyed by a hashable identity of the request.
+_INFLIGHT_CALLS: dict[tuple[Any, ...], asyncio.Task[tuple[Any, bool]]] = {}
 
 
 @dataclass(frozen=True)
@@ -134,6 +145,116 @@ def _produced_by_vision(request: MetadataRequest, is_vision_fallback: bool) -> b
     return (is_image and request.rename_images) or bool(is_vision_fallback)
 
 
+def _effective_rule_signature(request: MetadataRequest) -> str:
+    """Category-universe signature the row must carry (#247).
+
+    A folder rule's signature takes precedence; a request without category
+    restrictions signs the effective GLOBAL category list
+    (``global_categories_signature``), so editing the global list invalidates
+    rows written under the previous list — the same contract rule-scoped rows
+    already had.
+    """
+    if request.rule_signature:
+        return request.rule_signature
+    is_image = request.file_path.suffix.lower() in get_image_extensions()
+    return global_categories_signature(
+        mode="img" if (is_image and request.rename_images) else "doc"
+    )
+
+
+def _cache_lookup(request: MetadataRequest) -> tuple[Any, bool] | None:
+    """Resolve a valid cache hit for ``request``, or ``None`` on any miss.
+
+    The single place cache-validity judgments are applied (#247). A stored row
+    is a hit only when its category-universe signature, version fingerprint and
+    producing identity all match; ``source is None`` (legacy file fallback /
+    pre-provenance data) skips signature/version gating and falls through to
+    the legacy reconstruction.
+
+    Synchronous so callers can run it via ``asyncio.to_thread``.
+    """
+    if request.update_metadata:
+        return None
+
+    cached_data, source = read_metadata_cache(request.cache_key, request.model_class)
+    if not cached_data:
+        return None
+
+    legacy_provider = request.vision_provider if request.use_vision_cache else request.provider
+    legacy_model = request.vision_model if request.use_vision_cache else request.model
+
+    if source is not None:
+        expected_sig = _effective_rule_signature(request)
+        stored_sig = source.rule_signature
+        # Legacy records (no stored signature) are treated as global:
+        # rule-scoped runs re-extract under their own category universe.
+        if (stored_sig or "") != expected_sig:
+            stored_repr: str = (
+                stored_sig if stored_sig else ("legacy" if stored_sig is None else "global")
+            )
+            # Info, not debug: a mismatch means a real paid LLM re-extraction
+            # the user did not ask for (typically a changed folder rule),
+            # which deserves visibility.
+            logger.info(
+                "Metadata cache rule-signature mismatch; re-extracting "
+                "(file=%s, expected=%s, stored=%s)",
+                request.file_path.name,
+                expected_sig or "global",
+                stored_repr,
+            )
+            return None
+
+        current_version = metadata_version_fingerprint()
+        stored_version = source.version_fingerprint
+        if (stored_version or "") != current_version:
+            # Prompt/schema/app-version change (#247): the stored row predates
+            # the current extraction contract.
+            logger.info(
+                "Metadata cache version mismatch; re-extracting "
+                "(file=%s, stored_version=%s, current_version=%s)",
+                request.file_path.name,
+                stored_version or "legacy (none)",
+                current_version,
+            )
+            return None
+
+    if (
+        source is None
+        or source.produced_by_provider is None
+        or source.produced_by_model is None
+        or (source.produced_by_provider, source.produced_by_model)
+        == _producing_identity(request, source.is_vision_doc)
+    ):
+        is_vision_doc = source.is_vision_doc if source else None
+        logger.debug(
+            "Metadata cache hit (file=%s, produced_by=%s)",
+            request.file_path.name,
+            (
+                f"{source.produced_by_provider}/{source.produced_by_model}"
+                if source and source.produced_by_provider
+                else f"{legacy_provider}/{legacy_model} (legacy)"
+            ),
+        )
+        if is_vision_doc is None:
+            # Legacy record predating the persisted source marker:
+            # reconstruct from request flags (previous behavior).
+            is_image = request.file_path.suffix.lower() in get_image_extensions()
+            is_vision_doc = request.use_vision_cache and not (is_image and request.rename_images)
+        return cached_data, is_vision_doc
+
+    # Info, not debug: a mismatch means a real paid LLM re-extraction the user
+    # did not ask for (the engine that produced the row changed), which
+    # deserves visibility.
+    logger.info(
+        "Metadata cache producing-engine mismatch; re-extracting "
+        "(file=%s, produced_by=%s, expected=%s)",
+        request.file_path.name,
+        f"{source.produced_by_provider}/{source.produced_by_model}",
+        "/".join(_producing_identity(request, source.is_vision_doc)),
+    )
+    return None
+
+
 def with_metadata_cache() -> Callable[
     [Callable[..., Coroutine[Any, Any, tuple[Any, bool]]]],
     Callable[..., Coroutine[Any, Any, tuple[Any, bool]]],
@@ -147,10 +268,20 @@ def with_metadata_cache() -> Callable[
 
     Cache identity is provenance-based: rows are keyed by file + mode only, and
     each row records which engine produced it (``CacheSource.produced_by_*``).
-    On read, a row is a hit only when its producing identity still matches the
-    current identity of that same engine, taken from the request contract — no
-    instance attributes are consulted, so the provenance decision lives in
-    exactly one place (the code that builds the ``MetadataRequest``).
+    On read, a row is a hit only when ALL of the following hold (the validity
+    judgments live in :func:`_cache_lookup`, the single place they are applied):
+
+    - its stored category-universe signature matches the effective one for
+      this request (folder-rule override, or the signed global category list);
+    - its stored version fingerprint (prompts + Pydantic schemas + app
+      version, ``metadata_version_fingerprint``) matches the current one;
+    - its producing identity still matches the current identity of that same
+      engine, taken from the request contract — no instance attributes are
+      consulted.
+
+    Concurrent identical requests are de-duplicated: while one extraction for
+    a cache key is in flight, other requests with the same key await its
+    result instead of issuing their own underlying call (#249).
     """
 
     def decorator(
@@ -158,83 +289,14 @@ def with_metadata_cache() -> Callable[
     ) -> Callable[..., Coroutine[Any, Any, tuple[Any, bool]]]:
         _validate_request_contract(func)
 
-        @functools.wraps(func)
-        async def wrapper(
+        async def _execute(
             self: Any,
             request: MetadataRequest,
             **extra: Any,
         ) -> tuple[BaseModel | None, bool]:
-            # Legacy rows were keyed (and identity-stamped) by the *requested*
-            # engine: the vision engine for vision-cache requests, else text.
-            legacy_provider = (
-                request.vision_provider if request.use_vision_cache else request.provider
-            )
-            legacy_model = request.vision_model if request.use_vision_cache else request.model
-
-            if not request.update_metadata:
-                cached_data, source = await asyncio.to_thread(
-                    read_metadata_cache,
-                    request.cache_key,
-                    request.model_class,
-                )
-                if cached_data:
-                    expected_sig = request.rule_signature or ""
-                    stored_sig = source.rule_signature if source else None
-                    # Legacy records (no stored signature) are treated as
-                    # global: rule-scoped runs re-extract under their own
-                    # category universe instead of being served global data.
-                    if (stored_sig or "") != expected_sig:
-                        # Info, not debug: a mismatch means a real paid LLM
-                        # re-extraction the user did not ask for (typically a
-                        # changed folder rule), which deserves visibility.
-                        if stored_sig:
-                            stored_repr: str = stored_sig
-                        else:
-                            stored_repr = "legacy" if stored_sig is None else "global"
-                        logger.info(
-                            "Metadata cache rule-signature mismatch; re-extracting "
-                            "(file=%s, expected=%s, stored=%s)",
-                            request.file_path.name,
-                            expected_sig or "global",
-                            stored_repr,
-                        )
-                    elif (
-                        source is None
-                        or source.produced_by_provider is None
-                        or source.produced_by_model is None
-                        or (source.produced_by_provider, source.produced_by_model)
-                        == _producing_identity(request, source.is_vision_doc)
-                    ):
-                        is_vision_doc = source.is_vision_doc if source else None
-                        logger.debug(
-                            "Metadata cache hit (file=%s, produced_by=%s)",
-                            request.file_path.name,
-                            (
-                                f"{source.produced_by_provider}/{source.produced_by_model}"
-                                if source and source.produced_by_provider
-                                else f"{legacy_provider}/{legacy_model} (legacy)"
-                            ),
-                        )
-                        if is_vision_doc is None:
-                            # Legacy record predating the persisted source marker:
-                            # reconstruct from request flags (previous behavior).
-                            is_image = request.file_path.suffix.lower() in get_image_extensions()
-                            is_vision_doc = request.use_vision_cache and not (
-                                is_image and request.rename_images
-                            )
-                        return cached_data, is_vision_doc
-                    else:
-                        # Info, not debug: a mismatch means a real paid LLM
-                        # re-extraction the user did not ask for (the engine
-                        # that produced the row changed), which deserves
-                        # visibility.
-                        logger.info(
-                            "Metadata cache producing-engine mismatch; re-extracting "
-                            "(file=%s, produced_by=%s, expected=%s)",
-                            request.file_path.name,
-                            f"{source.produced_by_provider}/{source.produced_by_model}",
-                            "/".join(_producing_identity(request, source.is_vision_doc)),
-                        )
+            hit = await asyncio.to_thread(_cache_lookup, request)
+            if hit is not None:
+                return hit
 
             metadata, is_vision_fallback = await func(self, request, **extra)
 
@@ -253,12 +315,44 @@ def with_metadata_cache() -> Callable[
                     request.cache_key,
                     metadata,
                     is_vision_doc=is_vision_fallback,
-                    rule_signature=request.rule_signature,
+                    rule_signature=_effective_rule_signature(request),
                     produced_provider=provider,
                     produced_model=model,
                 )
 
             return metadata, is_vision_fallback
+
+        @functools.wraps(func)
+        async def wrapper(
+            self: Any,
+            request: MetadataRequest,
+            **extra: Any,
+        ) -> tuple[BaseModel | None, bool]:
+            # Per-key in-flight de-duplication (#249): workers processing
+            # byte-identical files concurrently share a single extraction
+            # call instead of each missing the (not yet written) cache row.
+            dedup_key = (
+                request.cache_key,
+                request.rule_signature or "",
+                bool(request.update_metadata),
+                tuple(sorted((name, repr(value)) for name, value in extra.items())),
+            )
+            in_flight = _INFLIGHT_CALLS.get(dedup_key)
+            if in_flight is not None:
+                # Shielded so a cancelled awaiter cannot cancel the shared
+                # extraction for everyone else; the owner populates the cache
+                # on success.
+                return await asyncio.shield(in_flight)
+
+            task: asyncio.Task[tuple[Any, bool]] = asyncio.create_task(
+                _execute(self, request, **extra)
+            )
+            _INFLIGHT_CALLS[dedup_key] = task
+            try:
+                return await task
+            finally:
+                if _INFLIGHT_CALLS.get(dedup_key) is task:
+                    _INFLIGHT_CALLS.pop(dedup_key, None)
 
         return wrapper
 

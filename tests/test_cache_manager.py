@@ -75,13 +75,25 @@ def test_key_encoding_matches_grammar():
     provider/model sha256 pair) is pinned separately so legacy rows written by
     earlier versions stay findable.
     """
-    assert _encode_text_key(TextCacheKey(file_hash="abc123")) == "abc123.txt"
-    assert _encode_text_key(TextCacheKey(file_hash="abc123", ocr=True)) == "abc123_ocr.txt"
-    assert _encode_text_key(TextCacheKey(file_hash="abc123", mutool=True)) == "abc123_mutool.txt"
+    # #246 grammar: fallback mode and a settings fingerprint are ALWAYS part
+    # of the key; the `v2` marker makes pre-#246 rows ({hash}.txt etc.)
+    # natural misses that get repopulated.
+    assert _encode_text_key(TextCacheKey(file_hash="abc123")) == "abc123_v2_ocr_.txt"
     assert (
-        _encode_text_key(TextCacheKey(file_hash="abc123", ocr=True, mutool=True))
-        == "abc123_ocr_mutool.txt"
+        _encode_text_key(TextCacheKey(file_hash="abc123", fallback="vision"))
+        == "abc123_v2_vision_.txt"
     )
+    assert (
+        _encode_text_key(TextCacheKey(file_hash="abc123", settings_fingerprint="fp1"))
+        == "abc123_v2_ocr_fp1.txt"
+    )
+    # A different fingerprint (changed extraction settings) changes the key.
+    fp_a = TextCacheKey(file_hash="abc123", settings_fingerprint="a")
+    fp_b = TextCacheKey(file_hash="abc123", settings_fingerprint="b")
+    assert _encode_text_key(fp_a) != _encode_text_key(fp_b)
+    # Pre-#246 keys can never collide with a current key.
+    assert _encode_text_key(fp_a) != "abc123.txt"
+    assert _encode_text_key(fp_a) != "abc123_ocr_mutool.txt"
 
     # Current: identity-free. The requested identity must not perturb the key.
     assert _encode_metadata_key(_meta_key(file_hash="abc123")) == "doc_abc123.json"
@@ -420,7 +432,7 @@ def test_read_text_cache_success(tmp_path):
 
 def test_read_text_cache_legacy_file_fallback(tmp_path):
     """A legacy text cache file on disk (pre-SQLite store) is still readable."""
-    key = TextCacheKey(file_hash="abc123", ocr=True)
+    key = TextCacheKey(file_hash="abc123", fallback="ocr")
     legacy_dir = tmp_path / "text"
     legacy_dir.mkdir()
     (legacy_dir / _encode_text_key(key)).write_text("legacy text", encoding="utf-8")
@@ -574,18 +586,39 @@ def test_clear_models_dev_cache_exception(tmp_path, caplog):
     """Test that exceptions during models.dev cache unlink are handled safely."""
     from renai.cache.manager import _clear_models_dev_cache
 
+    # The models.dev cache lives next to the cache dir (APP_DATA_DIR root),
+    # derived from the passed cache_dir rather than the global APP_DATA_DIR
+    # constant so tests cannot delete the developer's real cache (#248).
+    cache_dir = tmp_path / "Cache"
+    cache_dir.mkdir()
     models_file = tmp_path / "models_dev_cache.json"
     models_file.write_text("{}")
 
     with (
-        patch("renai.config.constants.APP_DATA_DIR", tmp_path),
         patch.object(Path, "unlink", side_effect=PermissionError("Cannot unlink")),
         caplog.at_level(logging.WARNING),
     ):
-        count = _clear_models_dev_cache()
+        count = _clear_models_dev_cache(cache_dir)
         assert count == 0
         assert "Failed to clear models.dev cache" in caplog.text
         assert "Cannot unlink" in caplog.text
+
+
+def test_clear_models_dev_cache_derives_path_from_cache_dir(tmp_path):
+    """The models.dev path must come from cache_dir's parent, not the global root."""
+    from renai.cache.manager import _clear_models_dev_cache
+    from renai.config.constants import APP_DATA_DIR
+
+    cache_dir = tmp_path / "Cache"
+    cache_dir.mkdir()
+    models_file = tmp_path / "models_dev_cache.json"
+    models_file.write_text("{}")
+    real_file = APP_DATA_DIR / "models_dev_cache.json"
+    real_existed = real_file.exists()
+    assert _clear_models_dev_cache(cache_dir) == 1
+    assert not models_file.exists()
+    if real_existed:
+        assert real_file.exists(), "the developer's real models.dev cache was deleted!"
 
 
 def test_legacy_rows_without_rule_sig_read_as_legacy_provenance(tmp_path):
@@ -645,23 +678,53 @@ def test_cache_dir_created_with_secure_permissions(tmp_path):
         assert mode == 0o700
 
 
-def test_read_metadata_cache_enforces_expected_rule_signature(tmp_path):
-    """Direct callers passing expected_rule_signature must not get mismatched rows."""
-    from renai.cache.manager import write_metadata_cache
+def test_metadata_rows_carry_version_fingerprint(tmp_path):
+    """Rows persist a version fingerprint surfaced via CacheSource (#247).
 
-    key = _meta_key(file_hash="rule-enforce", provider="p", model="m")
+    The rule-signature/producing-identity/version validity judgments live in
+    the middleware (single place); the manager only surfaces the stored
+    provenance, so the deprecated ``expected_rule_signature`` parameter is
+    gone and readers compare fingerprints themselves.
+    """
+    from renai.cache.manager import metadata_version_fingerprint, write_metadata_cache
+
+    key = _meta_key(file_hash="versioned", provider="p", model="m")
     book = BookMetadata(title="Rule Book", language="en", category="Fiction")
     write_metadata_cache(key, book, cache_dir=tmp_path, rule_signature="sig-a")
 
-    hit, _ = read_metadata_cache(
-        key, BookMetadata, cache_dir=tmp_path, expected_rule_signature="sig-a"
-    )
+    hit, source = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
     assert hit is not None and hit.title == "Rule Book"
+    assert source is not None
+    assert source.rule_signature == "sig-a"
+    assert source.version_fingerprint == metadata_version_fingerprint()
 
-    miss, miss_src = read_metadata_cache(
-        key, BookMetadata, cache_dir=tmp_path, expected_rule_signature="sig-b"
+    # A row written under a different version fingerprint carries it verbatim.
+    write_metadata_cache(
+        key, book, cache_dir=tmp_path, rule_signature="sig-a", version_fingerprint="stale-v1"
     )
-    assert miss is None and miss_src is None
+    _, source2 = read_metadata_cache(key, BookMetadata, cache_dir=tmp_path)
+    assert source2 is not None and source2.version_fingerprint == "stale-v1"
+
+
+def test_metadata_version_fingerprint_is_stable_and_sensitive():
+    """The fingerprint is deterministic per call and derives from real inputs."""
+    from renai.cache.manager import metadata_version_fingerprint
+
+    fp = metadata_version_fingerprint()
+    assert fp == metadata_version_fingerprint()
+    assert len(fp) == 16
+
+
+def test_db_schema_version_is_set(tmp_path):
+    """The cache database records its physical schema version (#247)."""
+    from renai.cache.manager import CACHE_SCHEMA_VERSION
+
+    write_text_cache(TextCacheKey(file_hash="sv"), "x", cache_dir=tmp_path)
+    conn = sqlite3.connect(str(tmp_path / "cache.db"))
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == CACHE_SCHEMA_VERSION
+    finally:
+        conn.close()
 
 
 def test_read_text_cache_blocks_legacy_path_traversal(tmp_path):
@@ -713,3 +776,117 @@ def test_wal_pragma_set_only_at_db_init(tmp_path):
 
     wal_calls = [s for s in executed if "journal_mode=WAL" in s]
     assert len(wal_calls) == 1
+
+
+def test_text_settings_fingerprint_sensitivity():
+    """Changing any text-affecting setting must change the fingerprint (#246)."""
+    from renai.cache.manager import text_settings_fingerprint
+
+    base = {
+        "text_length": 10000,
+        "extraction_mode": "head-tail",
+        "head_ratio": 0.7,
+        "extraction_pages": 10,
+        "extractor": "pymupdf",
+        "ocr_lang": "eng",
+        "ocr_dpi": 150,
+        "ocr_psm": 3,
+        "ocr_enhanced": False,
+        "use_mutool": False,
+    }
+    reference = text_settings_fingerprint(**base)
+    assert reference == text_settings_fingerprint(**base)
+
+    for field, changed in (
+        ("text_length", 20000),
+        ("extraction_mode", "regular"),
+        ("head_ratio", 0.3),
+        ("extraction_pages", 5),
+        ("extractor", "pypdf"),
+        ("ocr_lang", "deu"),
+        ("ocr_dpi", 300),
+        ("ocr_psm", 6),
+        ("ocr_enhanced", True),
+        ("use_mutool", True),
+    ):
+        assert text_settings_fingerprint(**{**base, field: changed}) != reference, field
+
+
+def test_changed_settings_produce_text_cache_miss(tmp_path):
+    """A text row written under one settings fingerprint misses under another."""
+    key_a = TextCacheKey(file_hash="abc123", settings_fingerprint="aaa")
+    key_b = TextCacheKey(file_hash="abc123", settings_fingerprint="bbb")
+    assert write_text_cache(key_a, "old text", cache_dir=tmp_path) is True
+    assert read_text_cache(key_a, cache_dir=tmp_path) == "old text"
+    assert read_text_cache(key_b, cache_dir=tmp_path) is None
+
+
+def test_legacy_text_keys_are_natural_misses(tmp_path):
+    """Pre-#246 rows (keyed {hash}.txt) can never match a current key."""
+    import sqlite3
+
+    from renai.cache.manager import _get_db_connection
+
+    with _get_db_connection(tmp_path):
+        pass  # create the store and its tables before hand-inserting a legacy row
+    conn = sqlite3.connect(str(tmp_path / "cache.db"))
+    conn.execute("INSERT INTO text_cache (cache_key, content) VALUES (?, ?)", ("abc123.txt", "old"))
+    conn.commit()
+    conn.close()
+
+    key = TextCacheKey(file_hash="abc123")
+    assert read_text_cache(key, cache_dir=tmp_path) is None
+
+
+def test_clear_all_cache_resets_corrupt_db(tmp_path):
+    """A corrupt cache.db is removed, recreated empty and reported honestly (#248)."""
+    db_path = tmp_path / "cache.db"
+    db_path.write_bytes(b"\xde\xad\xbe\xef" * 1024)
+
+    results = clear_all_cache(cache_dir=tmp_path)
+
+    assert results["db_reset"] == 1
+    assert db_path.exists()  # recreated as a valid, empty store
+    # The recreated store is usable.
+    key = TextCacheKey(file_hash="fresh")
+    assert write_text_cache(key, "content", cache_dir=tmp_path) is True
+    assert read_text_cache(key, cache_dir=tmp_path) == "content"
+    assert results["text"] == 0 and results["metadata"] == 0
+
+
+def test_clear_all_cache_reclaims_disk_space(tmp_path):
+    """After a clear, VACUUM shrinks the database file instead of hoarding pages."""
+    for index in range(300):
+        write_text_cache(
+            TextCacheKey(file_hash=f"vac{index}", settings_fingerprint="x"),
+            "x" * 4096,
+            cache_dir=tmp_path,
+        )
+    results = clear_all_cache(cache_dir=tmp_path)
+    assert results["text"] == 300
+
+    conn = sqlite3.connect(str(tmp_path / "cache.db"))
+    try:
+        free_pages = conn.execute("PRAGMA freelist_count").fetchone()[0]
+    finally:
+        conn.close()
+    assert free_pages == 0, "DELETE without VACUUM leaves free pages unreclaimed"
+
+
+def test_clear_all_cache_honest_counts(tmp_path):
+    """Clearing reports row counts (not 'already empty') and includes db_reset."""
+    write_text_cache(TextCacheKey(file_hash="c1"), "t", cache_dir=tmp_path)
+    write_metadata_cache(_meta_key(file_hash="c1"), _book("C1"), cache_dir=tmp_path)
+
+    results = clear_all_cache(cache_dir=tmp_path)
+    assert results["text"] == 1
+    assert results["metadata"] == 1
+    assert results["db_reset"] == 0
+    assert sum(results.values()) > 0
+
+
+def test_busy_timeout_is_short():
+    """Write operations must not wait tens of seconds under a foreign lock (#248)."""
+    from renai.cache.manager import _BUSY_TIMEOUT_SECONDS
+
+    assert _BUSY_TIMEOUT_SECONDS <= 5.0

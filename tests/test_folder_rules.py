@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from renai.cache.manager import CacheSource
+from renai.cache.manager import CacheSource, metadata_version_fingerprint
 from renai.config import folder_rules as fr
 from renai.config.constants import PACKAGE_CONFIG_DIR
 from renai.config.folder_rules import (
@@ -536,6 +536,7 @@ class TestPipelineFolderRules:
                     CacheSource(
                         is_vision_doc=False,
                         rule_signature=rule_cache_signature(rule, mode="doc"),
+                        version_fingerprint=metadata_version_fingerprint(),
                     ),
                 ),
             ),
