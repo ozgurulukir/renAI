@@ -198,3 +198,41 @@ def test_get_full_catalog_openai_only_filtering(tmp_path):
         raw = get_full_catalog(openai_only=False)
         assert "anthropic" in raw["providers"]
         assert "anthropic/claude-3" in raw["models"]
+
+
+def test_non_json_200_body_falls_back_to_stale_cache(tmp_path):
+    """A 200 response with a non-JSON body must fall back to the stale cache."""
+    cache_file = tmp_path / "models_dev_cache.json"
+    mock_data = {
+        "models": {"prov/vision-model": {"modalities": {"input": ["text", "image"]}}},
+        "providers": {"prov": {"id": "prov"}},
+    }
+    with cache_file.open("w", encoding="utf-8") as f:
+        json.dump(mock_data, f)
+
+    bad_response = MagicMock()
+    bad_response.status_code = 200
+    bad_response.json.side_effect = json.JSONDecodeError("bad body", "<html>", 0)
+
+    with (
+        patch("renai.utils.models_dev.CACHE_FILE", cache_file),
+        patch("httpx.get", return_value=bad_response),
+    ):
+        models = get_models_catalog()
+        assert models == mock_data["models"]
+
+
+def test_is_vision_supported_basename_collision_is_provider_scoped():
+    """Basename collisions across providers resolve to the queried provider's flag."""
+    mock_catalog = {
+        "prov-a/shared-model": {"modalities": {"input": ["text", "image"]}},
+        "prov-b/shared-model": {"modalities": {"input": ["text"]}},
+    }
+
+    with patch("renai.utils.models_dev.get_models_catalog", return_value=mock_catalog):
+        assert is_vision_supported("prov-a/shared-model") is True
+        assert is_vision_supported("prov-b/shared-model") is False
+        # Bare name without a provider prefix keeps the global basename fallback.
+        assert is_vision_supported("shared-model") is True
+        # Unknown provider with the same basename yields unknown, not prov-a's flag.
+        assert is_vision_supported("prov-c/shared-model") is None

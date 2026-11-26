@@ -58,10 +58,10 @@ def _fetch_catalog_json() -> dict | None:
             headers=_remote_headers(),
             timeout=HTTP_TIMEOUT_SEC,
         )
+        return _decode_remote_json(response)
     except Exception as e:
         logger.debug(f"Failed to fetch https://models.dev/catalog.json: {e}")
         return None
-    return _decode_remote_json(response)
 
 
 def _fetch_models_json() -> dict | None:
@@ -72,10 +72,10 @@ def _fetch_models_json() -> dict | None:
             headers=_remote_headers(),
             timeout=HTTP_TIMEOUT_SEC,
         )
+        return _decode_remote_json(response)
     except Exception as e:
         logger.debug(f"Failed to fetch https://models.dev/models.json: {e}")
         return None
-    return _decode_remote_json(response)
 
 
 KNOWN_OPENAI_PROVIDERS = {
@@ -241,6 +241,26 @@ def get_providers_catalog(force_refresh: bool = False, openai_only: bool = True)
     return full.get("providers", {})
 
 
+def _match_provider_scoped_basename(catalog: dict, normalized: str) -> bool | None:
+    """Basename (suffix) match scoped to the same provider.
+
+    Two providers' variants that share a basename must not shadow each other:
+    only entries whose provider prefix equals the query's prefix are considered.
+    A bare query (no provider prefix) keeps the historical global fallback.
+    """
+    target_basename = normalized.rsplit("/", maxsplit=1)[-1]
+    target_provider = normalized.split("/", maxsplit=1)[0] if "/" in normalized else None
+    for key, info in catalog.items():
+        key_lower = key.lower()
+        key_basename = key_lower.split("/")[-1]
+        if key_basename != target_basename:
+            continue
+        if target_provider is not None and key_lower.split("/")[0] != target_provider:
+            continue
+        return _check_vision_modalities(info)
+    return None
+
+
 def is_vision_supported(model_name: str) -> bool | None:
     """Check if the given model name supports vision modalities.
 
@@ -277,15 +297,9 @@ def is_vision_supported(model_name: str) -> bool | None:
     if normalized in catalog:
         return _check_vision_modalities(catalog[normalized])
 
-    # 2. Try matching by model basename (suffix)
-    target_basename = normalized.split("/")[-1]
-    for key, info in catalog.items():
-        key_lower = key.lower()
-        key_basename = key_lower.split("/")[-1]
-        if key_basename == target_basename:
-            return _check_vision_modalities(info)
-
-    return None
+    # 2. Try matching by model basename (suffix), scoped to the same provider so
+    #    two providers' variants that share a basename cannot shadow each other.
+    return _match_provider_scoped_basename(catalog, normalized)
 
 
 def _check_vision_modalities(model_info: dict) -> bool:
