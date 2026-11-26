@@ -164,7 +164,13 @@ async def test_print_final_summary_organize():
     with patch("renai.processors.orchestrator.console.print") as mock_print:
         _print_final_summary(results, is_dry_run=False)
 
-        printed_panel = mock_print.call_args[0][0]
+        # The failure table (new) prints after the panel, so locate the panel
+        # among the print calls instead of assuming it is the last one.
+        printed_panel = next(
+            call.args[0]
+            for call in mock_print.call_args_list
+            if call.args and isinstance(call.args[0], Panel)
+        )
         assert isinstance(printed_panel, Panel)
         assert isinstance(printed_panel.renderable, Table)
 

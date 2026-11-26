@@ -52,6 +52,18 @@ _eval_log_buffer: list[dict[str, Any]] = []
 _eval_log_lock = asyncio.Lock()
 _EVAL_LOG_BATCH_SIZE = 50
 
+# Cap per-file error text in the summary failure table: raw API error payloads
+# can run to hundreds of characters, and the reason line must stay scannable.
+_FAILURE_ERROR_MAX_LEN = 300
+
+
+def _shorten_error_message(message: str, max_len: int = _FAILURE_ERROR_MAX_LEN) -> str:
+    """Collapse an error message to a single scannable line for the summary."""
+    text = " ".join(message.split())
+    if len(text) <= max_len:
+        return text
+    return text[:max_len].rstrip() + orch_msg.Summary.FAILURES_ERROR_SUFFIX
+
 
 async def setup_engines(
     provider: str,
@@ -435,6 +447,30 @@ def _print_final_summary(results: list[ProcessingResult], is_dry_run: bool = Fal
             expand=False,
         )
     )
+
+    if error_count > 0 and not is_dry_run:
+        # In non-dry-run modes there is no per-file results table, so without
+        # this table the failure reasons would surface only in the stderr log
+        # stream, which is easy to miss under the Live progress display.
+        failures_table = Table(title=orch_msg.Summary.FAILURES_TITLE, expand=False)
+        failures_table.add_column(orch_msg.Summary.FAILURES_FILE_HEADER, style="cyan")
+        failures_table.add_column(orch_msg.Summary.FAILURES_ERROR_HEADER, style="bold")
+
+        for r in results:
+            if r.success:
+                continue
+            file_name = (
+                r.original_name
+                or r.name
+                or (r.file_path.name if r.file_path else None)
+                or "Unknown"
+            )
+            error_text = _shorten_error_message(str(r.error or "Failed"))
+            failures_table.add_row(Text(str(file_name)), Text(error_text, style="red"))
+
+        console.print()
+        console.print(failures_table)
+        console.print()
 
 
 async def _close_llm_engines(processor: BookProcessor) -> None:

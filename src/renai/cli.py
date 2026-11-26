@@ -296,10 +296,11 @@ def _run_process_pipeline(
 ) -> None:
     """Run the processing pipeline with the CLI error mapping.
 
-    Setup failure maps to exit 1, user cancellation to exit 0.
+    Setup failure or any failed file maps to exit 1, user cancellation to
+    exit 0.
     """
     try:
-        asyncio.run(
+        results = asyncio.run(
             run_pipeline(
                 root_dir=root_dir,
                 provider=provider,
@@ -313,6 +314,10 @@ def _run_process_pipeline(
     except KeyboardInterrupt:
         console.print(msg.Prompt.CANCELLED_EXIT)
         raise typer.Exit(code=0) from None
+    # Scripting hook: the process command reports a partially failed batch via
+    # a non-zero exit code; per-file reasons live in the summary failure table.
+    if any(not r.success for r in results):
+        raise typer.Exit(code=1)
 
 
 @app.command("process")
