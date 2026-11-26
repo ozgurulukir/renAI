@@ -1156,7 +1156,6 @@ wheels = [
 
 [[package]]
 name = "renai"
-version = "2.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "colorama" },
