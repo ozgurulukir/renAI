@@ -39,6 +39,11 @@ class Error:
         "Vision processing was requested but no vision provider/model is configured. "
         "Run 'renai init' or pass --vision-model."
     )
+    SETTINGS_INVALID = (
+        "Your settings file is invalid and could not be loaded ({}). "
+        "Fix or remove the offending entry and run the command again."
+    )
+    INVALID_FALLBACK_MODE = "Invalid fallback_mode '{}': expected one of none, ocr, vision, move."
 
 
 class Benchmark:

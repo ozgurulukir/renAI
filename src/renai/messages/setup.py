@@ -83,4 +83,5 @@ class Provider:
 class Settings:
     WORKERS_PROMPT = "Concurrent workers:"
     WORKERS_INVALID = "Please enter a valid integer"
+    WORKERS_RANGE_INVALID = "Please enter a value between {} and {}"
     FALLBACK_PROMPT = "Extraction fallback strategy:"

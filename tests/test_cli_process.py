@@ -287,3 +287,42 @@ def test_check_vision_model_guard_non_vision_model_aborts():
             )
         assert exc_info.value.exit_code == 1
         assert mock_print.call_count == 1
+
+
+def test_process_cmd_invalid_settings_reports_and_exits():
+    """A settings load failure must exit 1 with a clear message, not run on defaults."""
+    from pydantic import ValidationError
+
+    error_details = {
+        "type": "greater_than_equal",
+        "loc": ("workers",),
+        "input": 0,
+        "ctx": {"ge": 1},
+    }
+    validation_error = ValidationError.from_exception_data("AppSettings", [error_details])
+
+    with (
+        patch("renai.cli.console") as mock_console,
+        patch("renai.cli.config_load_error", validation_error),
+    ):
+        with pytest.raises(typer.Exit) as exc_info:
+            process_cmd(directory=".", mode="rename")
+        assert exc_info.value.exit_code == 1
+        printed = str(mock_console.print.call_args_list[0][0][0])
+        assert "workers" in printed
+        assert "settings file is invalid" in printed
+
+
+def test_process_cmd_invalid_fallback_mode_exits_cleanly():
+    """An invalid fallback_mode must map to a clear exit, not a raw ValueError."""
+    with (
+        patch("renai.cli.console") as mock_console,
+        patch("renai.cli.config_load_error", None),
+        patch("renai.cli.app_settings.fallback_mode", "bogus"),
+    ):
+        with pytest.raises(typer.Exit) as exc_info:
+            process_cmd(directory=".", mode="rename")
+        assert exc_info.value.exit_code == 1
+        printed = str(mock_console.print.call_args_list[0][0][0])
+        assert "fallback_mode" in printed
+        assert "none, ocr, vision, move" in printed

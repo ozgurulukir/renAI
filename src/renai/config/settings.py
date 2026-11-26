@@ -18,7 +18,7 @@ API Keys (provider-specific):
 import logging
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -172,7 +172,9 @@ class AppSettings(BaseSettings):
     )
 
     # Fallback settings
-    fallback_mode: str = Field(default="none", description="Extraction failure strategy")
+    fallback_mode: Literal["none", "ocr", "vision", "move"] = Field(
+        default="none", description="Extraction failure strategy"
+    )
     move_scan_failures: bool = Field(
         default=False, description="Move failed files to Scan_Failures"
     )
@@ -245,10 +247,13 @@ class AppSettings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,  # noqa: ARG003
     ) -> tuple[PydanticBaseSettingsSource, ...]:
 
+        # deep_merge=True: a user `[providers.openai]` table must merge with the
+        # default file's providers registry instead of replacing it wholesale,
+        # otherwise user edits would hide every other built-in provider.
         return (
             init_settings,
             env_settings,
-            TomlConfigSettingsSource(settings_cls),
+            TomlConfigSettingsSource(settings_cls, deep_merge=True),
         )
 
 
@@ -295,20 +300,69 @@ class ProviderSettings(BaseSettings):
 
 # Global settings instances
 # Malformed TOML (or any validation failure) must never crash module imports:
-# fall back to factory defaults and warn, so the rest of the application (and
-# the logging subsystem that runs during this import) keeps working.
+# keep a minimal factory-default instance, log the offending field(s) loudly,
+# and record the failure so the CLI can report it and exit instead of silently
+# running the whole session on factory defaults.
+config_load_error: Exception | None = None
+
+
+def _log_config_load_failure(exc: Exception) -> None:
+    """Log a settings load failure, naming the offending field(s) when known."""
+    if isinstance(exc, ValidationError):
+        fields = ", ".join(
+            sorted({".".join(str(part) for part in err["loc"]) for err in exc.errors()})
+        )
+        logger.error(
+            "Invalid renAI configuration; offending field(s): %s. Details: %s",
+            fields,
+            exc,
+        )
+    else:
+        logger.error("Failed to load renAI configuration: %s", exc)
+
+
+def _recover_provider_registry() -> dict[str, ProviderConfig]:
+    """Best-effort recovery of the provider registry from raw TOML files.
+
+    Used only when the full settings load fails: valid provider tables are kept
+    so diagnostics like `renai providers` stay meaningful.
+    """
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib  # type: ignore[no-redef]
+
+    registry: dict[str, ProviderConfig] = {}
+    for path in (SETTINGS_DEFAULT_FILE, SETTINGS_USER_FILE):
+        if not path.is_file():
+            continue
+        try:
+            with path.open("rb") as f:
+                data = tomllib.load(f)
+        except Exception:
+            continue
+        for name, table in (data.get("providers") or {}).items():
+            if not isinstance(table, dict):
+                continue
+            try:
+                registry[name] = ProviderConfig.model_validate(table)
+            except Exception:
+                logger.warning(
+                    "Skipping invalid provider table '%s' while recovering settings.", name
+                )
+    return registry
+
+
 try:
     app_settings = AppSettings()
     provider_settings = ProviderSettings()
 except Exception as exc:
-    logger.warning(
-        "Failed to load renAI configuration (%s); using factory defaults.",
-        exc,
-    )
+    config_load_error = exc
+    _log_config_load_failure(exc)
     # The custom config sources (env TOML, secrets TOML) drive *every*
     # `AppSettings()`/`ProviderSettings()` construction, so re-invoking the
     # constructor would just fail again. `model_construct` builds the instance
     # directly from pydantic defaults, bypassing all config sources and validation
     # entirely, guaranteeing a genuinely-factory-default result that cannot raise.
-    app_settings = AppSettings.model_construct()
+    app_settings = AppSettings.model_construct(providers=_recover_provider_registry())
     provider_settings = ProviderSettings.model_construct()

@@ -67,6 +67,7 @@ from renai.config.settings import (
     ProviderConfig,
     ProviderSettings,
     app_settings,
+    config_load_error,
     provider_settings,
 )
 
@@ -109,6 +110,7 @@ __all__ = [
     "ProviderConfig",
     "ProviderSettings",
     "app_settings",
+    "config_load_error",
     "get_allowed_categories",
     "get_api_key",
     "get_base_url",

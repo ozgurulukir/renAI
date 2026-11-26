@@ -33,7 +33,7 @@ dependencies = [
     "rich",
     "typer",
     "pydantic>=2.0",
-    "pydantic-settings>=2.0",
+    "pydantic-settings>=2.7",
     "platformdirs",
     "colorama",
     "tomli-w",

@@ -19,11 +19,12 @@ from renai import __version__
 from renai.config import (
     PROVIDERS,
     app_settings,
+    config_load_error,
     initialize_directories,
 )
 from renai.exceptions import ConfigurationError
 from renai.logging_config import configure_logging
-from renai.messages import cli as msg
+from renai.messages import cli as msg, orchestrator as orch_msg
 from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.orchestrator import run_evaluation_pipeline, run_pipeline
 from renai.processors.setup import run_init_wizard
@@ -477,9 +478,25 @@ def process_cmd(
     )
     resolved_vision_model = vision_model if vision_model is not None else app_settings.vision_model
 
+    # An invalid settings.toml must stop the run with a clear message naming the
+    # offending field instead of silently continuing on factory defaults.
+    if config_load_error is not None:
+        console.print(
+            msg.Error.SETUP_FAILED.format(orch_msg.Error.SETTINGS_INVALID.format(config_load_error))
+        )
+        raise typer.Exit(code=1)
+
     # Reject only the explicit CLI flag; settings/env "none" stays an accepted
     # internal sentinel that BookProcessor remaps to OCR.
-    final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
+    try:
+        final_fallback = fallback_mode or FallbackMode(app_settings.fallback_mode)
+    except ValueError as err:
+        console.print(
+            msg.Error.SETUP_FAILED.format(
+                orch_msg.Error.INVALID_FALLBACK_MODE.format(app_settings.fallback_mode)
+            )
+        )
+        raise typer.Exit(code=1) from err
     root_dir = Path(directory).resolve()
     _validate_cli_flags(root_dir, fallback_mode)
 

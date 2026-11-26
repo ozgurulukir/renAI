@@ -1,6 +1,11 @@
+import asyncio
 import tomllib
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from renai.config import ProviderSettings
 from renai.processors.setup import run_init_wizard
 
 
@@ -90,13 +95,173 @@ def test_run_init_wizard_success_custom(tmp_path):
         with settings_user.open("rb") as f:
             settings_data = tomllib.load(f)
         assert settings_data["provider"] == "custom"
-        assert settings_data["custom_api_base_url"] == "http://localhost:1234/v1"
-        assert settings_data["custom_model"] == "custom-model"
-        assert settings_data["custom_api_key"] == "custom-key"
+        # The custom provider gets a real [providers.custom] entry...
+        assert settings_data["providers"]["custom"]["base_url"] == "http://localhost:1234/v1"
+        assert settings_data["providers"]["custom"]["default_model"] == "custom-model"
+        # ...and NO API key in settings.toml: keys go to secrets.toml only.
+        assert "api_key" not in settings_data["providers"]["custom"]
+        assert "custom_api_key" not in settings_data
         assert settings_data["vision_provider"] == "custom"
         assert settings_data["vision_model"] == "custom-model"
         assert settings_data["workers"] == 4
         assert settings_data["fallback_mode"] == "ocr"
+
+        with secrets_file.open("rb") as f:
+            secrets_data = tomllib.load(f)
+        assert secrets_data["custom_api_key"] == "custom-key"
+
+
+def test_wizard_custom_provider_round_trip(tmp_path, monkeypatch):
+    """Wizard output must load through AppSettings and resolve in setup_engines."""
+    from renai.config import AppSettings
+    from renai.processors.setup import _save_configuration
+    from renai.processors.setup_steps import _build_final_config_and_secrets
+
+    settings_user = tmp_path / "settings.toml"
+    secrets_file = tmp_path / "secrets.toml"
+
+    config, secrets = _build_final_config_and_secrets(
+        configured={
+            "custom": {
+                "base_url": "http://localhost:1234/v1",
+                "models": ["custom-model"],
+                "api_key": "test-key",
+            }
+        },
+        default_provider="custom",
+        default_model="custom-model",
+        vision_provider="custom",
+        vision_model="custom-model",
+    )
+    with (
+        patch("renai.processors.setup.SETTINGS_USER_FILE", settings_user),
+        patch("renai.processors.setup.SECRETS_FILE", secrets_file),
+        patch("renai.processors.setup.CONFIG_DIR", tmp_path),
+    ):
+        _save_configuration(config, secrets)
+
+    monkeypatch.setitem(AppSettings.model_config, "toml_file", (settings_user,))
+    with patch("renai.config.constants.SECRETS_FILE", secrets_file):
+        settings = AppSettings()
+        provider_settings = ProviderSettings()
+
+    assert settings.provider == "custom"
+    assert settings.providers["custom"].base_url == "http://localhost:1234/v1"
+    assert settings.providers["custom"].default_model == "custom-model"
+
+    # get_api_key must resolve the custom key from secrets.toml
+    monkeypatch.delenv("CUSTOM_API_KEY", raising=False)
+    with patch("renai.config.providers._settings_ref", (settings, provider_settings)):
+        from renai.config.providers import get_api_key
+
+        assert get_api_key("custom") == "test-key"
+
+
+def test_wizard_custom_provider_setup_engines_round_trip(tmp_path, monkeypatch):
+    """setup_engines('custom', ...) must work with the wizard-saved configuration."""
+    from renai.config import AppSettings
+    from renai.models.schemas import ProcessingConfig
+    from renai.processors.setup import _save_configuration
+    from renai.processors.setup_steps import _build_final_config_and_secrets
+
+    settings_user = tmp_path / "settings.toml"
+    secrets_file = tmp_path / "secrets.toml"
+    package_config_dir = tmp_path / "package_config"
+    package_config_dir.mkdir()
+
+    config, secrets = _build_final_config_and_secrets(
+        configured={
+            "custom": {
+                "base_url": "http://localhost:1234/v1",
+                "models": ["custom-model"],
+                "api_key": "test-key",
+            }
+        },
+        default_provider="custom",
+        default_model="custom-model",
+    )
+    with (
+        patch("renai.processors.setup.SETTINGS_USER_FILE", settings_user),
+        patch("renai.processors.setup.SECRETS_FILE", secrets_file),
+        patch("renai.processors.setup.CONFIG_DIR", tmp_path),
+        patch("renai.processors.setup.PACKAGE_CONFIG_DIR", package_config_dir),
+    ):
+        _save_configuration(config, secrets)
+
+    monkeypatch.setitem(AppSettings.model_config, "toml_file", (settings_user,))
+    with patch("renai.config.constants.SECRETS_FILE", secrets_file):
+        settings = AppSettings()
+        provider_settings = ProviderSettings()
+
+    with (
+        patch("renai.config.providers._settings_ref", (settings, provider_settings)),
+        patch("renai.processors.orchestrator.PROVIDERS", settings.providers),
+    ):
+        from renai.processors.orchestrator import setup_engines
+
+        processing_config = ProcessingConfig(mode="evaluate", fallback_mode="none")
+        ocr_engine, llm_engine, _processor = asyncio.run(
+            setup_engines("custom", None, processing_config)
+        )
+        assert llm_engine.provider == "custom"
+        assert llm_engine.model_name == "custom-model"
+        assert ocr_engine is not None
+
+
+def test_run_init_wizard_decline_vision(tmp_path):
+    """Declining vision must still produce a complete, valid settings.toml."""
+    settings_user = tmp_path / "settings.toml"
+    secrets_file = tmp_path / "secrets.toml"
+    package_config = tmp_path / "package_config"
+    package_config.mkdir()
+
+    mock_confirm = MagicMock()
+    mock_confirm.ask.side_effect = [
+        False,  # Add another model confirm
+        False,  # Add another provider confirm
+        False,  # Use text model for vision confirm (declined)
+        False,  # Configure vision confirm (declined)
+        False,  # Configure advanced settings confirm
+    ]
+
+    mock_select = MagicMock()
+    mock_select.ask.side_effect = [
+        "openai",  # Select LLM provider to configure
+        "openai",  # Select default LLM provider
+        "gpt-4o-mini",  # Select default model
+    ]
+
+    mock_autocomplete = MagicMock()
+    mock_autocomplete.ask.return_value = "gpt-4o-mini"
+
+    mock_password = MagicMock()
+    mock_password.ask.return_value = "test-key"
+
+    with (
+        patch("renai.processors.setup.SETTINGS_USER_FILE", settings_user),
+        patch("renai.processors.setup.SECRETS_FILE", secrets_file),
+        patch("renai.processors.setup.CONFIG_DIR", tmp_path),
+        patch("renai.processors.setup.PACKAGE_CONFIG_DIR", package_config),
+        patch("renai.utils.models_dev.is_vision_supported", return_value=True),
+        patch("renai.processors.setup_steps._validate_api_key", return_value=(True, "")),
+        patch("questionary.confirm", return_value=mock_confirm),
+        patch("questionary.select", return_value=mock_select),
+        patch("questionary.autocomplete", return_value=mock_autocomplete),
+        patch("questionary.password", return_value=mock_password),
+        patch("shutil.which", return_value=None),
+        patch("renai.processors.setup.console.print"),
+    ):
+        run_init_wizard()
+
+        assert settings_user.exists()
+        with settings_user.open("rb") as f:
+            data = tomllib.load(f)
+        assert data["provider"] == "openai"
+        assert "vision_provider" not in data
+        assert "vision_model" not in data
+        # The [providers.openai] table must survive the save
+        assert data["providers"]["openai"]["default_model"] == "gpt-4o-mini"
+        assert "api_key" not in data["providers"]["openai"]
 
 
 def test_run_init_wizard_empty_api_key_warning(tmp_path):
@@ -385,3 +550,97 @@ def test_build_provider_options_no_duplicate_custom():
     options = _build_provider_options({}, ["openai", "custom"])
     names = [o["name"] for o in options]
     assert names.count("custom") == 1
+
+
+def test_workers_input_validation_range():
+    """Workers prompt must reject 0 and values above the configured maximum."""
+    from renai.processors.setup_steps import _validate_workers_input
+
+    assert _validate_workers_input("4") is True
+    assert _validate_workers_input("32") is True
+    assert _validate_workers_input("1") is True
+    assert _validate_workers_input("0") == "Please enter a value between 1 and 32"
+    assert _validate_workers_input("99") == "Please enter a value between 1 and 32"
+    assert _validate_workers_input("abc") == "Please enter a valid integer"
+
+
+def test_save_configuration_none_values_and_atomic_write(tmp_path):
+    """None values must be omitted and files written via temp file + os.replace."""
+    from renai.processors.setup import _save_configuration
+
+    settings_user = tmp_path / "settings.toml"
+    secrets_file = tmp_path / "secrets.toml"
+
+    config = {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "vision_provider": None,  # Declined vision -> must be omitted
+        "vision_model": None,
+        "providers": {"openai": {"base_url": "https://api.openai.com/v1"}},
+    }
+    secrets = {"openai_api_key": "test-key"}
+
+    with (
+        patch("renai.processors.setup.SETTINGS_USER_FILE", settings_user),
+        patch("renai.processors.setup.SECRETS_FILE", secrets_file),
+        patch("renai.processors.setup.CONFIG_DIR", tmp_path),
+    ):
+        _save_configuration(config, secrets)
+
+    assert settings_user.exists()
+    assert secrets_file.exists()
+    assert not list(tmp_path.glob("*.tmp"))
+    with settings_user.open("rb") as f:
+        data = tomllib.load(f)
+    assert "vision_provider" not in data
+    assert "vision_model" not in data
+    assert data["provider"] == "openai"
+    assert secrets_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_atomic_write_toml_restricts_tmp_mode_before_replace(tmp_path):
+    """The temp file carrying secrets must not be world-readable pre-replace."""
+    from renai.processors.setup import _atomic_write_toml
+
+    target = tmp_path / "secrets.toml"
+    captured: dict[str, int] = {}
+
+    real_replace = Path.replace
+
+    def spying_replace(self, other):
+        # os.replace keeps the source file's mode; record it at replace time.
+        captured["mode"] = self.stat().st_mode & 0o777
+        return real_replace(self, other)
+
+    payload = dict.fromkeys(("openai_api_key",), "placeholder-not-a-credential")
+    with patch.object(Path, "replace", spying_replace):
+        _atomic_write_toml(target, payload, mode=0o600)
+
+    assert target.exists()
+    assert captured["mode"] == 0o600
+
+
+def test_save_configuration_failure_is_logged(tmp_path, caplog):
+    """A save failure must be logged and re-raised."""
+    import logging
+
+    from renai.processors.setup import _save_configuration
+
+    settings_user = tmp_path / "settings.toml"
+    secrets_file = tmp_path / "secrets.toml"
+    unwritable = object()  # Not a dict -> tomli_w.dumps fails
+
+    with (
+        patch("renai.processors.setup.SETTINGS_USER_FILE", settings_user),
+        patch("renai.processors.setup.SECRETS_FILE", secrets_file),
+        patch("renai.processors.setup.CONFIG_DIR", tmp_path),
+        patch("renai.processors.setup.PACKAGE_CONFIG_DIR", tmp_path),
+        caplog.at_level(logging.ERROR, logger="renai.processors.setup"),
+        pytest.raises(AttributeError),
+    ):
+        _save_configuration({"provider": "openai"}, unwritable)  # type: ignore[arg-type]
+
+    assert any("Failed to save" in rec.message for rec in caplog.records)
+    # settings.toml was written atomically and stays complete; no .tmp litter.
+    assert settings_user.exists()
+    assert not list(tmp_path.glob("*.tmp"))
