@@ -33,6 +33,7 @@ from renai.utils import ensure_secure_dir
 # Initialize logging
 configure_logging()
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 # Create Typer app
@@ -144,7 +145,13 @@ def display_warnings(
     if is_vision_needed and effective_model:
         from renai.utils.models_dev import is_vision_supported
 
-        vision_ok = is_vision_supported(effective_model)
+        try:
+            vision_ok = is_vision_supported(effective_model)
+        except Exception:
+            # A catalog lookup failure must not crash the run; treat the
+            # model as unknown so no vision warning is shown.
+            logger.debug(f"Vision capability lookup failed for {effective_model}", exc_info=True)
+            vision_ok = None
         if vision_ok is False:
             table.add_row(
                 msg.Warn.BADGE_VISION,
@@ -245,7 +252,13 @@ def check_vision_model_guard(
         _display_vision_missing_error(msg.Error.VISION_REASON_NOT_CONFIGURED)
         raise typer.Exit(code=1)
 
-    vis_ok = is_vision_supported(eff_v_model)
+    try:
+        vis_ok = is_vision_supported(eff_v_model)
+    except Exception:
+        # A catalog lookup failure must not end the run with a traceback;
+        # treat the model as unknown and let processing continue.
+        logger.debug(f"Vision capability lookup failed for {eff_v_model}", exc_info=True)
+        vis_ok = None
     if vis_ok is False:
         _display_vision_missing_error(msg.Error.VISION_REASON_NOT_SUPPORTED.format(eff_v_model))
         raise typer.Exit(code=1)
