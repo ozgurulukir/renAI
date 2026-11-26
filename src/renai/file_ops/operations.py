@@ -3,6 +3,8 @@ File operations module - handles safe file movement, audit recording, and path o
 """
 
 import contextlib
+import dataclasses
+import errno
 import json
 import logging
 import os
@@ -26,6 +28,37 @@ _undo_lock = threading.Lock()
 # Hex-char width of the random suffix used to break filename collisions.
 COLLISION_SUFFIX_LENGTH = 8
 MAX_UNIQUE_PATH_ATTEMPTS = 16
+
+# Synthetic run id grouping journal entries written before run scoping existed
+# (no ``run_id`` key). One ``undo`` reverts the whole legacy batch.
+LEGACY_RUN_ID = "legacy"
+
+# Run id currently associated with the active pipeline run. Recorded on every
+# undo entry so ``undo_last_operation`` can revert only the most recent run.
+_current_run_id: str | None = None
+
+
+def begin_undo_run() -> str:
+    """Start a new undo run: subsequent undo entries share the returned run id."""
+    global _current_run_id  # noqa: PLW0603 - single-writer run-scoped session state
+    _current_run_id = uuid.uuid4().hex
+    return _current_run_id
+
+
+@dataclasses.dataclass
+class UndoResult:
+    """Outcome of an ``undo_last_operation`` call, limited to the newest run.
+
+    ``run_id`` is ``None`` when there was nothing to undo. ``skipped`` counts
+    entries that could not be reverted without overwriting existing files (or
+    that were malformed and dropped); ``failed`` counts reverts whose move-back
+    raised, whose entries stay in the journal for a later retry.
+    """
+
+    run_id: str | None = None
+    reverted: int = 0
+    skipped: int = 0
+    failed: int = 0
 
 
 def ensure_within_root(path: Path, root_dir: Path) -> None:
@@ -125,8 +158,14 @@ def record_undo_entry(
     new_path: Path,
     operation_type: str = "move",
     cache_dir: Path | None = None,
-) -> None:
-    """Record a file move/rename operation for undo functionality."""
+    run_id: str | None = None,
+) -> bool:
+    """Record a file move/rename operation for undo functionality.
+
+    The entry is appended and flushed before any caller starts the physical
+    transfer, so a move is never reported successful without an undo record.
+    Returns ``True`` when the entry was durably written, ``False`` otherwise.
+    """
     if cache_dir is None:
         from renai.config import CACHE_DIR
 
@@ -136,6 +175,7 @@ def record_undo_entry(
         "old_path": str(old_path),
         "new_path": str(new_path),
         "operation_type": operation_type,
+        "run_id": run_id or _current_run_id or uuid.uuid4().hex,
     }
     try:
         with _undo_lock:
@@ -145,48 +185,147 @@ def record_undo_entry(
                 f.flush()
     except Exception as e:
         logger.warning("Failed to record undo entry: %s", e)
+        return False
+    return True
 
 
-def undo_last_operation(cache_dir: Path | None = None) -> int:
-    """Revert recorded file operations, newest first, from the undo journal."""
+def _remove_undo_entries(old_path: Path, new_path: Path, cache_dir: Path) -> None:
+    """Best-effort removal of a recorded entry whose transfer subsequently failed.
+
+    Called after a transfer failed so the journal does not accumulate entries
+    that reference a move which never happened.
+    """
+    try:
+        with _undo_lock:
+            entries = _load_undo_entries(cache_dir)
+            kept = [
+                e
+                for e in entries
+                if not (e.get("old_path") == str(old_path) and e.get("new_path") == str(new_path))
+            ]
+            if len(kept) != len(entries):
+                _persist_undo_entries(cache_dir, kept)
+    except Exception as e:
+        logger.warning("Failed to remove stale undo entry for %s: %s", old_path.name, e)
+
+
+def undo_last_operation(cache_dir: Path | None = None) -> UndoResult:
+    """Revert the most recent undo run, newest entry first.
+
+    Only entries belonging to the newest run (identified by ``run_id``; entry
+    order decides which run is newest) are reverted; older runs stay in the
+    journal for subsequent ``undo`` invocations. The journal is persisted once
+    at the end of the call. Reverts never overwrite existing files: if the
+    original path is taken the entry is skipped with a warning, and a failed
+    revert keeps its entry so it can be retried.
+    """
     if cache_dir is None:
         from renai.config import CACHE_DIR
 
         cache_dir = CACHE_DIR
 
+    result = UndoResult()
     with _undo_lock:
         try:
             entries = _load_undo_entries(cache_dir)
         except Exception as e:
             logger.error(f"Failed to load undo journal from {cache_dir}: {e}")
-            return 0
+            return result
         if not entries:
-            return 0
-        reverted_count = 0
-        while entries:
-            last_entry = entries.pop()
-            old_path = Path(last_entry["old_path"])
-            new_path = Path(last_entry["new_path"])
-            if new_path.exists():
-                try:
-                    old_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(new_path), str(old_path))
-                except Exception as e:
-                    logger.error(f"Failed to undo {new_path} -> {old_path}: {e}")
-                    continue
-                reverted_count += 1
+            return result
+
+        # Newest run is decided by entry order: the run id of the last entry.
+        # Legacy journals (pre-run-scoping) carry no run ids, so their entries
+        # collapse into one synthetic run and are still reported and reverted.
+        raw_target = entries[-1].get("run_id")
+        target_run_id = raw_target if isinstance(raw_target, str) else LEGACY_RUN_ID
+        result.run_id = target_run_id
+        current_run = [e for e in entries if (e.get("run_id") or LEGACY_RUN_ID) == target_run_id]
+        remaining = [e for e in entries if (e.get("run_id") or LEGACY_RUN_ID) != target_run_id]
+
+        for entry in reversed(current_run):
+            old_raw = entry.get("old_path")
+            new_raw = entry.get("new_path")
+            if not isinstance(old_raw, str) or not isinstance(new_raw, str):
+                logger.warning("Skipping malformed undo entry: %r", entry)
+                result.skipped += 1
+                continue
+            old_path = Path(old_raw)
+            new_path = Path(new_raw)
+            if not new_path.exists():
+                # Nothing to move back. Keep the entry so the anomaly stays
+                # visible and is reported on every undo attempt.
+                logger.error(f"Cannot undo {old_path}: recorded path {new_path} no longer exists")
+                result.failed += 1
+                remaining.append(entry)
+                continue
+            if old_path.exists():
+                # Never overwrite or move into whatever now occupies the
+                # original path — skipping avoids silent data loss.
+                logger.warning(
+                    f"Skipping undo of {new_path.name}: {old_path} already exists; "
+                    "reverting would overwrite it"
+                )
+                result.skipped += 1
+                continue
             try:
-                _persist_undo_entries(cache_dir, entries)
-            except OSError as e:
-                logger.warning(f"Failed to persist remaining undo journal entries: {e}")
-        return reverted_count
+                old_path.parent.mkdir(parents=True, exist_ok=True)
+                _robust_move(new_path, old_path)
+            except Exception as e:
+                logger.error(f"Failed to undo {new_path} -> {old_path}: {e}")
+                result.failed += 1
+                remaining.append(entry)
+                continue
+            result.reverted += 1
+        try:
+            _persist_undo_entries(cache_dir, remaining)
+        except OSError as e:
+            logger.warning(f"Failed to persist remaining undo journal entries: {e}")
+    return result
+
+
+def _robust_move(source_path: Path, dest_path: Path) -> None:
+    """Move a file, using temp copy + atomic replace for cross-device moves.
+
+    Same-device moves use ``os.rename`` (atomic). A cross-device rename
+    (``EXDEV``) falls back to copying into a temporary file in the destination
+    directory and ``os.replace``-ing it into place, so a failed copy never
+    leaves a partial file at the destination — the temporary file is removed
+    on any failure.
+    """
+    try:
+        source_path.rename(dest_path)
+        return
+    except OSError as e:
+        if e.errno != errno.EXDEV:
+            raise
+
+    fd, tmp_name = tempfile.mkstemp(
+        dir=dest_path.parent, prefix=f".{dest_path.name}.", suffix=".part"
+    )
+    tmp_path = Path(tmp_name)
+    os.close(fd)
+    try:
+        shutil.copy2(source_path, tmp_path)
+        tmp_path.replace(dest_path)
+        source_path.unlink()
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _default_cache_dir() -> Path:
+    from renai.config import CACHE_DIR
+
+    return CACHE_DIR
 
 
 def _safe_transfer(
     source_path: Path,
     dest_path: Path,
     *,
-    transfer: Callable[[str, str], Any],
+    transfer: Callable[[Path, Path], Any],
     kind: str,
     ensure_dirs: bool = True,
     source_hash: str | None = None,
@@ -231,17 +370,30 @@ def _safe_transfer(
         logger.info(f"[DRY-RUN] Would {kind} {source_path.name} -> {final_dest_path.name}")
         return final_dest_path
 
+    # The undo record is written (and flushed) BEFORE the transfer: if it
+    # cannot be recorded the transfer is aborted, so a move is never reported
+    # successful without an undo entry (issue #243).
+    undo_recorded = True
+    if record_undo:
+        undo_recorded = record_undo_entry(
+            source_path, final_dest_path, operation_type=kind, cache_dir=cache_dir
+        )
+        if not undo_recorded:
+            raise FileOperationError(
+                f"Could not record undo entry for {source_path.name}; "
+                f"{kind} aborted so the operation stays undoable."
+            )
+
     try:
         if ensure_dirs:
             final_dest_path.parent.mkdir(parents=True, exist_ok=True)
-        transfer(str(source_path), str(final_dest_path))
-        if record_undo:
-            record_undo_entry(
-                source_path, final_dest_path, operation_type=kind, cache_dir=cache_dir
-            )
+        transfer(source_path, final_dest_path)
         logger.debug(f"SUCCESS: {kind.capitalize()} {source_path.name} -> {final_dest_path.name}")
         return final_dest_path
     except Exception as e:
+        if record_undo and undo_recorded:
+            # The move never happened; drop the now-stale journal entry.
+            _remove_undo_entries(source_path, final_dest_path, cache_dir or _default_cache_dir())
         logger.error(f"ERROR: Failed to {kind} {source_path.name} to {dest_path.parent.name}: {e}")
         raise
 
@@ -266,7 +418,7 @@ def safe_move_file(
     return _safe_transfer(
         source_path,
         dest_path,
-        transfer=shutil.move,
+        transfer=_robust_move,
         kind="move",
         ensure_dirs=ensure_dirs,
         source_hash=source_hash,

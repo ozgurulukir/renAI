@@ -36,6 +36,7 @@ from renai.engines.llm import LLMCallPolicy, LLMEngine
 from renai.engines.ocr import OCREngine
 from renai.exceptions import ConfigurationError
 from renai.extractors import EXTRACTOR_NAMES
+from renai.file_ops.operations import begin_undo_run
 from renai.messages import orchestrator as orch_msg
 from renai.models import ProcessingResult
 from renai.models.schemas import FallbackMode, ProcessingConfig
@@ -430,6 +431,10 @@ async def run_pipeline(
     if config is None:
         config = ProcessingConfig()
 
+    # Every file moved by this pipeline shares one undo run id, so a later
+    # `renai undo` reverts exactly this run (issue #243).
+    begin_undo_run()
+
     # 1. Setup
     _ocr_engine, _llm_engine, processor = await setup_engines(
         provider,
@@ -555,8 +560,11 @@ async def run_evaluation_pipeline(
                 workers=workers,
                 recursive=False,
                 fallback_mode=FallbackMode.OCR,
-                # Evaluate must never quarantine files, regardless of settings:
-                # from_app_settings derives skip_ocr_checks from skip_needs_ocr.
+                # Evaluate must never quarantine or relocate files, regardless
+                # of settings: from_app_settings derives skip_ocr_checks from
+                # skip_needs_ocr, so both quarantine knobs are forced off here
+                # (BookProcessor re-enforces the same invariants, issue #245).
+                move_scan_failures=False,
                 skip_ocr_checks=False,
             ),
         )

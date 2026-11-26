@@ -44,7 +44,7 @@ class BookProcessor:
             raise ConfigurationError("A processing configuration is required for BookProcessor.")
 
         self.ocr_engine = ocr_engine
-        self.config = config
+        self.config = self._normalize_evaluate_config(config)
         self.llm_engine = llm_engine
         self.vision_llm_engine = vision_llm_engine or llm_engine
         self.provider = getattr(llm_engine, "provider", "") if llm_engine else ""
@@ -88,6 +88,26 @@ class BookProcessor:
         self.scan_failed_files: set[Path] = set()
         # Single registry of extractable extensions (owned by text_extractor).
         self.supported_extensions = SUPPORTED_EXTENSIONS
+
+    @staticmethod
+    def _normalize_evaluate_config(config: ProcessingConfig) -> ProcessingConfig:
+        """Force evaluate mode to never relocate files (issue #245).
+
+        Evaluate is documented as side-effect free with respect to file
+        placement, so all three quarantine/relocation paths are disabled:
+        ``move_scan_failures`` and ``skip_ocr_checks`` are forced off and the
+        ``move`` fallback (which relocates files to ``Needs_Scan``) is remapped
+        to ``ocr``. Other modes pass through unchanged.
+        """
+        if config.mode != "evaluate":
+            return config
+        updates: dict = {
+            "move_scan_failures": False,
+            "skip_ocr_checks": False,
+        }
+        if config.fallback_mode == FallbackMode.MOVE_TO_FOLDER:
+            updates["fallback_mode"] = FallbackMode.OCR
+        return config.model_copy(update=updates)
 
     def swap_extractor(self, extractor_name: str) -> None:
         """Swap the text extractor backend, rebuilding TextExtractor from config.

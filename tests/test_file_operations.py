@@ -271,25 +271,27 @@ class TestSafeMoveFile:
         assert result == dest
         assert source.exists()  # Source should remain (duplicate skipped)
 
-    def test_move_file_shutil_raises_exception(self, tmp_path):
-        """Test that exception from shutil.move is logged and re-raised."""
+    def test_move_file_transfer_raises_exception(self, tmp_path):
+        """Test that a transfer failure is logged and re-raised."""
         source = tmp_path / "source.txt"
         dest = tmp_path / "dest.txt"
         source.write_text("content")
 
-        with patch("shutil.move", side_effect=OSError("Disk full")):
+        with patch("renai.file_ops.operations.os.rename", side_effect=OSError("Disk full")):
             with pytest.raises(OSError, match="Disk full"):
-                safe_move_file(source, dest)
+                safe_move_file(source, dest, cache_dir=tmp_path / "cache")
 
-    def test_move_file_shutil_raises_permission_error(self, tmp_path):
-        """Test that PermissionError from shutil.move is re-raised."""
+    def test_move_file_transfer_raises_permission_error(self, tmp_path):
+        """Test that PermissionError during the move is re-raised."""
         source = tmp_path / "source.txt"
         dest = tmp_path / "dest.txt"
         source.write_text("content")
 
-        with patch("shutil.move", side_effect=PermissionError("Permission denied")):
+        with patch(
+            "renai.file_ops.operations.os.rename", side_effect=PermissionError("Permission denied")
+        ):
             with pytest.raises(PermissionError, match="Permission denied"):
-                safe_move_file(source, dest)
+                safe_move_file(source, dest, cache_dir=tmp_path / "cache")
 
     def test_safe_move_file_dry_run(self, tmp_path):
         """Test that dry_run simulates move without altering files."""
@@ -316,7 +318,7 @@ class TestSafeMoveFile:
         assert moved_dest.exists()
 
         reverted = undo_last_operation(cache_dir=tmp_path)
-        assert reverted >= 1
+        assert reverted.reverted >= 1
         assert source.exists()
         assert not dest.exists()
 
@@ -506,7 +508,8 @@ class TestUndoJournal:
         old, new = tmp_path / "a.txt", tmp_path / "b.txt"
         new.write_text("data")
         record_undo_entry(old, new, cache_dir=tmp_path)
-        assert undo_last_operation(cache_dir=tmp_path) == 1
+        result = undo_last_operation(cache_dir=tmp_path)
+        assert result.reverted == 1
         assert old.exists() and not new.exists()
         assert _load_undo_entries(tmp_path) == []
 
@@ -519,17 +522,36 @@ class TestUndoJournal:
             f.write(json.dumps(self._entry(old, new)) + "\n")
             f.write('{"old_path": "partial", "new_')
         assert len(_load_undo_entries(tmp_path)) == 1
-        assert undo_last_operation(cache_dir=tmp_path) == 1
+        assert undo_last_operation(cache_dir=tmp_path).reverted == 1
         assert old.exists() and not new.exists()
 
     def test_legacy_json_array_readable(self, tmp_path):
-        from renai.file_ops.operations import _load_undo_entries, undo_last_operation
+        from renai.file_ops.operations import (
+            LEGACY_RUN_ID,
+            _load_undo_entries,
+            undo_last_operation,
+        )
 
         old, new = tmp_path / "a.txt", tmp_path / "b.txt"
         new.write_text("data")
         (tmp_path / "undo_history.json").write_text(json.dumps([self._entry(old, new)]))
         assert len(_load_undo_entries(tmp_path)) == 1
-        assert undo_last_operation(cache_dir=tmp_path) == 1
+        result = undo_last_operation(cache_dir=tmp_path)
+        assert result.reverted == 1
+        assert result.run_id == LEGACY_RUN_ID
+        assert old.exists() and not new.exists()
+
+    def test_legacy_journal_reports_run_and_reverts(self, tmp_path):
+        """Pre-run-scoping journals (no run_id keys) revert as one reported run."""
+        from renai.file_ops.operations import LEGACY_RUN_ID, undo_last_operation
+
+        old, new = tmp_path / "a.txt", tmp_path / "b.txt"
+        new.write_text("data")
+        with (tmp_path / "undo_journal.jsonl").open("w", encoding="utf-8") as f:
+            f.write(json.dumps(self._entry(old, new)) + "\n")
+        result = undo_last_operation(cache_dir=tmp_path)
+        assert result.run_id == LEGACY_RUN_ID
+        assert result.reverted == 1
         assert old.exists() and not new.exists()
 
     def test_missing_cache_dir_handled(self, tmp_path):
@@ -551,7 +573,7 @@ class TestUndoJournal:
             raise OSError("disk gone")
 
         monkeypatch.setattr(ops, "_persist_undo_entries", boom)
-        assert ops.undo_last_operation(cache_dir=tmp_path) == 1
+        assert ops.undo_last_operation(cache_dir=tmp_path).reverted == 1
         assert old.exists() and not new.exists()
 
     def test_record_write_failure_is_non_fatal(self, tmp_path, monkeypatch):
@@ -563,7 +585,8 @@ class TestUndoJournal:
         monkeypatch.setattr("pathlib.Path.open", boom)
         record_undo_entry(tmp_path / "a.txt", tmp_path / "b.txt", cache_dir=tmp_path)
 
-    def test_missing_new_path_is_not_counted(self, tmp_path):
+    def test_missing_new_path_counted_as_failed_and_kept(self, tmp_path):
+        """A missing new_path is a failed revert: counted and kept in the journal."""
         from renai.file_ops.operations import (
             _load_undo_entries,
             record_undo_entry,
@@ -572,19 +595,24 @@ class TestUndoJournal:
 
         old, new = tmp_path / "a.txt", tmp_path / "b.txt"
         record_undo_entry(old, new, cache_dir=tmp_path)
-        assert undo_last_operation(cache_dir=tmp_path) == 0
-        assert _load_undo_entries(tmp_path) == []
+        result = undo_last_operation(cache_dir=tmp_path)
+        assert result.reverted == 0
+        assert result.failed == 1
+        assert len(_load_undo_entries(tmp_path)) == 1
 
     def test_counts_only_actual_reverts(self, tmp_path):
-        from renai.file_ops.operations import record_undo_entry, undo_last_operation
+        import renai.file_ops.operations as ops
 
         real_old, real_new = tmp_path / "real_old.txt", tmp_path / "real_new.txt"
         real_new.write_text("data")
-        record_undo_entry(
+        ops.begin_undo_run()
+        ops.record_undo_entry(
             tmp_path / "missing_old.txt", tmp_path / "missing_new.txt", cache_dir=tmp_path
         )
-        record_undo_entry(real_old, real_new, cache_dir=tmp_path)
-        assert undo_last_operation(cache_dir=tmp_path) == 1
+        ops.record_undo_entry(real_old, real_new, cache_dir=tmp_path)
+        result = ops.undo_last_operation(cache_dir=tmp_path)
+        assert result.reverted == 1
+        assert result.failed == 1
         assert real_old.exists() and not real_new.exists()
 
     def test_journal_grows_one_line_per_record(self, tmp_path):
@@ -603,27 +631,36 @@ class TestUndoJournal:
         from renai.file_ops.operations import undo_last_operation
 
         with patch("renai.file_ops.operations._load_undo_entries", side_effect=OSError("boom")):
-            assert undo_last_operation(cache_dir=tmp_path) == 0
+            assert undo_last_operation(cache_dir=tmp_path).reverted == 0
 
-    def test_move_failure_skips_entry_and_reverts_rest(self, tmp_path, monkeypatch):
-        """One bad entry must not abort the whole undo — the rest still revert."""
-        from renai.file_ops.operations import record_undo_entry, undo_last_operation
+    def test_move_failure_keeps_entry_and_reverts_rest(self, tmp_path, monkeypatch):
+        """A failed revert keeps its entry; the rest still revert."""
+        import renai.file_ops.operations as ops
 
         ok_new = tmp_path / "ok_new.txt"
         ok_new.write_text("data")
-        record_undo_entry(tmp_path / "ok_old.txt", ok_new, cache_dir=tmp_path)
-        record_undo_entry(tmp_path / "bad_old.txt", tmp_path / "bad_new.txt", cache_dir=tmp_path)
+        ops.begin_undo_run()
+        ops.record_undo_entry(tmp_path / "ok_old.txt", ok_new, cache_dir=tmp_path)
+        bad_new = tmp_path / "bad_new.txt"
+        bad_new.write_text("data")
+        ops.record_undo_entry(tmp_path / "bad_old.txt", bad_new, cache_dir=tmp_path)
 
-        real_move = __import__("shutil").move
+        real_rename = __import__("os").rename
 
-        def flaky_move(src, dst):
+        def flaky_rename(src, dst):
             if "bad_new" in str(src):
                 raise OSError("permission denied")
-            real_move(src, dst)
+            real_rename(src, dst)
 
-        monkeypatch.setattr("renai.file_ops.operations.shutil.move", flaky_move)
-        assert undo_last_operation(cache_dir=tmp_path) == 1
+        monkeypatch.setattr("renai.file_ops.operations.os.rename", flaky_rename)
+        result = ops.undo_last_operation(cache_dir=tmp_path)
+        assert result.reverted == 1
+        assert result.failed == 1
         assert (tmp_path / "ok_old.txt").exists()
+        # The failed entry survives in the journal for a later retry.
+        remaining = ops._load_undo_entries(tmp_path)
+        assert len(remaining) == 1
+        assert "bad_new" in remaining[0]["new_path"]
 
 
 def test_undo_dir_created_with_secure_permissions(tmp_path):
@@ -698,3 +735,225 @@ def test_ensure_unique_path_retries_and_raises_on_exhaustion(tmp_path):
         pytest.raises(FileOperationError, match="Failed to generate a unique path"),
     ):
         _ensure_unique_path(dest, source_hash="different")
+
+
+class TestUndoRunSemantics:
+    """Run-scoped undo semantics (issue #243)."""
+
+    def test_undo_reverts_only_newest_run(self, tmp_path):
+        """`renai undo` reverts only the most recent run; older runs survive."""
+        import renai.file_ops.operations as ops
+
+        a_old, a_new = tmp_path / "a_old.txt", tmp_path / "a_new.txt"
+        a_new.write_text("run1")
+        ops.begin_undo_run()
+        ops.record_undo_entry(a_old, a_new, cache_dir=tmp_path)
+        first_run = ops._load_undo_entries(tmp_path)[0]["run_id"]
+
+        b_old, b_new = tmp_path / "b_old.txt", tmp_path / "b_new.txt"
+        b_new.write_text("run2")
+        ops.begin_undo_run()
+        ops.record_undo_entry(b_old, b_new, cache_dir=tmp_path)
+        second_run = ops._load_undo_entries(tmp_path)[-1]["run_id"]
+        assert first_run != second_run
+
+        result = ops.undo_last_operation(cache_dir=tmp_path)
+        assert result.run_id == second_run
+        assert result.reverted == 1
+        assert b_old.exists() and not b_new.exists()
+        # The older run stays in the journal and is untouched.
+        remaining = ops._load_undo_entries(tmp_path)
+        assert len(remaining) == 1
+        assert remaining[0]["run_id"] == first_run
+        assert a_new.exists() and not a_old.exists()
+
+        # A second undo reverts the first run.
+        result2 = ops.undo_last_operation(cache_dir=tmp_path)
+        assert result2.run_id == first_run
+        assert result2.reverted == 1
+        assert a_old.exists() and not a_new.exists()
+
+    def test_entries_carry_run_id(self, tmp_path):
+        from renai.file_ops.operations import record_undo_entry
+
+        record_undo_entry(tmp_path / "o", tmp_path / "n", cache_dir=tmp_path)
+        entry = json.loads((tmp_path / "undo_journal.jsonl").read_text().splitlines()[0])
+        assert isinstance(entry["run_id"], str) and entry["run_id"]
+
+    def test_undo_never_overwrites_existing_file_at_old_path(self, tmp_path):
+        """If old_path is taken, the entry is skipped instead of overwriting it."""
+        from renai.file_ops.operations import (
+            record_undo_entry,
+            undo_last_operation,
+        )
+
+        old, new = tmp_path / "a.txt", tmp_path / "b.txt"
+        new.write_text("moved content")
+        record_undo_entry(old, new, cache_dir=tmp_path)
+        old.write_text("a different file now occupies the original path")
+
+        result = undo_last_operation(cache_dir=tmp_path)
+        assert result.reverted == 0
+        assert result.skipped == 1
+        assert old.read_text() == "a different file now occupies the original path"
+        assert new.exists()
+
+    def test_malformed_entry_skipped_not_raised(self, tmp_path):
+        """Malformed journal entries are skipped with a warning, never KeyError."""
+
+        import renai.file_ops.operations as ops
+
+        old, new = tmp_path / "a.txt", tmp_path / "b.txt"
+        new.write_text("data")
+        run_id = ops.begin_undo_run()
+        with (tmp_path / "undo_journal.jsonl").open("w", encoding="utf-8") as f:
+            f.write(json.dumps({"old_path": "only-one-key", "run_id": run_id}) + "\n")
+            f.write(json.dumps({"foo": "bar", "run_id": run_id}) + "\n")
+        ops.record_undo_entry(old, new, cache_dir=tmp_path)
+
+        result = ops.undo_last_operation(cache_dir=tmp_path)
+        assert result.reverted == 1
+        assert result.skipped == 2
+        assert old.exists() and not new.exists()
+
+    def test_journal_persisted_once_per_undo(self, tmp_path, monkeypatch):
+        from renai.file_ops.operations import record_undo_entry, undo_last_operation
+
+        for i in range(3):
+            new = tmp_path / f"n{i}.txt"
+            new.write_text("data")
+            record_undo_entry(tmp_path / f"o{i}.txt", new, cache_dir=tmp_path)
+
+        calls = []
+        import renai.file_ops.operations as ops
+
+        real_persist = ops._persist_undo_entries
+        monkeypatch.setattr(
+            ops, "_persist_undo_entries", lambda c, e: (calls.append(len(e)), real_persist(c, e))
+        )
+        undo_last_operation(cache_dir=tmp_path)
+        assert len(calls) == 1
+
+
+class TestUndoRecordBeforeTransfer:
+    """Undo record ordering guarantees (issue #243)."""
+
+    def test_record_written_before_transfer(self, tmp_path):
+        """The journal must already contain the entry when the transfer starts."""
+        import renai.file_ops.operations as ops
+        from renai.file_ops.operations import _load_undo_entries
+
+        source = tmp_path / "src.txt"
+        source.write_text("content")
+        dest = tmp_path / "dst.txt"
+        journal_at_transfer = []
+
+        real_move = ops._robust_move
+
+        def spy_move(src, dst):
+            journal_at_transfer.extend(_load_undo_entries(tmp_path / "cache"))
+            real_move(src, dst)
+
+        with patch("renai.file_ops.operations._robust_move", spy_move):
+            ops.safe_move_file(source, dest, cache_dir=tmp_path / "cache")
+        assert len(journal_at_transfer) == 1
+        assert journal_at_transfer[0]["new_path"] == str(dest)
+
+    def test_transfer_failure_removes_recorded_entry(self, tmp_path):
+        """A failed transfer after recording drops the stale journal entry."""
+        import renai.file_ops.operations as ops
+
+        source = tmp_path / "src.txt"
+        source.write_text("content")
+        dest = tmp_path / "dst.txt"
+
+        def failing_move(src, dst):
+            raise OSError("boom")
+
+        with (
+            patch("renai.file_ops.operations._robust_move", failing_move),
+            pytest.raises(OSError, match="boom"),
+        ):
+            ops.safe_move_file(source, dest, cache_dir=tmp_path / "cache")
+
+        assert source.exists()
+        assert not dest.exists()
+        assert ops._load_undo_entries(tmp_path / "cache") == []
+
+    def test_record_failure_aborts_transfer_and_is_surfaced(self, tmp_path, monkeypatch):
+        """If the undo entry cannot be recorded, the move is aborted with an error."""
+        import renai.file_ops.operations as ops
+
+        source = tmp_path / "src.txt"
+        source.write_text("content")
+        dest = tmp_path / "dst.txt"
+
+        monkeypatch.setattr(ops, "record_undo_entry", lambda *a, **k: False)
+
+        with pytest.raises(FileOperationError, match="undo entry"):
+            ops.safe_move_file(source, dest, cache_dir=tmp_path / "cache")
+
+        assert source.exists()
+        assert not dest.exists()
+
+
+class TestCrossDeviceMove:
+    """Cross-device move hardening (issue #244)."""
+
+    def test_failed_cross_device_copy_leaves_no_partial_destination(self, tmp_path, monkeypatch):
+        """A copy failure mid-transfer leaves no partial or temp file at the destination."""
+        import errno
+
+        import renai.file_ops.operations as ops
+
+        src_dir = tmp_path / "src"
+        dst_dir = tmp_path / "dst"
+        src_dir.mkdir()
+        dst_dir.mkdir()
+        source = src_dir / "f.txt"
+        source.write_text("x" * 4096)
+        dest = dst_dir / "f.txt"
+
+        def fake_rename(a, b):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+        def failing_copy2(src, dst, **kwargs):
+            # Simulate a partial write that dies halfway (disk full).
+            with open(dst, "wb") as f:
+                f.write(b"partial")
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        monkeypatch.setattr(ops.os, "rename", fake_rename)
+        monkeypatch.setattr(ops.shutil, "copy2", failing_copy2)
+
+        with pytest.raises(OSError, match="No space left"):
+            ops.safe_move_file(source, dest, cache_dir=tmp_path / "cache")
+
+        assert source.exists()
+        assert not dest.exists()
+        # No leftover temp/partial file in the destination directory.
+        assert list(dst_dir.iterdir()) == []
+
+    def test_successful_cross_device_move_replaces_atomically(self, tmp_path, monkeypatch):
+        """A successful EXDEV fallback copy lands at the destination and removes the temp."""
+        import errno
+
+        import renai.file_ops.operations as ops
+
+        src_dir = tmp_path / "src"
+        dst_dir = tmp_path / "dst"
+        src_dir.mkdir()
+        dst_dir.mkdir()
+        source = src_dir / "f.txt"
+        source.write_text("full content")
+
+        def fake_rename(a, b):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+        monkeypatch.setattr(ops.os, "rename", fake_rename)
+
+        result = ops.safe_move_file(source, dst_dir / "f.txt", cache_dir=tmp_path / "cache")
+        assert result == dst_dir / "f.txt"
+        assert result.read_text() == "full content"
+        assert not source.exists()
+        assert list(dst_dir.iterdir()) == [dst_dir / "f.txt"]
