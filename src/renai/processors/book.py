@@ -315,6 +315,7 @@ class BookProcessor:
             # evaluate mode
             return ProcessingResult(
                 success=True,
+                file_path=file_path,
                 name=file_path.name,
                 original_name=file_path.name,
                 metadata=(
@@ -322,6 +323,7 @@ class BookProcessor:
                     if hasattr(metadata, "model_dump")
                     else cast("dict", metadata)
                 ),
+                used_vision=bool(is_vision_doc),
             )
 
         except Exception as e:

@@ -172,15 +172,26 @@ def display_warnings(
         )
     )
 
+    # Non-interactive runs (cron, CI, wrappers with stdin at EOF or a pipe)
+    # must not be blocked by — or silently cancelled through — the prompt:
+    # proceed without asking so unattended runs behave like explicit consent.
+    if not sys.stdin.isatty():
+        return
+
     try:
         console.print(msg.Prompt.PROCEED, end="")
-        input("")
+        answer = input("")
     except (KeyboardInterrupt, EOFError):
         console.print(msg.Prompt.CANCELLED)
+        # Cancelled is a failure, not success: exit non-zero (issue #257).
         # typer.Exit is an Exception (not BaseException like sys.exit), so it
         # MUST NOT be raised where a broad `except Exception` upstream could
         # swallow it and turn a deliberate cancel into an apparent crash.
-        raise typer.Exit(code=0) from None
+        raise typer.Exit(code=1) from None
+    # Only Enter or y/yes proceeds; any other answer cancels.
+    if answer.strip().lower() not in ("", "y", "yes"):
+        console.print(msg.Prompt.CANCELLED)
+        raise typer.Exit(code=1)
 
 
 # =============================================================================
@@ -625,15 +636,19 @@ def clear_cache_cmd(
     confirm: bool = typer.Option(False, "--yes", "-y"),
 ) -> None:
     """Clear the cache directory."""
-    if not confirm:
+    # Non-interactive runs proceed without prompting (see display_warnings):
+    # unattended invocations must not silently cancel with exit code 0.
+    if not confirm and sys.stdin.isatty():
         try:
             response = input(msg.Prompt.CACHE_CONFIRM)
         except (KeyboardInterrupt, EOFError):
             console.print(msg.Prompt.CACHE_CANCELLED)
-            raise typer.Exit(code=0) from None
-        if response.lower() not in ("y", "yes"):
+            # A cancelled run is a failure, not success: exit non-zero.
+            raise typer.Exit(code=1) from None
+        # Only y/yes proceeds; any other answer cancels.
+        if response.strip().lower() not in ("y", "yes"):
             console.print(msg.Prompt.CACHE_CANCELLED)
-            raise typer.Exit()
+            raise typer.Exit(code=1)
 
     handle_clear_cache()
 

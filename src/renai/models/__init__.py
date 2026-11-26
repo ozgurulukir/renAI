@@ -14,3 +14,4 @@ class ProcessingResult:
     file_hash: str | None = None
     metadata: dict | None = None  # To satisfy existing code/tests
     error: str | None = None
+    used_vision: bool = False  # True when the vision engine produced the metadata
