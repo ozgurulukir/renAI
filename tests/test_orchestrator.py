@@ -355,6 +355,7 @@ class TestEvalLog:
             "provider": "p",
             "model": "m",
             "metadata": {"title": "t0"},
+            "error": None,
         }
         assert orch._eval_log_buffer == []
 

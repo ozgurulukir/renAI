@@ -17,6 +17,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from rich.table import Table
+from rich.text import Text
 
 from renai.config import (
     PROVIDERS,
@@ -212,18 +213,23 @@ class StatusDisplay:
             else:
                 self.failed += 1
 
-            status = "[green]SUCCESS[/]" if result.success else "[red]FAILED[/]"
+            status = (
+                Text("SUCCESS", style="green") if result.success else Text("FAILED", style="red")
+            )
             display_name = getattr(result, "name", None) or getattr(result, "file_path", None)
             display_name = str(display_name) if display_name else "Unknown"
         else:
-            status = "[dim]•[/]"
+            status = Text("•", style="dim")
             display_name = str(result)
 
         # Aggressive truncation to prevent terminal row wrapping corruption
         if len(display_name) > MAX_DISPLAY_NAME_LENGTH:
             display_name = display_name[: MAX_DISPLAY_NAME_LENGTH - 3] + "..."
 
-        res_text = f"{status} {display_name}"
+        # Dynamic strings (file names, LLM-derived text) are passed as plain
+        # Text renderables so characters like "[" are displayed verbatim and
+        # never parsed as Rich markup.
+        res_text = Text.assemble(status, " ", display_name)
         self.activities.append(res_text)
 
         if len(self.activities) > MAX_RECENT_ACTIVITIES:
@@ -259,13 +265,25 @@ class StatusDisplay:
         return layout_table
 
 
-async def log_evaluation_result(file_path: Path, provider: str, model: str, metadata: Any) -> None:
-    """Buffer evaluation result for batched async file writing."""
+async def log_evaluation_result(
+    file_path: Path,
+    provider: str,
+    model: str,
+    metadata: Any,
+    error: str | None = None,
+) -> None:
+    """Buffer evaluation result for batched async file writing.
+
+    Failed extractions are logged too, with ``metadata`` set to ``None`` and
+    the failure reason in ``error``, so a model that fails every file still
+    leaves rows in the log.
+    """
     entry = {
         "file": file_path.name,
         "provider": provider,
         "model": model,
         "metadata": metadata,
+        "error": error,
     }
     async with _eval_log_lock:
         _eval_log_buffer.append(entry)
@@ -333,8 +351,22 @@ async def _execute_processing_loop(
                 # BookProcessor reads every behavioral knob from self.config
                 # (populated once at setup); only file_path varies per call.
                 res = await processor.process_file(f_path)
-                if config.mode == "evaluate" and res.success:
-                    await log_evaluation_result(f_path, provider, model or "unknown", res.metadata)
+                if config.mode == "evaluate":
+                    # Record the engine that actually produced the metadata:
+                    # vision fallback results carry the vision provider/model.
+                    if getattr(res, "used_vision", False):
+                        log_provider = getattr(processor, "vision_provider", provider)
+                        log_model = getattr(processor, "vision_model", model or "unknown")
+                    else:
+                        log_provider = provider
+                        log_model = model or "unknown"
+                    await log_evaluation_result(
+                        f_path,
+                        log_provider,
+                        log_model,
+                        res.metadata if res.success else None,
+                        error=None if res.success else res.error,
+                    )
 
                 status_display.update(res)
                 progress.advance(main_task)
@@ -358,8 +390,20 @@ def _print_final_summary(results: list[ProcessingResult], is_dry_run: bool = Fal
             orig_name = r.original_name or r.name or "Unknown"
             dest_name = r.file_path.name if r.file_path else (r.name or "Skipped")
             cat = r.category or "-"
-            status = "[green]Ready[/green]" if r.success else f"[red]{r.error}[/red]"
-            table.add_row(orig_name, dest_name, cat, status)
+            # Dynamic strings (file names, error text) are passed as plain
+            # Text renderables: brackets display verbatim and a markup-like
+            # error string can never raise MarkupError and abort the command.
+            status = (
+                Text("Ready", style="green")
+                if r.success
+                else Text(str(r.error or "Failed"), style="red")
+            )
+            table.add_row(
+                Text(str(orig_name)),
+                Text(str(dest_name)),
+                Text(str(cat)),
+                status,
+            )
 
         console.print()
         console.print(table)
@@ -438,6 +482,10 @@ async def run_pipeline(
     )
 
     try:
+        # Per-run buffer: stale entries from an interrupted earlier run in the
+        # same process must never leak into this run's log.
+        _eval_log_buffer.clear()
+
         await processor.setup_move_folders(root_dir)
 
         # 2. Collection (KeyboardInterrupt propagates to the CLI, which owns exit UX)
@@ -448,14 +496,15 @@ async def run_pipeline(
         # 3. Execution Loop
         results = await _execute_processing_loop(processor, file_paths, provider, model, config)
 
-        await _flush_eval_log()
-
         # 4. Final Summary Card (Static, will stay in terminal history)
         if not config.benchmark and results:
             _print_final_summary(results, is_dry_run=config.dry_run)
 
         return results
     finally:
+        # Flushing in `finally` guarantees buffered evaluation entries reach
+        # disk even on KeyboardInterrupt or an unexpected mid-loop error.
+        await _flush_eval_log()
         await _close_llm_engines(processor)
 
 
@@ -597,7 +646,7 @@ def _print_evaluation_summary(all_eval_results: dict[str, list[ProcessingResult]
     console.print(orch_msg.Eval.COMPARISON_TITLE)
     for file_name, runs in file_map.items():
         table = Table(
-            title=f"File: [cyan]{file_name}[/cyan]",
+            title=Text.assemble(("File: ", "bold"), (file_name, "cyan")),
             show_header=True,
             header_style="bold magenta",
             border_style="dim",
@@ -610,11 +659,11 @@ def _print_evaluation_summary(all_eval_results: dict[str, list[ProcessingResult]
         table.add_column("Year", justify="center")
 
         for model_key, res in runs:
-            status = "[green]SUCCESS[/green]" if res.success else "[red]FAILED[/red]"
-            title = ""
-            author = ""
-            category = ""
-            year = ""
+            status = Text("SUCCESS", style="green") if res.success else Text("FAILED", style="red")
+            title: Any = ""
+            author: Any = ""
+            category: Any = ""
+            year: Any = ""
 
             if res.success and res.metadata:
                 title = res.metadata.get("title") or ""
@@ -622,15 +671,17 @@ def _print_evaluation_summary(all_eval_results: dict[str, list[ProcessingResult]
                 category = res.metadata.get("category") or ""
                 year = str(res.metadata.get("year") or "")
             elif res.error:
-                title = f"[dim red]Error: {res.error[:30]}[/dim red]"
+                title = Text(f"Error: {res.error[:30]}", style="dim red")
 
+            # LLM-derived metadata and error strings go in as plain Text so
+            # markup-lookalike content renders verbatim (issue #254).
             table.add_row(
-                model_key,
+                Text(str(model_key)),
                 status,
-                title[:40],
-                author[:30],
-                category[:20],
-                year,
+                Text(str(title))[:40],
+                Text(str(author))[:30],
+                Text(str(category))[:20],
+                Text(str(year)),
             )
         console.print(table)
         console.print()
