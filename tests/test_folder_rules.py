@@ -199,6 +199,47 @@ class TestLoadFolderRules:
             assert load_folder_rules() == ()
         assert any("no categories or templates" in record.message for record in caplog.records)
 
+    def test_attribute_access_template_drops_template_not_rule(self, tmp_path, caplog):
+        """A {title.year}-style template drops only the template; categories stay."""
+        user = _write_rules_file(
+            tmp_path,
+            '[[rules]]\npath = "/data/x"\ncategories = ["Tez"]\n'
+            'doc_template = "{title.year} -- {title}"\n',
+        )
+        with _patched_layers(user), caplog.at_level(logging.WARNING):
+            (rule,) = load_folder_rules()
+        assert rule.doc_template is None
+        assert rule.categories is not None  # the rule itself is kept
+        # The warning names the rule, the template and the reason
+        messages = [record.message for record in caplog.records if "ignoring" in record.message]
+        assert any("user#rules[0]" in m and "{title.year} -- {title}" in m for m in messages)
+
+    def test_indexing_conversion_and_format_spec_templates_rejected(self, tmp_path):
+        user = _write_rules_file(
+            tmp_path,
+            '[[rules]]\npath = "/data/x"\ncategories = ["Tez"]\n'
+            'doc_template = "{title[0]}"\n'
+            'vision_template = "{title!r}"\n'
+            'image_template = "{description:>200}"\n',
+        )
+        with _patched_layers(user):
+            (rule,) = load_folder_rules()
+        assert rule.doc_template is None
+        assert rule.vision_template is None
+        assert rule.image_template is None
+        assert rule.categories is not None
+
+    def test_valid_template_alongside_invalid_one_is_kept(self, tmp_path):
+        user = _write_rules_file(
+            tmp_path,
+            '[[rules]]\npath = "/data/x"\ncategories = ["Tez"]\n'
+            'doc_template = "{title.year}"\nvision_template = "{title} -- {author}"\n',
+        )
+        with _patched_layers(user):
+            (rule,) = load_folder_rules()
+        assert rule.doc_template is None
+        assert rule.vision_template == "{title} -- {author}"
+
     def test_package_default_toml_defines_no_active_rules(self):
         """The shipped folder_rules.default.toml is fully commented out."""
         with _patched_layers(MISSING, package=PACKAGE_CONFIG_DIR):

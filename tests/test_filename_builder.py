@@ -1,3 +1,5 @@
+import pytest
+
 from renai.filename.builder import (
     build_book_filename,
     build_image_filename,
@@ -409,3 +411,55 @@ class TestFilenameLengthAndConsistencyFixes:
 
         assert validate_filename_template(" -- () [] ", BookMetadata) is None
         assert validate_filename_template("{title} -- {author}", BookMetadata) is not None
+
+
+class TestTemplateTokenValidation:
+    """Only simple {name} tokens with known fields are accepted (issue #253)."""
+
+    def test_accepts_simple_known_tokens_and_literal_braces(self):
+        from renai.filename.builder import validate_filename_template
+
+        assert validate_filename_template("{title} -- {author}", BookMetadata) is not None
+        assert validate_filename_template("{title} ({year}) [{language}]", BookMetadata) is not None
+        assert validate_filename_template("{series_volume} -- {title}", BookMetadata) is not None
+        # Escaped literal braces stay valid
+        assert validate_filename_template("{{literal}} {title}", BookMetadata) is not None
+
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "{title.year}",  # attribute access
+            "{title[0]}",  # indexing
+            "{title!r}",  # conversion
+            "{title:>200}",  # format spec
+            "{title:{{}}}",  # nested format spec
+            "{}",  # empty field
+            "{0}",  # positional field
+            "{unknown_field}",  # unknown name
+            "{title -- ",  # malformed braces
+        ],
+    )
+    def test_rejects_non_simple_tokens(self, template):
+        from renai.filename.builder import validate_filename_template
+
+        assert validate_filename_template(template, BookMetadata) is None
+
+    def test_rejection_reasons_are_specific(self):
+        from renai.filename.builder import filename_template_rejection_reason
+
+        assert "attribute" not in filename_template_rejection_reason("{title.year}", BookMetadata)
+        assert "{name}" in filename_template_rejection_reason("{title.year}", BookMetadata)
+        assert "unknown token" in filename_template_rejection_reason("{bogus}", BookMetadata)
+        assert "conversion" in filename_template_rejection_reason("{title!r}", BookMetadata)
+        assert "format spec" in filename_template_rejection_reason("{title:>200}", BookMetadata)
+        assert "index" in filename_template_rejection_reason("{title[0]}", BookMetadata) or (
+            "{title[0]}" in filename_template_rejection_reason("{title[0]}", BookMetadata)
+        )
+        assert filename_template_rejection_reason("{title}", BookMetadata) is None
+
+    def test_render_filename_template_rejects_indexing(self):
+        """{title[0]} must no longer render the first character of the title."""
+        from renai.filename.builder import render_filename_template
+
+        meta = BookMetadata(title="Neural Networks", author="A", category="Science", language="en")
+        assert render_filename_template("{title[0]}", meta, ".pdf", 200) is None

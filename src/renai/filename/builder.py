@@ -9,6 +9,7 @@ module has no dependency on the global ``app_settings`` singleton.
 
 import logging
 import re
+import string
 from typing import Any
 
 from ..models.schemas import BaseMetadata, BookMetadata, ImageMetadata
@@ -16,7 +17,6 @@ from ..utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
-_TEMPLATE_TOKEN_RE = re.compile(r"\{(\w+)\}")
 # Composite tokens rendered on top of the raw metadata fields.
 _COMPOSITE_TOKENS = frozenset({"series_volume"})
 
@@ -85,25 +85,54 @@ def _valid_year_label(year_val: Any) -> str | None:
     return None
 
 
+def filename_template_rejection_reason(
+    template: str, model_class: type[BaseMetadata]
+) -> str | None:
+    """Return why ``template`` is invalid for ``model_class``, or None if valid.
+
+    Only simple ``{name}`` tokens whose name is a known metadata field (plus
+    composites) are accepted. Attribute access (``{a.b}``), indexing
+    (``{a[0]}``), conversions (``{a!r}``), format specs (``{a:>200}``),
+    positional/empty fields, unknown names and malformed braces are all
+    rejected with a specific reason.
+    """
+    return _template_rejection_reason(template, _known_template_tokens(model_class))
+
+
+def _template_rejection_reason(template: str, known: frozenset[str]) -> str | None:
+    try:
+        parsed = list(string.Formatter().parse(template))
+    except ValueError as e:
+        return f"malformed braces ({e})"
+    for _literal, field, format_spec, conversion in parsed:
+        if field is None:
+            continue
+        if not field.isidentifier():
+            return f"invalid token {{{field}}}: only simple {{name}} field tokens are supported"
+        if field not in known:
+            return f"unknown token {{{field}}}"
+        if conversion is not None:
+            return f"token {{{field}}} uses unsupported conversion {conversion!r}"
+        if format_spec:
+            return f"token {{{field}}} uses unsupported format spec {format_spec!r}"
+    return None
+
+
 def validate_filename_template(template: str, model_class: type[BaseMetadata]) -> str | None:
     """Return the template if it renders against ``model_class`` fields, else None.
 
-    Rejects unknown tokens, malformed braces, and templates that render to
-    an empty base even when tokens are populated. Templates should not include
-    a file extension (the original extension is appended automatically).
+    Accepts only simple ``{name}`` tokens with known field names; see
+    :func:`filename_template_rejection_reason` for the rejection rules.
+    Rejects templates that render to an empty base even when tokens are
+    populated. Templates should not include a file extension (the original
+    extension is appended automatically).
     """
     known = _known_template_tokens(model_class)
-    unknown = set(_TEMPLATE_TOKEN_RE.findall(template)) - known
-    if unknown:
-        logger.warning(
-            "Ignoring template %r: unknown token(s): %s", template, ", ".join(sorted(unknown))
-        )
+    reason = _template_rejection_reason(template, known)
+    if reason is not None:
+        logger.warning("Ignoring template %r: %s", template, reason)
         return None
-    try:
-        trial = template.format_map(_EmptyTokenDefaults(dict.fromkeys(known, "x")))
-    except (ValueError, IndexError):
-        logger.warning("Ignoring template %r: malformed braces", template)
-        return None
+    trial = template.format_map(_EmptyTokenDefaults(dict.fromkeys(known, "x")))
     if not _clean_template_base(trial):
         logger.warning("Ignoring template %r: renders to an empty filename", template)
         return None
@@ -181,6 +210,8 @@ def render_filename_template(
     Templates should not include a file extension; a trailing duplicate
     ``original_extension`` is stripped if present.
     """
+    if _template_rejection_reason(template, _known_template_tokens(type(metadata))) is not None:
+        return None
     values = _template_values(metadata)
     base = _clean_template_base(template.format_map(_EmptyTokenDefaults(values)))
     safe_ext = _sanitize_extension(original_extension)
