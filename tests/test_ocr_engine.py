@@ -82,7 +82,7 @@ class TestExtractText:
 
     @pytest.mark.asyncio
     async def test_extract_text_early_termination(self):
-        """Test early termination when enough text is extracted."""
+        """Head budget stops dense head pages; tail pages still get their own budget."""
         engine = OCREngine()
 
         mock_doc = MagicMock()
@@ -100,12 +100,132 @@ class TestExtractText:
             patch("pymupdf.open", return_value=mock_doc),
             patch.object(engine, "_perform_ocr", new_callable=AsyncMock) as mock_ocr,
         ):
-            mock_ocr.return_value = "A" * 6000  # Two pages will exceed 10000 limit
+            # 6000 chars/page: head budget (7000) spent after two pages,
+            # tail budget (3000) after one tail page.
+            mock_ocr.return_value = "A" * 6000
 
             await engine.extract_text(Path("test.pdf"))
 
-            # Should have rendered 2 pages and then stopped
-            assert fake_renderer.render_pages.await_count == 2
+            # Head: 2 pages + tail: 1 page = 3 renders total
+            assert fake_renderer.render_pages.await_count == 3
+            assert mock_ocr.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_tail_pages_ocrd_even_when_head_is_dense(self):
+        """Tail pages (ISBN/colophon) must be OCR'd under a separate budget."""
+        engine = OCREngine(head_pages=5, tail_pages=3)
+
+        mock_doc = MagicMock()
+        mock_doc.__len__.return_value = 20
+
+        fake_renderer = MagicMock()
+
+        async def fake_render(file_path, pages, dpi):
+            return {p: RenderedPage(page_number=p, image=Image.new("L", (100, 100))) for p in pages}
+
+        fake_renderer.render_pages = AsyncMock(side_effect=fake_render)
+
+        ocrd_pages: list[int] = []
+
+        async def fake_ocr(image, pno):
+            ocrd_pages.append(pno)
+            return "A" * 2000
+
+        with (
+            patch("renai.engines.ocr.create_page_renderer", return_value=fake_renderer),
+            patch("pymupdf.open", return_value=mock_doc),
+            patch.object(engine, "_perform_ocr", side_effect=fake_ocr),
+        ):
+            await engine.extract_text(Path("test.pdf"))
+
+            # Sampling: head {0..4}, tail {17,18,19}. Head budget 7000 chars
+            # -> pages 0-3 (8000 > 7000 stops after page 3); tail budget 3000
+            # -> pages 17-18. Under the old shared budget, page 18 was skipped.
+            assert set(ocrd_pages) == {0, 1, 2, 3, 17, 18}
+
+    @pytest.mark.asyncio
+    async def test_bulk_mutool_failure_skips_per_page_mutool_retries(self, caplog):
+        """A failed bulk mutool call must not trigger per-page mutool retries."""
+        # Skip real mutool validation at construction time
+        with patch.object(OCREngine, "_validate_mutool", return_value="mutool"):
+            engine = OCREngine(use_mutool=True, head_pages=2, tail_pages=1)
+
+        mock_doc = MagicMock()
+        mock_doc.__len__.return_value = 10
+
+        mutool_renderer = MagicMock()
+        mutool_calls = 0
+
+        async def mutool_render(file_path, pages, dpi):
+            nonlocal mutool_calls
+            mutool_calls += 1
+            return {}  # bulk failure: all-or-nothing
+
+        mutool_renderer.render_pages = AsyncMock(side_effect=mutool_render)
+
+        pymupdf_renderer = MagicMock()
+
+        async def pymupdf_render(file_path, pages, dpi):
+            return {p: RenderedPage(page_number=p, image=Image.new("L", (100, 100))) for p in pages}
+
+        pymupdf_renderer.render_pages = AsyncMock(side_effect=pymupdf_render)
+
+        def fake_factory(**kwargs):
+            return mutool_renderer if kwargs.get("use_mutool") else pymupdf_renderer
+
+        with (
+            patch("renai.engines.ocr.create_page_renderer", side_effect=fake_factory),
+            patch("pymupdf.open", return_value=mock_doc),
+            patch.object(engine, "_perform_ocr", new_callable=AsyncMock) as mock_ocr,
+        ):
+            mock_ocr.return_value = ""
+            result = await engine.extract_text(Path("test.pdf"))
+
+            # Sampling {0,1,9}: one bulk mutool attempt total, zero per-page retries.
+            assert mutool_calls == 1
+            # Every sampled page fell back to pymupdf instead.
+            assert pymupdf_renderer.render_pages.await_count == 3
+            assert "skipping per-page mutool retries" in caplog.text
+            assert isinstance(result, str)
+
+    @pytest.mark.asyncio
+    async def test_broken_process_pool_is_reset_and_fallback_logged(self, caplog):
+        """A pool failure must clear the pool (so it is recreated) and warn."""
+        caplog.set_level("WARNING")
+        engine = OCREngine()
+        OCREngine.shutdown_process_pool()
+        assert OCREngine._process_pool is None
+
+        created: list[MagicMock] = []
+
+        class FakePool:
+            def __init__(self, max_workers=None):
+                self.max_workers = max_workers
+                created.append(self)
+
+            def run_in_executor(self, *args, **kwargs):
+                raise RuntimeError("broken pool")
+
+            def shutdown(self, wait=False):
+                self.shutdown_wait = wait
+
+        try:
+            with (
+                patch("renai.engines.ocr.ProcessPoolExecutor", FakePool),
+                patch.object(
+                    engine, "_sync_preprocess_image", return_value=Image.new("L", (10, 10))
+                ),
+            ):
+                image = await engine._preprocess_image(Image.new("L", (10, 10)))
+                assert isinstance(image, Image.Image)
+                assert "pool reset, falling back to thread" in caplog.text
+                # The broken pool was cleared so a fresh one is created next call
+                assert OCREngine._process_pool is None
+                await engine._preprocess_image(Image.new("L", (10, 10)))
+                assert len(created) == 2  # pool was recreated, not reused
+        finally:
+            OCREngine.shutdown_process_pool()
+            assert OCREngine._process_pool is None
 
 
 @pytest.mark.asyncio

@@ -133,10 +133,16 @@ class PDFPlumberExtractor(BaseExtractor):
 
             with pdfplumber.open(file_path) as pdf:
                 total_pages = len(pdf.pages)
-                page_texts = [p.extract_text() or "" for p in pdf.pages]
+                # Lazy per-page extraction: only pages the head-tail sampler
+                # actually reads pay pdfplumber's cost (like the other backends).
+                page_cache: dict[int, str] = {}
 
                 def get_page(idx: int) -> str:
-                    return page_texts[idx] if idx < len(page_texts) else ""
+                    if idx not in page_cache:
+                        if idx >= total_pages:
+                            return ""
+                        page_cache[idx] = pdf.pages[idx].extract_text() or ""
+                    return page_cache[idx]
 
                 return _extract_head_tail(
                     get_page, total_pages, target_chars, head_ratio, max_pages_per_side
