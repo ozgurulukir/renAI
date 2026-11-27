@@ -4,6 +4,7 @@ Contains questionary-based interactive prompts for provider and model configurat
 """
 
 import logging
+import tomllib
 from collections.abc import Callable
 
 import questionary
@@ -13,8 +14,8 @@ from rich.theme import Theme
 
 from renai.messages import setup as msg
 
-from ..config import app_settings
-from ..config.settings import AppSettings
+from ..config import PACKAGE_CONFIG_DIR, app_settings
+from ..config.settings import AppSettings, ProviderConfig
 from ..exceptions import ConfigurationError
 
 # Pure catalog mapping lives in model_catalog.py; re-exported here so existing
@@ -27,6 +28,7 @@ from .model_catalog import (  # noqa: F401
     _map_deepinfra_model,
     _map_openrouter_model,
     get_provider_model_name,
+    select_default_model,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,61 @@ custom_style = Style(
 )
 
 
+KNOWN_PROVIDER_BASE_URLS: dict[str, str] = {
+    "openai": "https://api.openai.com/v1",
+    "deepinfra": "https://api.deepinfra.com/v1/openai",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+    "google": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "groq": "https://api.groq.com/openai/v1",
+    "mistral": "https://api.mistral.ai/v1",
+    "together": "https://api.together.xyz/v1",
+    "perplexity": "https://api.perplexity.ai",
+}
+
+
+def _is_valid_base_url(url: str | None) -> bool:
+    """Return True if *url* is a non-empty http:// or https:// URL."""
+    if not isinstance(url, str):
+        return False
+    stripped = url.strip()
+    return stripped.startswith(("http://", "https://")) and len(stripped) > len("https://")
+
+
+def _validate_base_url(text: str) -> bool | str:
+    """Validate that a base URL prompt answer is a non-empty http(s) URL."""
+    if not _is_valid_base_url(text):
+        return msg.Provider.INVALID_BASE_URL
+    return True
+
+
+def _validate_non_empty_model(text: str) -> bool | str:
+    """Validate that a model prompt answer is non-empty after stripping whitespace."""
+    if not text or not text.strip():
+        return msg.Provider.INVALID_MODEL
+    return True
+
+
+def _load_packaged_default_models() -> dict[str, str]:
+    """Load packaged default_model per provider from ``settings.default.toml``."""
+    default_file = PACKAGE_CONFIG_DIR / "settings.default.toml"
+    if not default_file.exists():
+        return {}
+    try:
+        with default_file.open("rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return {}
+    providers = data.get("providers")
+    if not isinstance(providers, dict):
+        return {}
+    result: dict[str, str] = {}
+    for name, entry in providers.items():
+        if isinstance(entry, dict) and isinstance(entry.get("default_model"), str):
+            result[name] = entry["default_model"]
+    return result
+
+
 def _build_provider_options(
     catalog: dict, all_devs: list[str], providers_catalog: dict | None = None
 ) -> list[dict]:
@@ -78,13 +135,13 @@ def _build_provider_options(
         combined_devs.update(providers_catalog.keys())
 
     sorted_devs = sorted(combined_devs)
+    packaged_defaults = _load_packaged_default_models()
 
     provider_options = []
     desc_map = {
         "openai": "Official OpenAI models (GPT-4o, GPT-4o-mini)",
         "deepseek": "DeepSeek API endpoints (R1, Chat)",
         "google": "Google Gemini API via OpenAI compatibility",
-        "anthropic": "Anthropic Claude API endpoints",
         "mistral": "Mistral AI API endpoints",
         "deepinfra": msg.Provider.DEEPINFRA_DESC,
         "openrouter": msg.Provider.OPENROUTER_DESC,
@@ -92,26 +149,23 @@ def _build_provider_options(
 
     for dev in sorted_devs:
         p_info = providers_catalog.get(dev, {})
+        if (
+            providers_catalog
+            and dev in providers_catalog
+            and not _is_valid_base_url(p_info.get("api"))
+            and dev not in KNOWN_PROVIDER_BASE_URLS
+        ):
+            continue
+
         p_name = p_info.get("name", dev.capitalize())
         desc = desc_map.get(dev, f"Models by {p_name} from models.dev")
-        dev_models = []
-        if dev in providers_catalog:
-            p_models = providers_catalog[dev].get("models")
-            if isinstance(p_models, dict):
-                dev_models = list(p_models.keys())
-        if not dev_models and catalog:
-            dev_models = [k for k in catalog if k.startswith(f"{dev}/")]
-
-        if dev == "deepinfra":
-            default_model = "meta-llama/Llama-3.3-70B-Instruct"
-        elif dev == "openrouter":
-            default_model = "google/gemini-2.0-flash-exp:free"
-        elif dev_models:
-            default_model = get_provider_model_name(
-                dev_models[0], catalog.get(dev_models[0], {}), dev
-            )
-        else:
-            default_model = f"{dev}-model"
+        default_model = select_default_model(
+            dev,
+            catalog,
+            providers_catalog,
+            vision_only=False,
+            packaged_defaults=packaged_defaults,
+        )
 
         provider_options.append({"name": dev, "desc": desc, "extra": default_model})
 
@@ -124,6 +178,26 @@ def _build_provider_options(
             }
         )
     return provider_options
+
+
+def _resolve_prompt_default_model(
+    selected_provider: str,
+    provider_options: list,
+    display_choices: list[str],
+    vision_only: bool,
+) -> str:
+    """Resolve the pre-filled default model for the model selection prompt."""
+    default_model = ""
+    for opt in provider_options:
+        if opt["name"] == selected_provider:
+            default_model = opt["extra"]
+            break
+
+    if not vision_only:
+        return default_model
+    if not display_choices:
+        return ""
+    return default_model if default_model in display_choices else display_choices[0]
 
 
 def _prompt_model_selection(
@@ -141,12 +215,9 @@ def _prompt_model_selection(
     model_names.sort(key=lambda m: (catalog.get(m, {}).get("name", m).lower(), m.lower()))
 
     display_choices = _get_display_choices(selected_provider, model_names, catalog)
-
-    default_model = ""
-    for opt in provider_options:
-        if opt["name"] == selected_provider:
-            default_model = opt["extra"]
-            break
+    default_model = _resolve_prompt_default_model(
+        selected_provider, provider_options, display_choices, vision_only
+    )
 
     prompt_template = msg.Provider.VISION_MODEL_PROMPT if vision_only else msg.Provider.MODEL_PROMPT
     prompt_msg = prompt_template.format(selected_provider.capitalize())
@@ -154,11 +225,14 @@ def _prompt_model_selection(
         prompt_msg,
         choices=display_choices,
         default=default_model,
+        validate=_validate_non_empty_model,
         style=custom_style,
     ).ask()
 
     if selected_model is None:
         raise KeyboardInterrupt
+
+    selected_model = selected_model.strip()
 
     catalog_id = None
     for m in model_names:
@@ -198,28 +272,25 @@ def _prompt_model_selection(
 
 def _prompt_base_url(selected_provider: str, default_url: str | None = None) -> str:
     """Prompt user for dynamic provider base URL."""
-    known_base_urls = {
-        "deepseek": "https://api.deepseek.com/v1",
-        "google": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "groq": "https://api.groq.com/openai/v1",
-        "mistral": "https://api.mistral.ai/v1",
-        "together": "https://api.together.xyz/v1",
-        "perplexity": "https://api.perplexity.ai",
-    }
-    default_base = default_url or known_base_urls.get(selected_provider, "http://localhost:8000/v1")
+    default_base = (
+        default_url
+        if default_url and _is_valid_base_url(default_url)
+        else KNOWN_PROVIDER_BASE_URLS.get(selected_provider, "")
+    )
     base_url = questionary.text(
         msg.Provider.BASE_URL_PROMPT.format(selected_provider.capitalize()),
         default=default_base,
+        validate=_validate_base_url,
         style=custom_style,
     ).ask()
     if base_url is None:
         raise KeyboardInterrupt
-    return base_url
+    return base_url.strip()
 
 
 async def _validate_api_key_async(base_url: str, api_key: str) -> tuple[bool, str]:
     """Perform a lightweight API call to validate the API key."""
-    from openai import APIConnectionError, AsyncOpenAI, AuthenticationError
+    from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AuthenticationError
 
     try:
         async with AsyncOpenAI(api_key=api_key, base_url=base_url) as client:
@@ -229,6 +300,10 @@ async def _validate_api_key_async(base_url: str, api_key: str) -> tuple[bool, st
     except AuthenticationError as e:
         # Invalid API key
         return False, str(e)
+    except APIStatusError as e:
+        if e.status_code in (404, 405):
+            return False, msg.Provider.KEY_ENDPOINT_UNSUPPORTED.format(e.status_code)
+        return False, msg.Provider.VALID_GENERIC_WARN.format(e)
     except APIConnectionError as e:
         logger.warning("API key validation connection error: %s", e)
         return True, msg.Provider.CONNECTION_WARN.format(e)
@@ -265,9 +340,7 @@ def _prompt_and_validate_api_key(
     """Prompt the user for their API key and validate it against the provider's endpoint."""
     while True:
         if is_custom:
-            api_key = questionary.text(
-                msg.Provider.CUSTOM_KEY_PROMPT, default="not-required", style=custom_style
-            ).ask()
+            api_key = questionary.password(msg.Provider.CUSTOM_KEY_PROMPT, style=custom_style).ask()
         else:
             api_key = questionary.password(
                 msg.Provider.API_KEY_PROMPT.format(selected_provider.capitalize()),
@@ -278,7 +351,9 @@ def _prompt_and_validate_api_key(
             raise KeyboardInterrupt
 
         # If they leave it empty, or if custom and default "not-required", skip validation
-        if not api_key.strip() or (is_custom and api_key == "not-required"):
+        if not api_key.strip():
+            return "not-required" if is_custom else ""
+        if is_custom and api_key == "not-required":
             return api_key
 
         console.print(msg.Provider.VALIDATING.format(selected_provider.capitalize()))
@@ -291,6 +366,19 @@ def _prompt_and_validate_api_key(
             return api_key
 
         console.print(msg.Provider.KEY_INVALID.format(error_msg))
+        action = questionary.select(
+            msg.Provider.KEY_VALIDATION_ACTION,
+            choices=[
+                msg.Provider.KEY_ACTION_RETRY,
+                msg.Provider.KEY_ACTION_SKIP,
+                msg.Provider.KEY_ACTION_CANCEL,
+            ],
+            style=custom_style,
+        ).ask()
+        if action == msg.Provider.KEY_ACTION_SKIP:
+            return api_key
+        if action in (None, msg.Provider.KEY_ACTION_CANCEL):
+            raise KeyboardInterrupt
 
 
 def _configure_standard_provider(
@@ -353,15 +441,21 @@ def _configure_single_provider(
         base_url = questionary.text(
             msg.Provider.CUSTOM_URL_PROMPT,
             default="http://localhost:8000/v1",
+            validate=_validate_base_url,
             style=custom_style,
         ).ask()
         custom_model = questionary.text(
-            msg.Provider.CUSTOM_MODEL_PROMPT, default="llama3", style=custom_style
+            msg.Provider.CUSTOM_MODEL_PROMPT,
+            default="llama3",
+            validate=_validate_non_empty_model,
+            style=custom_style,
         ).ask()
 
         if base_url is None or custom_model is None:
             raise KeyboardInterrupt
 
+        base_url = base_url.strip()
+        custom_model = custom_model.strip()
         api_key = _prompt_and_validate_api_key("custom", base_url, is_custom=True)
 
         configured["custom"] = {"base_url": base_url, "models": [custom_model], "api_key": api_key}
@@ -398,10 +492,14 @@ def _build_final_config_and_secrets(
 
     for name, data in configured.items():
         secrets[f"{name}_api_key"] = data["api_key"]
-        config["providers"][name] = {
-            "base_url": data["base_url"],
-            "default_model": data["models"][0] if name != default_provider else default_model,
+        provider_entry = {
+            "base_url": data["base_url"].strip(),
+            "default_model": (
+                data["models"][0] if name != default_provider else default_model
+            ).strip(),
         }
+        ProviderConfig.model_validate(provider_entry)
+        config["providers"][name] = provider_entry
         if not data["api_key"].strip():
             console.print(msg.Provider.NO_KEY_WARN.format(name.upper()))
 
@@ -419,13 +517,21 @@ def _configure_vision_selection(
     is_vision_supported_func: Callable[[str], bool | None],
 ) -> tuple[str | None, str | None]:
     """Prompt user to configure vision provider and vision model."""
-    text_supports_vision = is_vision_supported_func(default_model) is not False
+    vision_support = is_vision_supported_func(default_model)
     use_text_for_vision = False
 
-    if text_supports_vision:
+    if vision_support is True:
         use_text_for_vision = questionary.confirm(
             msg.Provider.VISION_USE_TEXT_MODEL.format(default_model),
             default=True,
+            style=custom_style,
+        ).ask()
+        if use_text_for_vision is None:
+            raise KeyboardInterrupt
+    elif vision_support is None:
+        use_text_for_vision = questionary.confirm(
+            msg.Provider.VISION_USE_TEXT_MODEL_UNKNOWN.format(default_model),
+            default=False,
             style=custom_style,
         ).ask()
         if use_text_for_vision is None:
@@ -469,24 +575,29 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     try:
         from renai.utils.models_dev import get_full_catalog, is_vision_supported
 
-        full_cat = get_full_catalog()
+        with console.status(msg.Provider.FETCHING_CATALOG):
+            full_cat = get_full_catalog()
         catalog = full_cat.get("models", {})
         providers_catalog = full_cat.get("providers", {})
     except Exception:
         catalog = {}
         providers_catalog = {}
 
-        def is_vision_supported(model_name: str) -> bool | None:  # noqa: ARG001
+        def is_vision_supported(  # type: ignore[misc]
+            model_name: str,  # noqa: ARG001
+            provider: str | None = None,  # noqa: ARG001
+            providers_catalog: dict | None = None,  # noqa: ARG001
+            catalog: dict | None = None,  # noqa: ARG001
+        ) -> bool | None:
             """Placeholder matching ``models_dev.is_vision_supported`` so pyright
-            sees one consistent declaration for the try/except; the argument is
+            sees one consistent declaration for the try/except; arguments are
             intentionally unused because catalog availability is unknown."""
-            """Vision support is unknown when the catalog is unavailable."""
             return None
 
     if catalog:
         all_devs = sorted({k.split("/")[0] for k in catalog if "/" in k})
     else:
-        all_devs = ["openai", "deepseek", "google", "anthropic", "mistral"]
+        all_devs = ["openai", "deepseek", "google", "mistral"]
 
     provider_options = _build_provider_options(
         catalog, all_devs, providers_catalog=providers_catalog
@@ -548,6 +659,14 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
     if default_model is None:
         raise KeyboardInterrupt
 
+    def _check_default_vision(model_name: str) -> bool | None:
+        return is_vision_supported(
+            model_name,
+            provider=default_provider,
+            providers_catalog=providers_catalog,
+            catalog=catalog,
+        )
+
     vision_provider, vision_model = _configure_vision_selection(
         default_provider,
         default_model,
@@ -556,7 +675,7 @@ def _configure_provider() -> tuple[dict[str, str | int], dict[str, str]]:
         catalog,
         provider_options,
         providers_catalog,
-        is_vision_supported,
+        _check_default_vision,
     )
 
     return _build_final_config_and_secrets(
@@ -581,10 +700,14 @@ def _workers_bounds() -> tuple[int, int]:
 
 def _validate_workers_input(text: str) -> bool | str:
     """Validate the workers prompt answer against the configured allowed range."""
-    if not text.isdigit():
+    if not text.isdecimal():
+        return msg.Settings.WORKERS_INVALID
+    try:
+        value = int(text)
+    except ValueError:
         return msg.Settings.WORKERS_INVALID
     lower, upper = _workers_bounds()
-    if not lower <= int(text) <= upper:
+    if not lower <= value <= upper:
         return msg.Settings.WORKERS_RANGE_INVALID.format(lower, upper)
     return True
 

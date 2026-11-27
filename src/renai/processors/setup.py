@@ -5,7 +5,10 @@ Handles environment setup, provider configuration, and configuration file creati
 
 import importlib.util
 import logging
+import os
 import shutil
+import tempfile
+import tomllib
 from pathlib import Path
 
 import questionary
@@ -117,28 +120,69 @@ def _print_dependency_diagnostics() -> None:
     console.print("")
 
 
+def _load_existing_toml(path: Path) -> dict:
+    """Load an existing TOML file if present, returning an empty dict on absence/error."""
+    if not path.exists():
+        return {}
+    try:
+        with path.open("rb") as f:
+            data = tomllib.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logger.warning("Could not read existing %s for merging: %s", path.name, e)
+        return {}
+
+
+def _merge_settings_config(existing: dict, updates: dict) -> dict:
+    """Overlay wizard-owned keys onto existing settings, preserving unrelated keys and providers."""
+    merged = dict(existing)
+    existing_providers = existing.get("providers")
+    merged_providers = dict(existing_providers) if isinstance(existing_providers, dict) else {}
+
+    for key, value in updates.items():
+        if key == "providers" and isinstance(value, dict):
+            merged_providers.update(value)
+        elif value is not None:
+            merged[key] = value
+
+    if merged_providers:
+        merged["providers"] = merged_providers
+    return merged
+
+
 def _atomic_write_toml(path: Path, data: dict, *, mode: int | None = None) -> None:
     """Serialise *data* to TOML and atomically replace *path*.
 
     ``None`` values are dropped first (TOML has no null type), and the payload
     is fully serialised to a string before any file is touched, so a failure
-    can never leave a truncated file behind. When *mode* is given, the temp
-    file is restricted to it BEFORE the replace, so credentials never sit
-    briefly world-readable at the temp path.
+    can never leave a truncated file behind. Temp files are created via
+    ``tempfile.mkstemp`` (atomic ``O_CREAT | O_EXCL`` with ``0o600`` mode) in
+    the target directory so credentials are never world-readable and fixed-name
+    symlinks cannot be followed.
     """
     import tomli_w
 
     clean = {key: value for key, value in data.items() if value is not None}
     payload = tomli_w.dumps(clean)
-    tmp_path = path.with_name(path.name + ".tmp")
-    tmp_path.write_text(payload, encoding="utf-8")
-    if mode is not None:
-        tmp_path.chmod(mode)
-    tmp_path.replace(path)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        if mode is not None:
+            tmp_path.chmod(mode)
+        tmp_path.replace(path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
-def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -> None:
-    """Save user configuration and secrets files, copy defaults."""
+def _save_configuration(config: dict, secrets: dict[str, str]) -> None:
+    """Save user configuration and secrets files, merging with existing files."""
     try:
         console.print(msg.Save.PROPAGATING)
         for default_file in PACKAGE_CONFIG_DIR.glob("*.default.toml"):
@@ -146,8 +190,13 @@ def _save_configuration(config: dict[str, str | int], secrets: dict[str, str]) -
             shutil.copy2(default_file, dest)
             console.print(msg.Save.PROPAGATED.format(dest.name))
 
-        _atomic_write_toml(SETTINGS_USER_FILE, config)
-        _atomic_write_toml(SECRETS_FILE, secrets, mode=0o600)
+        existing_settings = _load_existing_toml(SETTINGS_USER_FILE)
+        merged_settings = _merge_settings_config(existing_settings, config)
+        _atomic_write_toml(SETTINGS_USER_FILE, merged_settings)
+
+        existing_secrets = _load_existing_toml(SECRETS_FILE)
+        merged_secrets = {**existing_secrets, **secrets} if existing_secrets else secrets
+        _atomic_write_toml(SECRETS_FILE, merged_secrets, mode=0o600)
 
         if hasattr(SECRETS_FILE, "chmod"):
             try:
