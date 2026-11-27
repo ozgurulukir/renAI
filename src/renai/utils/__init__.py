@@ -86,7 +86,7 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     # Limit length in UTF-8 BYTES (filesystem component limit), stepping back
     # to a character boundary so CJK/emoji names never end mid-character.
     if len(sanitized.encode("utf-8")) > max_val:
-        sanitized = _truncate_to_utf8_budget(sanitized, max_val).strip()
+        sanitized = _truncate_to_utf8_budget(sanitized, max_val).strip(" .\"'")
 
     # Byte truncation followed by stripping can theoretically yield "" (or a
     # lone dot); fall back rather than returning an unusable name.

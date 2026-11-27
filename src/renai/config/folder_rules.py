@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -260,12 +261,15 @@ def load_folder_rules() -> tuple[FolderRule, ...]:
 def _is_path_prefix(child: Path, parent: Path) -> bool:
     """Prefix containment between paths, folding case where the platform does.
 
-    Uses ``os.path.normcase`` so rule paths written with different letter case
-    still match on case-insensitive filesystems (Windows) while POSIX matching
-    stays exact.
+    Uses ``os.path.normcase`` on Windows and ``str.casefold`` on macOS
+    (where ``os.path.normcase`` is a no-op despite APFS being case-insensitive
+    by default), while Linux/other POSIX matching stays exact.
     """
     child_norm = os.path.normcase(str(child))
     parent_norm = os.path.normcase(str(parent))
+    if sys.platform == "darwin":
+        child_norm = child_norm.casefold()
+        parent_norm = parent_norm.casefold()
     return child_norm == parent_norm or child_norm.startswith(parent_norm.rstrip(os.sep) + os.sep)
 
 

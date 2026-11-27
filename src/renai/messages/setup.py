@@ -71,7 +71,7 @@ class Provider:
     ADD_MODEL = "Would you like to add another model for {}?"
     NO_KEY_WARN = (
         "[warning]Warning: No API key entered. You must set the\n"
-        "RENAI_{}_API_KEY env var to use this provider.[/warning]"
+        "{}_API_KEY env var to use this provider.[/warning]"
     )
     VISION_PROMPT = "Would you like to configure a Vision model for image/PDF vision tasks?"
     VISION_USE_TEXT_MODEL = "Text model '{}' supports vision. Use it for Vision operations too?"

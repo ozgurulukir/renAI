@@ -97,7 +97,7 @@ async def setup_engines(
         )
 
     provider_config = PROVIDERS[provider]
-    api_key = provider_config.api_key or get_api_key(provider)
+    api_key = get_api_key(provider)
     if not api_key:
         raise ConfigurationError(orch_msg.Error.API_KEY_MISSING.format(provider))
 
@@ -151,7 +151,7 @@ async def setup_engines(
             vision_llm_engine = llm_engine
         elif vision_provider in PROVIDERS:
             v_prov_config = PROVIDERS[vision_provider]
-            v_api_key = v_prov_config.api_key or get_api_key(vision_provider)
+            v_api_key = get_api_key(vision_provider)
             if v_api_key:
                 vision_llm_engine = LLMEngine(
                     provider=vision_provider,

@@ -55,7 +55,10 @@ async def test_setup_engines_vision_provider_missing_api_key():
     }
 
     with (
-        patch("renai.processors.orchestrator.get_api_key", return_value=None),
+        patch(
+            "renai.processors.orchestrator.get_api_key",
+            side_effect=lambda p: _STUB_PROVIDER_KEY if p == "openai" else None,
+        ),
         patch("renai.processors.orchestrator.PROVIDERS", fake_providers),
         patch("renai.processors.orchestrator.LLMEngine"),
     ):
@@ -79,6 +82,7 @@ async def test_setup_engines_unknown_vision_provider():
     }
 
     with (
+        patch("renai.processors.orchestrator.get_api_key", return_value=_STUB_PROVIDER_KEY),
         patch("renai.processors.orchestrator.PROVIDERS", fake_providers),
         patch("renai.processors.orchestrator.LLMEngine"),
     ):
@@ -97,6 +101,7 @@ async def test_setup_engines_stale_vision_config_degrades_silently():
     }
 
     with (
+        patch("renai.processors.orchestrator.get_api_key", return_value=_STUB_PROVIDER_KEY),
         patch("renai.processors.orchestrator.PROVIDERS", fake_providers),
         patch("renai.processors.orchestrator.LLMEngine"),
     ):
