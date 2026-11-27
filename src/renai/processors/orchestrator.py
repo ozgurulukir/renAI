@@ -38,6 +38,7 @@ from renai.engines.ocr import OCREngine
 from renai.exceptions import ConfigurationError
 from renai.extractors import EXTRACTOR_NAMES
 from renai.file_ops.operations import begin_undo_run
+from renai.logging_config import paused_console_logging
 from renai.messages import orchestrator as orch_msg
 from renai.models import ProcessingResult
 from renai.models.schemas import FallbackMode, ProcessingConfig
@@ -346,12 +347,21 @@ async def _execute_processing_loop(
     # KeyboardInterrupt is deliberately NOT caught here: it propagates to the
     # CLI layer, which owns the cancel message and exit code. Swallowing it
     # would make `evaluate` continue with the next model after Ctrl+C.
-    with Live(
-        status_display,
-        console=console,
-        refresh_per_second=4,
-        screen=True,
-    ) as live:
+    #
+    # Log records are paused while the display owns the terminal: per-file
+    # failures log warnings and tracebacks (e.g. book.py's logger.exception),
+    # which would otherwise be written to the real stderr behind Rich Live's
+    # back and garble the progress screen. Buffered records replay right
+    # after the display closes, before the summary prints.
+    with (
+        paused_console_logging(),
+        Live(
+            status_display,
+            console=console,
+            refresh_per_second=4,
+            screen=True,
+        ) as live,
+    ):
         if config.benchmark:
             await _run_benchmark_mode(processor, file_paths, status_display, live)
             return []
