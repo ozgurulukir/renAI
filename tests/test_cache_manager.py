@@ -890,3 +890,42 @@ def test_busy_timeout_is_short():
     from renai.cache.manager import _BUSY_TIMEOUT_SECONDS
 
     assert _BUSY_TIMEOUT_SECONDS <= 5.0
+
+
+def test_cache_pruning_reaches_steady_state(tmp_path, monkeypatch):
+    """Repeated writes with changing fingerprints stay bounded at row caps (#286)."""
+    from renai.cache import manager
+
+    monkeypatch.setattr(manager, "MAX_TEXT_CACHE_ROWS", 4)
+    monkeypatch.setattr(manager, "MAX_METADATA_CACHE_ROWS", 3)
+
+    for i in range(10):
+        write_text_cache(
+            TextCacheKey(file_hash="doc", settings_fingerprint=f"fp{i}"),
+            f"text-{i}",
+            cache_dir=tmp_path,
+        )
+        write_metadata_cache(
+            _meta_key(file_hash=f"doc-{i}"),
+            _book(f"Title {i}"),
+            cache_dir=tmp_path,
+        )
+
+    conn = sqlite3.connect(str(tmp_path / "cache.db"))
+    try:
+        text_count = conn.execute("SELECT COUNT(*) FROM text_cache").fetchone()[0]
+        meta_count = conn.execute("SELECT COUNT(*) FROM metadata_cache").fetchone()[0]
+    finally:
+        conn.close()
+
+    assert text_count == 4
+    assert meta_count == 3
+    # Newest rows are retained.
+    assert (
+        read_text_cache(
+            TextCacheKey(file_hash="doc", settings_fingerprint="fp9"), cache_dir=tmp_path
+        )
+        == "text-9"
+    )
+    meta, _ = read_metadata_cache(_meta_key(file_hash="doc-9"), BookMetadata, cache_dir=tmp_path)
+    assert meta is not None and meta.title == "Title 9"

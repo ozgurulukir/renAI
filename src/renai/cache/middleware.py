@@ -348,11 +348,19 @@ def with_metadata_cache() -> Callable[
                 _execute(self, request, **extra)
             )
             _INFLIGHT_CALLS[dedup_key] = task
-            try:
-                return await task
-            finally:
+
+            def _cleanup(done_task: asyncio.Task[tuple[Any, bool]]) -> None:
                 if _INFLIGHT_CALLS.get(dedup_key) is task:
                     _INFLIGHT_CALLS.pop(dedup_key, None)
+                if not done_task.cancelled():
+                    # Retrieve any exception so asyncio does not log an
+                    # unretrieved-exception warning if all awaiters cancelled.
+                    done_task.exception()
+
+            task.add_done_callback(_cleanup)
+            # Shield the owner too (#286) so cancelling the owner coroutine
+            # does not cancel the shared extraction for other awaiters.
+            return await asyncio.shield(task)
 
         return wrapper
 

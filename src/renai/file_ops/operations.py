@@ -29,6 +29,9 @@ _undo_lock = threading.Lock()
 COLLISION_SUFFIX_LENGTH = 8
 MAX_UNIQUE_PATH_ATTEMPTS = 16
 
+# Maximum number of distinct undo runs retained in ``undo_journal.jsonl``.
+MAX_UNDO_RUNS = 100
+
 # Synthetic run id grouping journal entries written before run scoping existed
 # (no ``run_id`` key). One ``undo`` reverts the whole legacy batch.
 LEGACY_RUN_ID = "legacy"
@@ -75,16 +78,22 @@ def ensure_within_root(path: Path, root_dir: Path) -> None:
         )
 
 
-def _ensure_unique_path(dest_path: Path, source_hash: str | None = None) -> Path:
+def _ensure_unique_path(
+    dest_path: Path,
+    source_hash: str | None = None,
+    *,
+    allow_duplicate_match: bool = True,
+) -> Path:
     """Ensure the destination path is unique by appending a UUID if needed."""
     if not dest_path.exists():
         return dest_path
 
-    existing_hash = get_file_hash(dest_path)
-    new_hash = source_hash or ""
+    if allow_duplicate_match:
+        existing_hash = get_file_hash(dest_path)
+        new_hash = source_hash or ""
 
-    if existing_hash == new_hash:
-        return dest_path
+        if existing_hash == new_hash:
+            return dest_path
 
     for _ in range(MAX_UNIQUE_PATH_ATTEMPTS):
         unique_id = uuid.uuid4().hex[:COLLISION_SUFFIX_LENGTH]
@@ -153,6 +162,33 @@ def _persist_undo_entries(cache_dir: Path, entries: list[dict]) -> None:
         raise
 
 
+def _prune_undo_entries(entries: list[dict], max_runs: int | None = None) -> list[dict]:
+    """Keep only entries belonging to the most recent ``max_runs`` distinct runs."""
+    limit = MAX_UNDO_RUNS if max_runs is None else max_runs
+    if limit <= 0 or not entries:
+        return entries
+
+    # Collect run ids in reverse order of appearance so the newest runs come first.
+    kept_runs: set[str] = set()
+    for entry in reversed(entries):
+        raw_run = entry.get("run_id")
+        run_id = raw_run if isinstance(raw_run, str) else LEGACY_RUN_ID
+        if run_id not in kept_runs:
+            if len(kept_runs) >= limit:
+                break
+            kept_runs.add(run_id)
+
+    if len(kept_runs) < limit:
+        return entries
+
+    return [
+        entry
+        for entry in entries
+        if (entry.get("run_id") if isinstance(entry.get("run_id"), str) else LEGACY_RUN_ID)
+        in kept_runs
+    ]
+
+
 def record_undo_entry(
     old_path: Path,
     new_path: Path,
@@ -183,6 +219,10 @@ def record_undo_entry(
             with (cache_dir / UNDO_JOURNAL_NAME).open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                 f.flush()
+            entries = _load_undo_entries(cache_dir)
+            pruned = _prune_undo_entries(entries)
+            if len(pruned) != len(entries):
+                _persist_undo_entries(cache_dir, pruned)
     except Exception as e:
         logger.warning("Failed to record undo entry: %s", e)
         return False
@@ -243,6 +283,7 @@ def undo_last_operation(cache_dir: Path | None = None) -> UndoResult:
         current_run = [e for e in entries if (e.get("run_id") or LEGACY_RUN_ID) == target_run_id]
         remaining = [e for e in entries if (e.get("run_id") or LEGACY_RUN_ID) != target_run_id]
 
+        failed_retry: list[dict] = []
         for entry in reversed(current_run):
             old_raw = entry.get("old_path")
             new_raw = entry.get("new_path")
@@ -253,11 +294,10 @@ def undo_last_operation(cache_dir: Path | None = None) -> UndoResult:
             old_path = Path(old_raw)
             new_path = Path(new_raw)
             if not new_path.exists():
-                # Nothing to move back. Keep the entry so the anomaly stays
-                # visible and is reported on every undo attempt.
+                # Nothing left to move back: count as failed and drop so a
+                # dead entry never pins the newest-run pointer (#285).
                 logger.error(f"Cannot undo {old_path}: recorded path {new_path} no longer exists")
                 result.failed += 1
-                remaining.append(entry)
                 continue
             if old_path.exists():
                 # Never overwrite or move into whatever now occupies the
@@ -274,11 +314,14 @@ def undo_last_operation(cache_dir: Path | None = None) -> UndoResult:
             except Exception as e:
                 logger.error(f"Failed to undo {new_path} -> {old_path}: {e}")
                 result.failed += 1
-                remaining.append(entry)
+                failed_retry.append(entry)
                 continue
             result.reverted += 1
+        # Keep transient move-back failures ahead of older runs so they can
+        # still be retried without pinning the newest-run pointer.
+        persisted = list(reversed(failed_retry)) + remaining
         try:
-            _persist_undo_entries(cache_dir, remaining)
+            _persist_undo_entries(cache_dir, persisted)
         except OSError as e:
             logger.warning(f"Failed to persist remaining undo journal entries: {e}")
     return result
@@ -307,18 +350,64 @@ def _robust_move(source_path: Path, dest_path: Path) -> None:
     os.close(fd)
     try:
         shutil.copy2(source_path, tmp_path)
+        with tmp_path.open("rb") as f:
+            os.fsync(f.fileno())
         tmp_path.replace(dest_path)
-        source_path.unlink()
     except BaseException:
         with contextlib.suppress(OSError):
             tmp_path.unlink(missing_ok=True)
         raise
+
+    # Best-effort directory fsync on POSIX so the rename is crash-durable.
+    with contextlib.suppress(OSError, AttributeError):
+        dir_fd = os.open(dest_path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+
+    # Destination is durably in place; if unlinking the source fails, log a
+    # warning rather than raising so the undo entry is preserved (#285).
+    try:
+        source_path.unlink()
+    except OSError as e:
+        logger.warning(
+            "Cross-device move copied %s -> %s, but removing the source failed: %s",
+            source_path,
+            dest_path,
+            e,
+        )
 
 
 def _default_cache_dir() -> Path:
     from renai.config import CACHE_DIR
 
     return CACHE_DIR
+
+
+def _resolve_transfer_destination(
+    source_path: Path,
+    dest_path: Path,
+    *,
+    kind: str,
+    source_hash: str | None,
+) -> tuple[Path, bool]:
+    """Resolve the destination path for a move/copy, returning ``(path, should_skip)``."""
+    if not dest_path.exists():
+        return dest_path, False
+    if source_path.resolve() == dest_path.resolve():
+        return dest_path, True
+    if kind == "copy":
+        existing_hash = get_file_hash(dest_path)
+        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
+        if existing_hash == new_hash:
+            logger.debug(f"File {dest_path.name} already exists with same content, skipping {kind}")
+            return dest_path, True
+        return _ensure_unique_path(dest_path, source_hash), False
+    # For moves, never leave the source behind on a hash match (#285):
+    # move to a unique path so the input folder is always drained and
+    # no user file is silently deleted.
+    return _ensure_unique_path(dest_path, allow_duplicate_match=False), False
 
 
 def _safe_transfer(
@@ -356,15 +445,11 @@ def _safe_transfer(
     if root_dir is not None:
         ensure_within_root(dest_path, root_dir)
 
-    final_dest_path = dest_path
-    if dest_path.exists():
-        existing_hash = get_file_hash(dest_path)
-        new_hash = source_hash if source_hash is not None else get_file_hash(source_path)
-
-        if existing_hash == new_hash:
-            logger.debug(f"File {dest_path.name} already exists with same content, skipping {kind}")
-            return dest_path
-        final_dest_path = _ensure_unique_path(dest_path, source_hash)
+    final_dest_path, should_skip = _resolve_transfer_destination(
+        source_path, dest_path, kind=kind, source_hash=source_hash
+    )
+    if should_skip:
+        return final_dest_path
 
     if dry_run:
         logger.info(f"[DRY-RUN] Would {kind} {source_path.name} -> {final_dest_path.name}")

@@ -171,8 +171,8 @@ class TestSafeMoveFile:
 
         assert "does not exist" in str(exc_info.value)
 
-    def test_move_duplicate_content_skips(self, tmp_path):
-        """Test that duplicate files with same content are skipped."""
+    def test_move_duplicate_content_moves_to_unique_path(self, tmp_path):
+        """Identical-content move must drain the source into a unique path (#285)."""
         source = tmp_path / "source.txt"
         dest = tmp_path / "dest.txt"
 
@@ -181,8 +181,13 @@ class TestSafeMoveFile:
 
         result = safe_move_file(source, dest)
 
-        assert result == dest
-        assert source.exists()  # Source should remain
+        assert result != dest
+        assert result.name.startswith("dest_")
+        assert result.suffix == ".txt"
+        assert not source.exists()
+        assert result.exists()
+        assert result.read_text() == "same content"
+        assert dest.read_text() == "same content"
 
     def test_move_duplicate_different_content_renames(self, tmp_path):
         """Test that duplicate files with different content get unique name."""
@@ -258,18 +263,18 @@ class TestSafeMoveFile:
         assert not source.exists()
         assert result.exists()
 
-    def test_move_with_source_hash_skips_rehash(self, tmp_path):
-        """Test that providing source_hash avoids re-hashing the source file."""
+    def test_copy_with_source_hash_skips_rehash(self, tmp_path):
+        """Test that providing source_hash avoids re-hashing the source file on copy."""
         source = tmp_path / "source.txt"
         dest = tmp_path / "dest.txt"
         source.write_text("same content")
         dest.write_text("same content")
 
         with patch("renai.file_ops.operations.get_file_hash", return_value="abc123"):
-            result = safe_move_file(source, dest, source_hash="abc123")
+            result = safe_copy_file(source, dest, source_hash="abc123")
 
         assert result == dest
-        assert source.exists()  # Source should remain (duplicate skipped)
+        assert source.exists()  # Source should remain (duplicate skipped on copy)
 
     def test_move_file_transfer_raises_exception(self, tmp_path):
         """Test that a transfer failure is logged and re-raised."""
@@ -585,8 +590,8 @@ class TestUndoJournal:
         monkeypatch.setattr("pathlib.Path.open", boom)
         record_undo_entry(tmp_path / "a.txt", tmp_path / "b.txt", cache_dir=tmp_path)
 
-    def test_missing_new_path_counted_as_failed_and_kept(self, tmp_path):
-        """A missing new_path is a failed revert: counted and kept in the journal."""
+    def test_missing_new_path_counted_as_failed_and_dropped(self, tmp_path):
+        """A missing new_path is counted as failed and dropped so it cannot block older runs (#285)."""
         from renai.file_ops.operations import (
             _load_undo_entries,
             record_undo_entry,
@@ -598,7 +603,63 @@ class TestUndoJournal:
         result = undo_last_operation(cache_dir=tmp_path)
         assert result.reverted == 0
         assert result.failed == 1
-        assert len(_load_undo_entries(tmp_path)) == 1
+        assert len(_load_undo_entries(tmp_path)) == 0
+
+    def test_undo_reaches_older_run_after_missing_file_in_newest_run(self, tmp_path):
+        """Deleting one renamed file from the newest run must not block older runs (#285)."""
+        import renai.file_ops.operations as ops
+
+        cache_dir = tmp_path / "cache"
+        # Run 1: two moves
+        run1 = ops.begin_undo_run()
+        r1_a_old, r1_a_new = tmp_path / "r1_a_old.txt", tmp_path / "r1_a_new.txt"
+        r1_b_old, r1_b_new = tmp_path / "r1_b_old.txt", tmp_path / "r1_b_new.txt"
+        r1_a_old.write_text("r1a")
+        r1_b_old.write_text("r1b")
+        ops.safe_move_file(r1_a_old, r1_a_new, cache_dir=cache_dir)
+        ops.safe_move_file(r1_b_old, r1_b_new, cache_dir=cache_dir)
+
+        # Run 2: two moves, then delete one of the renamed files
+        run2 = ops.begin_undo_run()
+        r2_a_old, r2_a_new = tmp_path / "r2_a_old.txt", tmp_path / "r2_a_new.txt"
+        r2_b_old, r2_b_new = tmp_path / "r2_b_old.txt", tmp_path / "r2_b_new.txt"
+        r2_a_old.write_text("r2a")
+        r2_b_old.write_text("r2b")
+        ops.safe_move_file(r2_a_old, r2_a_new, cache_dir=cache_dir)
+        ops.safe_move_file(r2_b_old, r2_b_new, cache_dir=cache_dir)
+        r2_b_new.unlink()
+
+        # First undo reverts r2_a and fails on missing r2_b
+        res1 = ops.undo_last_operation(cache_dir=cache_dir)
+        assert res1.run_id == run2
+        assert res1.reverted == 1
+        assert res1.failed == 1
+        assert r2_a_old.exists() and not r2_a_new.exists()
+
+        # Second undo must reach run 1 and revert both of its files
+        res2 = ops.undo_last_operation(cache_dir=cache_dir)
+        assert res2.run_id == run1
+        assert res2.reverted == 2
+        assert res2.failed == 0
+        assert r1_a_old.exists() and not r1_a_new.exists()
+        assert r1_b_old.exists() and not r1_b_new.exists()
+
+    def test_undo_journal_pruned_to_max_runs(self, tmp_path, monkeypatch):
+        """Undo journal stays bounded to MAX_UNDO_RUNS distinct runs (#286)."""
+        import renai.file_ops.operations as ops
+
+        monkeypatch.setattr(ops, "MAX_UNDO_RUNS", 3)
+        for i in range(6):
+            ops.record_undo_entry(
+                tmp_path / f"old_{i}.txt",
+                tmp_path / f"new_{i}.txt",
+                cache_dir=tmp_path,
+                run_id=f"run-{i}",
+            )
+
+        entries = ops._load_undo_entries(tmp_path)
+        run_ids = [e["run_id"] for e in entries]
+        assert run_ids == ["run-3", "run-4", "run-5"]
 
     def test_counts_only_actual_reverts(self, tmp_path):
         import renai.file_ops.operations as ops
@@ -957,3 +1018,45 @@ class TestCrossDeviceMove:
         assert result.read_text() == "full content"
         assert not source.exists()
         assert list(dst_dir.iterdir()) == [dst_dir / "f.txt"]
+
+    def test_cross_device_move_failed_unlink_warns_and_keeps_undo_entry(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Failed source unlink after EXDEV replace logs a warning and keeps the undo entry (#285)."""
+        import errno
+        import logging
+
+        import renai.file_ops.operations as ops
+
+        src_dir = tmp_path / "src"
+        dst_dir = tmp_path / "dst"
+        cache_dir = tmp_path / "cache"
+        src_dir.mkdir()
+        dst_dir.mkdir()
+        source = src_dir / "f.txt"
+        dest = dst_dir / "f.txt"
+        source.write_text("payload")
+
+        def fake_rename(a, b):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+        real_unlink = Path.unlink
+
+        def failing_unlink(self, missing_ok=False):
+            if self == source:
+                raise OSError(errno.EACCES, "Permission denied")
+            return real_unlink(self, missing_ok=missing_ok)
+
+        monkeypatch.setattr(ops.os, "rename", fake_rename)
+        monkeypatch.setattr(Path, "unlink", failing_unlink)
+
+        with caplog.at_level(logging.WARNING):
+            result = ops.safe_move_file(source, dest, cache_dir=cache_dir)
+
+        assert result == dest
+        assert dest.read_text() == "payload"
+        assert any("removing the source failed" in rec.message for rec in caplog.records)
+        entries = ops._load_undo_entries(cache_dir)
+        assert len(entries) == 1
+        assert entries[0]["old_path"] == str(source)
+        assert entries[0]["new_path"] == str(dest)
