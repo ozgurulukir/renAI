@@ -60,6 +60,9 @@ class _CacheStore:
         )
         conn.execute("PRAGMA journal_mode=WAL;")
         _init_db(conn)
+        with conn:
+            _prune_table(conn, "text_cache", MAX_TEXT_CACHE_ROWS)
+            _prune_table(conn, "metadata_cache", MAX_METADATA_CACHE_ROWS)
         conn.execute("PRAGMA synchronous=NORMAL;")
         return conn
 
@@ -80,6 +83,31 @@ _BUSY_TIMEOUT_SECONDS = 5.0
 # Bumped whenever the on-disk row grammar or invalidation contract changes in a
 # way old rows cannot honor (see #246/#247). Stored via ``PRAGMA user_version``.
 CACHE_SCHEMA_VERSION = 2
+
+# Maximum rows retained per SQLite cache table (#286) so repeated runs with
+# changing settings fingerprints or rule signatures reach a steady state.
+MAX_TEXT_CACHE_ROWS = 5000
+MAX_METADATA_CACHE_ROWS = 5000
+
+_PRUNABLE_TABLES = frozenset({"text_cache", "metadata_cache"})
+
+
+def _prune_table(conn: sqlite3.Connection, table: str, max_rows: int) -> int:
+    """Delete oldest rows from ``table`` beyond ``max_rows``."""
+    if max_rows <= 0 or table not in _PRUNABLE_TABLES:
+        return 0
+    cursor = conn.execute(
+        f"""
+        DELETE FROM {table}
+        WHERE rowid IN (
+            SELECT rowid FROM {table}
+            ORDER BY created_at DESC, rowid DESC
+            LIMIT -1 OFFSET ?
+        )
+        """,
+        (max_rows,),
+    )
+    return cursor.rowcount if cursor.rowcount > 0 else 0
 
 
 class TextCacheKey(NamedTuple):
@@ -328,6 +356,7 @@ def write_text_cache(key: TextCacheKey, content: str, cache_dir: Path | None = N
                     """,
                     (cache_key, content),
                 )
+                _prune_table(conn, "text_cache", MAX_TEXT_CACHE_ROWS)
             return True
         except Exception as e:
             logger.warning(f"Failed to write text cache {cache_key}: {e}")
@@ -662,6 +691,7 @@ def write_metadata_cache(
                     """,
                     (cache_key, row_provider, row_model, metadata_json),
                 )
+                _prune_table(conn, "metadata_cache", MAX_METADATA_CACHE_ROWS)
             return True
         except sqlite3.DatabaseError as e:
             # Caching is best-effort: extraction succeeded, so never fail the

@@ -670,3 +670,39 @@ async def test_concurrent_identical_requests_share_one_call(tmp_path):
     # A later sequential request is served from the written cache row.
     await processor.extract(request)
     assert processor.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelling_owner_does_not_cancel_awaiter(tmp_path):
+    """Cancelling the owner of a shared in-flight request must not cancel other awaiters (#286)."""
+    import asyncio
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class GatedProcessor(DummyProcessor):
+        @with_metadata_cache()
+        async def extract(self, request: MetadataRequest) -> tuple[DummyMetadata, bool]:
+            self.call_count += 1
+            started.set()
+            await release.wait()
+            return DummyMetadata(title="Survived Owner Cancel"), False
+
+    processor = GatedProcessor()
+    key = MetadataCacheKey(file_hash="owner-cancel", provider="test_provider", model="test_model")
+    request = _make_request(key, DummyMetadata)
+
+    owner = asyncio.create_task(processor.extract(request))
+    await started.wait()
+    awaiter = asyncio.create_task(processor.extract(request))
+    await asyncio.sleep(0)  # let awaiter register on the shared task
+
+    owner.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await owner
+
+    release.set()
+    result, is_vision = await awaiter
+    assert processor.call_count == 1
+    assert result.title == "Survived Owner Cancel"
+    assert is_vision is False
