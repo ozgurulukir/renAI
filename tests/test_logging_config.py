@@ -82,8 +82,8 @@ def test_configure_logging_defaults():
         assert root.level == logging.INFO
         # Dev mode: plain formatter
         assert not any(isinstance(h.formatter, JsonFormatter) for h in root.handlers)
-        # Third-party loggers are silenced
-        for name in ("httpx", "openai", "urllib3"):
+        # Third-party loggers are silenced (httpx2: openai 3.x transport fork)
+        for name in ("httpx", "httpx2", "openai", "urllib3"):
             assert logging.getLogger(name).level == logging.WARNING
 
 

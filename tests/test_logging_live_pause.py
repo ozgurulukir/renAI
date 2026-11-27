@@ -1,8 +1,8 @@
 """Live progress display must not receive stderr log leakage.
 
 ``renai process`` renders a full-screen Rich Live display while files are
-processed. Per-file failures log warnings and ``logger.exception`` tracebacks
-through the root logger; a handler that pins ``sys.stderr`` at construction
+processed. Per-file failures log concise warnings and error lines through
+the root logger; a handler that pins ``sys.stderr`` at construction
 time bypasses Rich Live's stream redirection and garbles the progress screen
 (log lines appeared under/over the panels). The handler must resolve
 ``sys.stderr`` at emit time, and the orchestrator pauses console logging

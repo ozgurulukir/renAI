@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -261,6 +262,42 @@ class TestBookProcessor:
 
         assert result.success is False
         assert "Hashing failed" in result.error
+
+    async def test_process_file_failure_logs_concise_error(self, processor, tmp_path, caplog):
+        """Per-file failures log a one-line reason; no traceback at INFO+.
+
+        Log records emitted during processing are buffered and replayed after
+        the Rich Live display closes, so an ERROR traceback here would flood
+        the terminal between the display and the summary table.
+        """
+        test_file = tmp_path / "boom.pdf"
+        test_file.write_text("content")
+
+        with (
+            patch("renai.processors.book.get_file_hash", side_effect=Exception("Hashing failed")),
+            caplog.at_level(logging.ERROR, logger="renai.processors.book"),
+        ):
+            result = await processor.process_file(test_file)
+
+        assert result.success is False
+        assert "Hashing failed" in result.error
+        error_text = "\n".join(record.getMessage() for record in caplog.records)
+        assert "Failed to process boom.pdf" in error_text
+        assert "Traceback" not in error_text
+
+    async def test_process_file_failure_traceback_only_at_debug(self, processor, tmp_path, caplog):
+        """Opting into DEBUG verbosity restores the full failure traceback."""
+        test_file = tmp_path / "boom.pdf"
+        test_file.write_text("content")
+
+        with (
+            patch("renai.processors.book.get_file_hash", side_effect=Exception("Hashing failed")),
+            caplog.at_level(logging.DEBUG, logger="renai.processors.book"),
+        ):
+            await processor.process_file(test_file)
+
+        assert "Traceback (most recent call last)" in caplog.text
+        assert "Hashing failed" in caplog.text
 
     @pytest.mark.asyncio
     async def test_extract_document_metadata_vision_fallback(self, processor, tmp_path):

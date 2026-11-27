@@ -28,7 +28,7 @@ class Summary:
     FAILURES_TITLE = "[bold red]Failed Files[/bold red]"
     FAILURES_FILE_HEADER = "Failed File"
     FAILURES_ERROR_HEADER = "Error"
-    FAILURES_ERROR_SUFFIX = "… (truncated; full details in the log output above)"
+    FAILURES_ERROR_SUFFIX = "… (truncated; set RENAI_LOG_LEVEL=DEBUG for the full traceback)"
 
 
 class Error:

@@ -327,7 +327,12 @@ class BookProcessor:
             )
 
         except Exception as e:
-            logger.exception("Failed to process %s", file_path.name)
+            # One-line reason for the log stream: the summary's Failed Files
+            # table already reports the same message, and buffered records are
+            # replayed after the Live display closes, so a traceback here
+            # would flood the terminal. Full traceback only at DEBUG level.
+            logger.error("Failed to process %s: %s", file_path.name, e)
+            logger.debug("Failure details for %s", file_path.name, exc_info=True)
             return ProcessingResult(
                 success=False,
                 name=file_path.name,
