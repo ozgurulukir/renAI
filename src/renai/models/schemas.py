@@ -21,7 +21,7 @@ class ProcessingConfig(BaseModel):
     """Configuration for the processing pipeline."""
 
     mode: Literal["rename", "organize", "copy", "evaluate"] = "rename"
-    workers: int = 4
+    workers: int = Field(default=4, ge=1, le=32)
     recursive: bool = True
     ocr_enhanced: bool = False
     debug_ocr: bool = False

@@ -93,18 +93,25 @@ def test_undo_cmd_no_ops():
 
 
 def test_undo_cmd_reports_failed_and_skipped():
-    """Failed reverts and skips are reported alongside the run id."""
+    """Failed reverts and skips are reported alongside the run id and exit 1."""
     from renai.file_ops.operations import UndoResult
 
     with patch(
         "renai.file_ops.operations.undo_last_operation",
-        return_value=UndoResult(run_id="deadbeef", reverted=1, failed=2, skipped=3),
+        return_value=UndoResult(
+            run_id="deadbeef",
+            reverted=1,
+            failed=2,
+            skipped=3,
+            errors=["a.pdf: recorded path b.pdf no longer exists"],
+        ),
     ):
         with patch("renai.cli.console.print") as mock_print:
             result = runner.invoke(app, ["undo"])
-            assert result.exit_code == 0
+            assert result.exit_code == 1
             prints = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
             assert any("2 operation(s) could not be reverted" in p for p in prints)
+            assert any("recorded path b.pdf no longer exists" in p for p in prints)
             assert any("3 operation(s) skipped" in p for p in prints)
 
 

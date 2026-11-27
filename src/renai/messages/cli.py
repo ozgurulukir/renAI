@@ -22,8 +22,10 @@ class Warn:
 
     @staticmethod
     def desc_vision(model: str) -> str:
+        from rich.markup import escape
+
         return (
-            f"Model [bold yellow]'{model}'[/bold yellow] "
+            f"Model [bold yellow]'{escape(model)}'[/bold yellow] "
             "might not support vision inputs on models.dev.\n"
             "  Running in vision fallback mode or renaming images may fail."
         )
@@ -35,6 +37,10 @@ class Prompt:
     )
     CANCELLED = "\n[yellow]Operation cancelled by user.[/yellow]"
     CANCELLED_EXIT = "\n[yellow]Cancelled by user. Exiting...[/yellow]"
+    CANCELLED_PARTIAL = (
+        "\n[yellow]Cancelled by user ({} of {} files processed; "
+        "run 'renai undo' to revert).[/yellow]"
+    )
     EVAL_CANCELLED = "\n[yellow]Evaluation cancelled.[/yellow]"
     CACHE_CONFIRM = "This will delete all cached text and metadata. Continue? [y/N]: "
     CACHE_CANCELLED = "[cyan]Cancelled.[/cyan]"

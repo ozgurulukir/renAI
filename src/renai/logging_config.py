@@ -224,25 +224,32 @@ def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
     Focuses on 'What happened', 'Why', and 'How to fix it'.
     """
     if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
 
     from rich.console import Console
     from rich.panel import Panel
+    from rich.text import Text
 
     console = Console()
     why, how = _analyze_exception(exc_value)
 
     from renai.messages import errors as err
 
-    error_msg = err.ERROR_LABEL.format(exc_value) + "\n\n"
-    error_msg += err.WHY_LABEL.format(why) + "\n"
-    error_msg += err.HOW_LABEL.format(how)
+    error_body = Text.assemble(
+        ("ERROR: ", "bold red"),
+        Text(str(exc_value)),
+        "\n\n",
+        ("WHY: ", "bold yellow"),
+        Text(why),
+        "\n",
+        ("HOW TO FIX: ", "bold green"),
+        Text(how),
+    )
 
     console.print()
     console.print(
         Panel(
-            error_msg,
+            error_body,
             title=err.PANEL_TITLE_SYSTEM_ERROR,
             border_style="red",
             expand=False,
@@ -255,8 +262,9 @@ def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
     )
 
 
-# Set the global exception hook
-sys.excepthook = handle_unhandled_exception
+def install_excepthook() -> None:
+    """Install the CLI unhandled-exception hook on ``sys.excepthook``."""
+    sys.excepthook = handle_unhandled_exception
 
 
 if __name__ == "__main__":

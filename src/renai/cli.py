@@ -12,8 +12,11 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
+from rich.text import Text
 
 from renai import __version__
 from renai.config import (
@@ -23,7 +26,7 @@ from renai.config import (
     initialize_directories,
 )
 from renai.exceptions import ConfigurationError
-from renai.logging_config import configure_logging
+from renai.logging_config import configure_logging, install_excepthook
 from renai.messages import cli as msg, orchestrator as orch_msg
 from renai.models.schemas import FallbackMode, ProcessingConfig
 from renai.processors.orchestrator import run_evaluation_pipeline, run_pipeline
@@ -116,9 +119,10 @@ def display_warnings(
     model: str | None = None,
     fallback_mode: FallbackMode | None = None,
     rename_images: bool = False,
+    dry_run: bool = False,
 ) -> None:
     """Display contextual warnings to the user before processing."""
-    if not app_settings.show_warnings:
+    if not app_settings.show_warnings or dry_run:
         return
 
     from rich.panel import Panel
@@ -206,9 +210,9 @@ def _print_process_header(root_dir: Path, mode: str, provider: str, model: str |
 
     title = msg.Info.HEADER_TITLE.format(__version__)
     info_cols = [
-        msg.Info.HEADER_DIR.format(root_dir.name),
-        msg.Info.HEADER_MODE.format(mode),
-        msg.Info.HEADER_PROVIDER.format(provider, model or "default"),
+        msg.Info.HEADER_DIR.format(escape(root_dir.name)),
+        msg.Info.HEADER_MODE.format(escape(mode)),
+        msg.Info.HEADER_PROVIDER.format(escape(provider), escape(model or "default")),
     ]
     console.print(
         Panel(Columns(info_cols, expand=True), title=title, border_style="cyan", padding=(0, 1))
@@ -218,7 +222,7 @@ def _print_process_header(root_dir: Path, mode: str, provider: str, model: str |
 def _validate_cli_flags(root_dir: Path, fallback_mode: FallbackMode | None = None) -> None:
     """Validate directory existence and CLI inputs."""
     if not root_dir.is_dir():
-        console.print(msg.Info.DIR_NOT_FOUND.format(root_dir))
+        console.print(msg.Info.DIR_NOT_FOUND.format(escape(str(root_dir))))
         raise typer.Exit(code=1)
 
     # FallbackMode.NONE is an internal sentinel remapped to OCR by BookProcessor;
@@ -271,7 +275,9 @@ def check_vision_model_guard(
         logger.debug(f"Vision capability lookup failed for {eff_v_model}", exc_info=True)
         vis_ok = None
     if vis_ok is False:
-        _display_vision_missing_error(msg.Error.VISION_REASON_NOT_SUPPORTED.format(eff_v_model))
+        _display_vision_missing_error(
+            msg.Error.VISION_REASON_NOT_SUPPORTED.format(escape(eff_v_model))
+        )
         raise typer.Exit(code=1)
 
 
@@ -297,8 +303,10 @@ def _run_process_pipeline(
     """Run the processing pipeline with the CLI error mapping.
 
     Setup failure or any failed file maps to exit 1, user cancellation to
-    exit 0.
+    exit 130 (standard SIGINT exit code) with an undo hint when files were
+    already processed.
     """
+    progress_tracker: dict[str, int] = {"processed": 0, "total": 0}
     try:
         results = asyncio.run(
             run_pipeline(
@@ -306,14 +314,20 @@ def _run_process_pipeline(
                 provider=provider,
                 model=model,
                 config=config,
+                progress_tracker=progress_tracker,
             )
         )
     except ConfigurationError as exc:
-        console.print(msg.Error.SETUP_FAILED.format(exc))
+        console.print(msg.Error.SETUP_FAILED.format(escape(str(exc))))
         raise typer.Exit(code=1) from None
     except KeyboardInterrupt:
-        console.print(msg.Prompt.CANCELLED_EXIT)
-        raise typer.Exit(code=0) from None
+        processed = progress_tracker["processed"]
+        total = progress_tracker["total"]
+        if total > 0:
+            console.print(msg.Prompt.CANCELLED_PARTIAL.format(processed, total))
+        else:
+            console.print(msg.Prompt.CANCELLED_EXIT)
+        raise typer.Exit(code=130) from None
     # Scripting hook: the process command reports a partially failed batch via
     # a non-zero exit code; per-file reasons live in the summary failure table.
     if any(not r.success for r in results):
@@ -356,6 +370,8 @@ def process_cmd(
         typer.Option(
             "--workers",
             "-w",
+            min=1,
+            max=32,
             help=msg.Help.WORKERS,
         ),
     ] = None,
@@ -511,7 +527,9 @@ def process_cmd(
     # offending field instead of silently continuing on factory defaults.
     if config_load_error is not None:
         console.print(
-            msg.Error.SETUP_FAILED.format(orch_msg.Error.SETTINGS_INVALID.format(config_load_error))
+            msg.Error.SETUP_FAILED.format(
+                escape(orch_msg.Error.SETTINGS_INVALID.format(config_load_error))
+            )
         )
         raise typer.Exit(code=1)
 
@@ -522,7 +540,7 @@ def process_cmd(
     except ValueError as err:
         console.print(
             msg.Error.SETUP_FAILED.format(
-                orch_msg.Error.INVALID_FALLBACK_MODE.format(app_settings.fallback_mode)
+                escape(orch_msg.Error.INVALID_FALLBACK_MODE.format(app_settings.fallback_mode))
             )
         )
         raise typer.Exit(code=1) from err
@@ -563,7 +581,17 @@ def process_cmd(
         if val is not None:
             overrides[key] = val
 
-    config = _build_processing_config(**overrides)
+    try:
+        config = _build_processing_config(**overrides)
+    except ValidationError as exc:
+        first_err = exc.errors()[0] if exc.errors() else None
+        if first_err:
+            loc = ".".join(str(part) for part in first_err.get("loc", ()))
+            detail = f"{loc}: {first_err.get('msg', str(exc))}" if loc else str(exc)
+        else:
+            detail = str(exc)
+        console.print(msg.Error.SETUP_FAILED.format(escape(detail)))
+        raise typer.Exit(code=1) from None
 
     _print_process_header(root_dir, mode, resolved_provider, resolved_model)
     display_warnings(
@@ -573,6 +601,7 @@ def process_cmd(
         resolved_model,
         final_fallback,
         resolved_rename_images,
+        dry_run=dry_run,
     )
     _run_process_pipeline(config, root_dir, resolved_provider, resolved_model)
 
@@ -596,6 +625,8 @@ def evaluate_cmd(
         int | None,
         typer.Option(
             "--workers",
+            min=1,
+            max=32,
             help=msg.Help.EVAL_WORKERS,
         ),
     ] = None,
@@ -604,7 +635,7 @@ def evaluate_cmd(
     resolved_workers = workers if workers is not None else app_settings.workers
     target_dir = Path(directory or ".").resolve()
     if not target_dir.is_dir():
-        console.print(msg.Info.DIR_NOT_FOUND.format(target_dir))
+        console.print(msg.Info.DIR_NOT_FOUND.format(escape(str(target_dir))))
         raise typer.Exit(code=1)
 
     try:
@@ -616,7 +647,7 @@ def evaluate_cmd(
             )
         )
     except ConfigurationError as exc:
-        console.print(msg.Error.SETUP_FAILED.format(exc))
+        console.print(msg.Error.SETUP_FAILED.format(escape(str(exc))))
         raise typer.Exit(code=1) from None
     except KeyboardInterrupt:
         console.print(msg.Prompt.EVAL_CANCELLED)
@@ -677,17 +708,22 @@ def undo_cmd() -> None:
         console.print(msg.Info.UNDO_NOTHING)
         return
     attempted = result.reverted + result.skipped + result.failed
-    console.print(msg.Info.UNDO_RUN.format(result.run_id, attempted))
+    console.print(msg.Info.UNDO_RUN.format(escape(str(result.run_id)), attempted))
     if result.reverted > 0:
         console.print(msg.Info.UNDO_REVERTED.format(result.reverted))
     if result.failed > 0:
         console.print(msg.Info.UNDO_FAILED.format(result.failed))
+        for reason in result.errors:
+            console.print(Text.assemble(("  • ", "red"), (reason, "red")))
     if result.skipped > 0:
         console.print(msg.Info.UNDO_SKIPPED.format(result.skipped))
+    if result.failed > 0:
+        raise typer.Exit(code=1)
 
 
 def main() -> None:
     """Main CLI entry point."""
+    install_excepthook()
     app()
 
 
