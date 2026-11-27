@@ -1,6 +1,8 @@
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 
 def mock_if_missing(module_name):
     """
@@ -77,3 +79,40 @@ dependencies = [
 
 for dep in dependencies:
     mock_if_missing(dep)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_app_dirs(tmp_path, monkeypatch):
+    """Redirect app data/cache/undo-journal dirs to tmp_path for every test.
+
+    Prevents tests from mutating the developer's real undo_journal.jsonl or cache dir.
+    """
+    import renai.config  # noqa: F401 - ensure config modules are loaded before patching
+
+    app_dir = tmp_path / "renai_app_data"
+    cache_dir = app_dir / "Cache"
+    debug_dir = app_dir / "ocr_debug"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    targets = (
+        ("renai.config.constants", "APP_DATA_DIR", app_dir),
+        ("renai.config.constants", "CACHE_DIR", cache_dir),
+        ("renai.config.constants", "DATA_DIR", app_dir),
+        ("renai.config.constants", "CONFIG_DIR", app_dir),
+        ("renai.config.constants", "DEBUG_DIR", debug_dir),
+        ("renai.config", "APP_DATA_DIR", app_dir),
+        ("renai.config", "CACHE_DIR", cache_dir),
+        ("renai.config", "DATA_DIR", app_dir),
+        ("renai.config", "CONFIG_DIR", app_dir),
+        ("renai.config", "DEBUG_DIR", debug_dir),
+        ("renai.config.directories", "APP_DATA_DIR", app_dir),
+        ("renai.config.directories", "CACHE_DIR", cache_dir),
+        ("renai.config.directories", "DEBUG_DIR", debug_dir),
+        ("renai.cache.manager", "CACHE_DIR", cache_dir),
+        ("renai.cache.manager", "DEBUG_DIR", debug_dir),
+        ("renai.engines.render", "CACHE_DIR", cache_dir),
+    )
+    for mod_name, attr, value in targets:
+        mod = sys.modules.get(mod_name)
+        if mod is not None and hasattr(mod, attr):
+            monkeypatch.setattr(mod, attr, value)

@@ -121,3 +121,6 @@ docs/history/p0-fixes-report.md
 # Local AI agent tooling
 .claude/
 CLAUDE.md
+.opencode/
+.gitnexus/
+.rumdl_cache/
