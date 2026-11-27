@@ -338,40 +338,52 @@ class OCREngine:
         """Shutdown the shared ProcessPoolExecutor."""
         self.shutdown_process_pool(wait=wait)
 
-    async def _preprocess_image(self, image: Image.Image) -> Image.Image:
+    async def _preprocess_image(self, image: Image.Image) -> Image.Image | None:
         """Handles resizing and enhancements in a ProcessPoolExecutor to bypass GIL.
 
         Note: On Windows or environments using 'spawn' process context, pickling bound
-        methods requires top-level module pickling support. Any pickling failure automatically
-        falls back to asyncio.to_thread.
+        methods requires top-level module pickling support. Broken pool errors reset the
+        shared pool and fall back to asyncio.to_thread; per-page errors are logged and
+        return None without tearing down the pool for concurrent files.
         """
+        import pickle
+        from concurrent.futures import BrokenExecutor
+        from concurrent.futures.process import BrokenProcessPool
+
         try:
             loop = asyncio.get_running_loop()
-            # Guard the check-then-act on pool creation so concurrent callers
-            # don't race on startup (two pools / interleaved None checks).
+            # Guard the check-then-act on pool creation and capture the pool
+            # reference under the lock so a concurrent reset cannot route this
+            # call to the default executor.
             with OCREngine._process_pool_lock:
                 if OCREngine._process_pool is None:
                     OCREngine._process_pool = ProcessPoolExecutor(
                         max_workers=getattr(self, "max_workers", OCREngine._max_workers),
                         mp_context=multiprocessing.get_context("spawn"),
                     )
-            return await loop.run_in_executor(
-                OCREngine._process_pool, self._sync_preprocess_image, image
-            )
-        except Exception as e:
-            # A broken pool (e.g. BrokenProcessPool) must not stay installed as
-            # the class attribute: shut it down and clear it so the next call
-            # recreates a fresh pool instead of failing on every page.
-            with OCREngine._process_pool_lock:
                 pool = OCREngine._process_pool
+            return await loop.run_in_executor(pool, self._sync_preprocess_image, image)
+        except (BrokenProcessPool, BrokenExecutor) as e:
+            # A broken pool must not stay installed as the class attribute:
+            # shut it down and clear it so the next call recreates a fresh pool.
+            with OCREngine._process_pool_lock:
+                broken_pool = OCREngine._process_pool
                 OCREngine._process_pool = None
-            if pool is not None:
+            if broken_pool is not None:
                 with contextlib.suppress(Exception):
-                    pool.shutdown(wait=False)
-                logger.warning(f"Process pool failed ({e}); pool reset, falling back to thread")
+                    broken_pool.shutdown(wait=False)
+                logger.warning(f"Process pool broken ({e}); pool reset, falling back to thread")
             else:
                 logger.debug(f"ProcessPool execution fallback to thread: {e}")
             return await asyncio.to_thread(self._sync_preprocess_image, image)
+        except (pickle.PicklingError, TypeError, AttributeError) as e:
+            # Pickling failures (e.g. Windows spawn or mocked engines) fall back
+            # to a thread without tearing down the shared pool.
+            logger.debug(f"ProcessPool pickling fallback to thread: {e}")
+            return await asyncio.to_thread(self._sync_preprocess_image, image)
+        except Exception as e:
+            logger.error(f"Image preprocessing failed: {e}")
+            return None
 
     def _sync_preprocess_image(self, image: Image.Image) -> Image.Image:
         """Sync version of preprocessing for thread execution."""
@@ -457,7 +469,7 @@ class OCREngine:
                 if use_mutool
                 else None
             )
-            pymupdf_renderer = create_page_renderer(doc=doc)
+            pymupdf_renderer = create_page_renderer(doc=doc, max_dimension=self.MAX_DIMENSION)
 
             if mutool_renderer is not None:
                 bulk_pages = await mutool_renderer.render_pages(
@@ -515,6 +527,8 @@ class OCREngine:
                     return ""
 
                 image = await self._preprocess_image(page_result.image)
+                if image is None:
+                    return ""
 
                 if self.debug and file_debug_dir:
                     debug_dir = file_debug_dir

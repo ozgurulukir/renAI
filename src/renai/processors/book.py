@@ -241,6 +241,26 @@ class BookProcessor:
         )
         return metadata, is_vision_doc
 
+    def _no_metadata_result(self, file_path: Path, dry_run: bool) -> ProcessingResult:
+        """Build the ProcessingResult when metadata extraction yields None."""
+        if dry_run:
+            quarantine_folder = self.text_extractor.pop_dry_run_quarantine(file_path)
+            if quarantine_folder:
+                return ProcessingResult(
+                    success=True,
+                    file_path=file_path,
+                    name=file_path.name,
+                    original_name=file_path.name,
+                    category=quarantine_folder,
+                    error=f"[DRY-RUN] Would move to {quarantine_folder}",
+                )
+        return ProcessingResult(
+            success=False,
+            name=file_path.name,
+            original_name=file_path.name,
+            error="Extraction failed (No metadata generated)",
+        )
+
     async def process_file(self, file_path: Path) -> ProcessingResult:
         """Unified processing entry point for documents and images asynchronously.
 
@@ -282,12 +302,7 @@ class BookProcessor:
             )
 
             if not metadata:
-                return ProcessingResult(
-                    success=False,
-                    name=file_path.name,
-                    original_name=file_path.name,
-                    error="Extraction failed (No metadata generated)",
-                )
+                return self._no_metadata_result(file_path, dry_run)
 
             if mode in ("rename", "organize", "copy"):
                 if not isinstance(metadata, (BookMetadata, ImageMetadata)):

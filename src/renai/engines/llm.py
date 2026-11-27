@@ -395,6 +395,34 @@ class LLMEngine:
             logger.warning("Metadata refinement failed (%s); keeping initial metadata.", e)
             return initial_model
 
+    @staticmethod
+    def _encode_vision_image(image_bytes: bytes, file_name: str) -> tuple[str, str]:
+        """Encode image bytes to base64 and return ``(b64_str, mime_subtype)``.
+
+        Formats outside the standard vision set (jpeg, png, gif, webp) — such as
+        TIFF, BMP, or HEIC — are transcoded to JPEG via Pillow when possible so
+        the declared MIME type matches the payload.
+        """
+        raw_ext = Path(file_name).suffix.lower().lstrip(".")
+        if raw_ext == "jpg":
+            raw_ext = "jpeg"
+        if raw_ext in ("jpeg", "png", "gif", "webp"):
+            return base64.b64encode(image_bytes).decode("utf-8"), raw_ext
+
+        try:
+            from io import BytesIO
+
+            from PIL import Image
+
+            with Image.open(BytesIO(image_bytes)) as img:
+                rgb = img.convert("RGB") if img.mode not in ("RGB", "L") else img
+                buf = BytesIO()
+                rgb.save(buf, format="JPEG", quality=85)
+                return base64.b64encode(buf.getvalue()).decode("utf-8"), "jpeg"
+        except Exception as e:
+            logger.debug("Could not transcode %s to JPEG (%s); sending raw bytes.", file_name, e)
+            return base64.b64encode(image_bytes).decode("utf-8"), "jpeg"
+
     async def get_book_metadata_from_image(
         self,
         image_path: Path,
@@ -408,11 +436,13 @@ class LLMEngine:
 
         try:
             if isinstance(image_data, list):
-                image_base64: str | list[str] = [
-                    base64.b64encode(img).decode("utf-8") for img in image_data
+                encoded_pairs = [
+                    self._encode_vision_image(img, image_path.name) for img in image_data
                 ]
+                image_base64: str | list[str] = [b64 for b64, _ in encoded_pairs]
+                image_format = encoded_pairs[0][1] if encoded_pairs else "jpeg"
             else:
-                image_base64 = base64.b64encode(image_data).decode("utf-8")
+                image_base64, image_format = self._encode_vision_image(image_data, image_path.name)
 
             system_role = self._get_system_role(
                 "book_extractor", BookMetadata, categories=allowed_categories
@@ -424,6 +454,7 @@ class LLMEngine:
                 file_name=image_path.name,
                 model_class=BookMetadata,
                 allowed_categories=allowed_categories,
+                image_format=image_format,
             )
 
             if not initial_model:
@@ -446,7 +477,7 @@ class LLMEngine:
             return None
 
         try:
-            image_base64 = base64.b64encode(image_data).decode("utf-8")
+            image_base64, image_format = self._encode_vision_image(image_data, image_path.name)
             system_role = self._get_system_role(
                 "image_analyzer",
                 ImageMetadata,
@@ -460,6 +491,7 @@ class LLMEngine:
                 file_name=image_path.name,
                 model_class=ImageMetadata,
                 allowed_categories=image_categories,
+                image_format=image_format,
             )
         except Exception as e:
             logger.error(f"Vision image extraction failed for {image_path.name}: {e}")
@@ -472,11 +504,15 @@ class LLMEngine:
         file_name: str,
         model_class: type[T],
         allowed_categories: dict[str, list] | None = None,
+        image_format: str | None = None,
     ) -> T | None:
         """Helper for vision calls with type-safe model validation."""
-        image_format = Path(file_name).suffix.lower().replace(".", "") or "jpeg"
-        if image_format not in ("jpeg", "png", "gif", "webp"):
-            image_format = "jpeg"
+        if image_format is None:
+            image_format = Path(file_name).suffix.lower().replace(".", "") or "jpeg"
+            if image_format == "jpg":
+                image_format = "jpeg"
+            if image_format not in ("jpeg", "png", "gif", "webp"):
+                image_format = "jpeg"
 
         images = [image_base64] if isinstance(image_base64, str) else image_base64
 
@@ -532,10 +568,46 @@ class LLMEngine:
         return None
 
     @staticmethod
-    def _try_repair_json(content: str) -> str | None:
+    def _strip_trailing_commas(content: str) -> str:
+        """Remove trailing commas before ``}`` or ``]`` outside JSON string literals."""
+        out: list[str] = []
+        in_string = False
+        escaped = False
+        n = len(content)
+        i = 0
+        while i < n:
+            ch = content[i]
+            if in_string:
+                out.append(ch)
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                i += 1
+                continue
+            if ch == '"':
+                in_string = True
+                out.append(ch)
+                i += 1
+                continue
+            if ch == ",":
+                j = i + 1
+                while j < n and content[j] in " \t\r\n":
+                    j += 1
+                if j < n and content[j] in "}]":
+                    i += 1
+                    continue
+            out.append(ch)
+            i += 1
+        return "".join(out)
+
+    @classmethod
+    def _try_repair_json(cls, content: str) -> str | None:
         """Attempt local string repairs for common LLM JSON syntax errors."""
-        # 1. Remove trailing commas before closing braces/brackets
-        repaired = re.sub(r",\s*([\}\]])", r"\1", content)
+        # 1. Remove trailing commas before closing braces/brackets (string-aware)
+        repaired = cls._strip_trailing_commas(content)
         # 2. Extract first '{' to last '}' if surrounded by extraneous text
         start = repaired.find("{")
         end = repaired.rfind("}")
@@ -685,7 +757,7 @@ class LLMEngine:
                 if isinstance(err, RateLimitError):
                     retry_after = _extract_retry_after_seconds(err)
                     if retry_after is not None:
-                        sleep_for = max(sleep_for, retry_after)
+                        sleep_for = min(max(sleep_for, retry_after), max_backoff_sec)
                 logger.warning(
                     "%s for %s. Retrying in %.1fs... Error: %s",
                     label,
@@ -708,7 +780,8 @@ class LLMEngine:
         headers = self._prepare_completion_headers()
         last_parsed_data: dict[str, Any] | None = None
 
-        for attempt in range(self.call_policy.max_retries):
+        total_attempts = 1 + self.call_policy.max_retries
+        for attempt in range(total_attempts):
             try:
                 temperature = (
                     self.call_policy.temperature
@@ -723,10 +796,22 @@ class LLMEngine:
                     context_name=context_name,
                 )
                 if not content:
+                    logger.warning(
+                        "Empty LLM response for %s (Attempt %d/%d).",
+                        context_name,
+                        attempt + 1,
+                        total_attempts,
+                    )
                     continue
 
                 raw_data = self._parse_json_content(content)
                 if raw_data is None:
+                    logger.warning(
+                        "Could not parse JSON from LLM response for %s (Attempt %d/%d).",
+                        context_name,
+                        attempt + 1,
+                        total_attempts,
+                    )
                     continue
                 last_parsed_data = raw_data
 
@@ -756,6 +841,14 @@ class LLMEngine:
                 logger.error(f"Failed to generate JSON completion for {context_name}: {e}")
 
         # Final Fallback to a forced category if JSON exists
-        return self._attempt_final_fallback(
+        fallback_result = self._attempt_final_fallback(
             last_parsed_data, model_class, categories_override=allowed_categories
         )
+        if fallback_result is None:
+            logger.warning(
+                "LLM extraction produced no valid %s for %s after %d attempt(s).",
+                model_class.__name__,
+                context_name,
+                total_attempts,
+            )
+        return fallback_result
