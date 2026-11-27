@@ -5,6 +5,15 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 path = "src/renai/__init__.py"
 
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "src/renai",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+]
+
 [project]
 name = "renai"
 dynamic = ["version"]

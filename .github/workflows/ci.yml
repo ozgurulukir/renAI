@@ -12,6 +12,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -38,18 +39,20 @@ jobs:
         run: uv sync --frozen --group test
 
       - name: Run tests
-        run: uv run pytest tests/ -v --tb=short --cov=src/renai --cov-report=xml --cov-report=term-missing
+        run: uv run pytest tests/ -v --tb=short --cov=src/renai --cov-report=xml --cov-report=term-missing --cov-fail-under=90
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@v7
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
+          version: "v10.0.1"
           flags: unittests
           name: renAI
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -66,14 +69,21 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install lint dependencies
+        run: uv sync --frozen --group lint
+
       - name: Run ruff (linting)
-        run: uvx ruff check src/ tests/
+        run: uv run ruff check src/ tests/
+
+      - name: Run ruff (formatting)
+        run: uv run ruff format --check src/ tests/
 
       - name: Run pyright (type checking)
-        run: uvx pyright src/renai
+        run: uv run pyright src/renai
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -97,4 +107,25 @@ jobs:
         run: |
           pip install dist/*.whl
           renai --help
+          python -c "
+          from pathlib import Path
+          import renai
+          pkg = Path(renai.__file__).resolve().parent
+          prompts = list((pkg / 'prompts').glob('*.txt'))
+          tomls = list((pkg / 'config').glob('*.default.toml'))
+          assert prompts, 'Missing bundled prompt templates'
+          assert tomls, 'Missing bundled default TOML configs'
+          print(f'Verified {len(prompts)} prompt templates and {len(tomls)} default TOML files')
+          "
+          python -c "
+          import glob, tarfile
+          sdists = glob.glob('dist/*.tar.gz')
+          assert len(sdists) == 1, f'Expected 1 sdist, found {sdists}'
+          with tarfile.open(sdists[0], 'r:gz') as tf:
+              names = tf.getnames()
+          forbidden = ('.opencode/', '.gitnexus/', '.rumdl_cache/', '/tests/', '/.github/')
+          bad = [n for n in names if any(f in n for f in forbidden)]
+          assert not bad, f'Forbidden entries in sdist: {bad[:10]}'
+          print(f'Verified sdist ({len(names)} entries) is clean')
+          "
 

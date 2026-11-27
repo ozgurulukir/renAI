@@ -10,6 +10,7 @@ import asyncio
 import atexit
 import contextlib
 import logging
+import multiprocessing
 import re
 import shutil
 import subprocess
@@ -351,7 +352,8 @@ class OCREngine:
             with OCREngine._process_pool_lock:
                 if OCREngine._process_pool is None:
                     OCREngine._process_pool = ProcessPoolExecutor(
-                        max_workers=getattr(self, "max_workers", OCREngine._max_workers)
+                        max_workers=getattr(self, "max_workers", OCREngine._max_workers),
+                        mp_context=multiprocessing.get_context("spawn"),
                     )
             return await loop.run_in_executor(
                 OCREngine._process_pool, self._sync_preprocess_image, image

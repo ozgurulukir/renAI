@@ -199,8 +199,9 @@ class TestExtractText:
         created: list[MagicMock] = []
 
         class FakePool:
-            def __init__(self, max_workers=None):
+            def __init__(self, max_workers=None, mp_context=None):
                 self.max_workers = max_workers
+                self.mp_context = mp_context
                 created.append(self)
 
             def run_in_executor(self, *args, **kwargs):
