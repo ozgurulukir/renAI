@@ -74,7 +74,7 @@ def test_process_cmd_success(tmp_path):
 
         assert mock_header.call_count == 1
         mock_warnings.assert_called_once_with(
-            "rename", True, "openai", "gpt-4", FallbackMode.OCR, True
+            "rename", True, "openai", "gpt-4", FallbackMode.OCR, True, dry_run=False
         )
         assert mock_run_pipeline.call_count == 1
 
@@ -128,7 +128,7 @@ def test_process_cmd_keyboard_interrupt(tmp_path):
                 benchmark=False,
                 vision_max_pages=3,
             )
-        assert exc_info.value.exit_code == 0
+        assert exc_info.value.exit_code == 130
         mock_console.print.assert_any_call("\n[yellow]Cancelled by user. Exiting...[/yellow]")
 
 

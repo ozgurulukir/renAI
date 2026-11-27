@@ -7,11 +7,13 @@ from typing import Any
 
 from rich.console import Console, Group
 from rich.live import Live
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     Progress,
     SpinnerColumn,
+    TaskID,
     TaskProgressColumn,
     TextColumn,
     TimeRemainingColumn,
@@ -153,12 +155,13 @@ async def setup_engines(
             v_prov_config = PROVIDERS[vision_provider]
             v_api_key = get_api_key(vision_provider)
             if v_api_key:
+                vision_rate_limiter = AsyncRateLimiter(rpm=config.llm_rpm_limit)
                 vision_llm_engine = LLMEngine(
                     provider=vision_provider,
                     api_key=v_api_key,
                     base_url=v_prov_config.base_url,
                     model_name=vision_model_name,
-                    rate_limiter=rate_limiter,
+                    rate_limiter=vision_rate_limiter,
                     call_policy=call_policy,
                 )
             elif vision_required:
@@ -219,7 +222,13 @@ class StatusDisplay:
         self.max_activities = MAX_RECENT_ACTIVITIES
         self.progress = progress
 
-    def update(self, result: ProcessingResult | str):
+    def reset_counters(self) -> None:
+        """Reset per-batch processed/success/failed counters."""
+        self.processed = 0
+        self.successful = 0
+        self.failed = 0
+
+    def update(self, result: ProcessingResult | str | Text):
         if isinstance(result, ProcessingResult):
             self.processed += 1
             if result.success:
@@ -232,18 +241,24 @@ class StatusDisplay:
             )
             display_name = getattr(result, "name", None) or getattr(result, "file_path", None)
             display_name = str(display_name) if display_name else "Unknown"
+            # Aggressive truncation to prevent terminal row wrapping corruption
+            if len(display_name) > MAX_DISPLAY_NAME_LENGTH:
+                display_name = display_name[: MAX_DISPLAY_NAME_LENGTH - 3] + "..."
+            res_text = Text.assemble(status, " ", display_name)
+        elif isinstance(result, Text):
+            status = Text("•", style="dim")
+            res_text = Text.assemble(status, " ", result)
         else:
             status = Text("•", style="dim")
             display_name = str(result)
+            # Aggressive truncation to prevent terminal row wrapping corruption
+            if len(display_name) > MAX_DISPLAY_NAME_LENGTH:
+                display_name = display_name[: MAX_DISPLAY_NAME_LENGTH - 3] + "..."
+            # Dynamic strings (file names, LLM-derived text) are passed as plain
+            # Text renderables so characters like "[" are displayed verbatim and
+            # never parsed as Rich markup.
+            res_text = Text.assemble(status, " ", display_name)
 
-        # Aggressive truncation to prevent terminal row wrapping corruption
-        if len(display_name) > MAX_DISPLAY_NAME_LENGTH:
-            display_name = display_name[: MAX_DISPLAY_NAME_LENGTH - 3] + "..."
-
-        # Dynamic strings (file names, LLM-derived text) are passed as plain
-        # Text renderables so characters like "[" are displayed verbatim and
-        # never parsed as Rich markup.
-        res_text = Text.assemble(status, " ", display_name)
         self.activities.append(res_text)
 
         if len(self.activities) > MAX_RECENT_ACTIVITIES:
@@ -329,6 +344,7 @@ async def _execute_processing_loop(
     provider: str,
     model: str | None,
     config: ProcessingConfig,
+    progress_tracker: dict[str, int] | None = None,
 ) -> list[ProcessingResult]:
     """Execute the file processing loop with real-time progress visualization."""
     progress = Progress(
@@ -363,7 +379,14 @@ async def _execute_processing_loop(
         ) as live,
     ):
         if config.benchmark:
-            await _run_benchmark_mode(processor, file_paths, status_display, live)
+            await _run_benchmark_mode(
+                processor,
+                file_paths,
+                status_display,
+                live,
+                progress=progress,
+                main_task=main_task,
+            )
             return []
 
         # Standard Mode (Rename, Organize, Evaluate)
@@ -393,6 +416,8 @@ async def _execute_processing_loop(
 
                 status_display.update(res)
                 progress.advance(main_task)
+                if progress_tracker is not None:
+                    progress_tracker["processed"] = status_display.processed
 
                 return res
 
@@ -508,6 +533,7 @@ async def run_pipeline(
     provider: str,
     model: str | None = None,
     config: ProcessingConfig | None = None,
+    progress_tracker: dict[str, int] | None = None,
 ) -> list[ProcessingResult]:
     """Core processing pipeline orchestration.
 
@@ -541,11 +567,20 @@ async def run_pipeline(
 
         # 2. Collection (KeyboardInterrupt propagates to the CLI, which owns exit UX)
         file_paths = collect_files(root_dir, processor, config.recursive, config.rename_images)
+        if progress_tracker is not None:
+            progress_tracker["total"] = len(file_paths)
 
         console.print()
 
         # 3. Execution Loop
-        results = await _execute_processing_loop(processor, file_paths, provider, model, config)
+        results = await _execute_processing_loop(
+            processor,
+            file_paths,
+            provider,
+            model,
+            config,
+            progress_tracker=progress_tracker,
+        )
 
         # 4. Final Summary Card (Static, will stay in terminal history)
         if not config.benchmark and results:
@@ -564,6 +599,8 @@ async def _run_benchmark_mode(
     file_paths: list[Path],
     status_display: StatusDisplay,
     live: Live,
+    progress: Progress | None = None,
+    main_task: TaskID | None = None,
 ) -> None:
     """Run PDF extraction benchmark across multiple libraries."""
     # Derived from the extractor registry (SSoT) so a new backend is
@@ -579,8 +616,12 @@ async def _run_benchmark_mode(
         )
         file_paths = file_paths[:sample_count]
 
+    if progress is not None and main_task is not None:
+        progress.update(main_task, total=len(extractors_to_test) * len(file_paths))
+
     for ext_name in extractors_to_test:
-        bench_msg = orch_msg.Benchmark.TESTING.format(ext_name)
+        status_display.reset_counters()
+        bench_msg = Text.from_markup(orch_msg.Benchmark.TESTING.format(escape(ext_name)))
         status_display.update(bench_msg)
 
         processor.swap_extractor(ext_name)
@@ -599,6 +640,8 @@ async def _run_benchmark_mode(
                     original_name=f_path.name,
                 )
             )
+            if progress is not None and main_task is not None:
+                progress.advance(main_task)
 
         duration = time.perf_counter() - start_t
         benchmark_data.append(
@@ -608,7 +651,9 @@ async def _run_benchmark_mode(
                 "success": f"{success_count}/{len(file_paths)}",
             }
         )
-        status_display.update(orch_msg.Benchmark.COMPLETED.format(ext_name, duration))
+        status_display.update(
+            Text.from_markup(orch_msg.Benchmark.COMPLETED.format(escape(ext_name), duration))
+        )
 
     # Show Benchmark Result Table outside live
     live.stop()
@@ -638,33 +683,44 @@ async def run_evaluation_pipeline(
         return
 
     console.print(orch_msg.Eval.HEADER)
-    console.print(orch_msg.Eval.TARGET.format(root_dir))
+    console.print(orch_msg.Eval.TARGET.format(escape(str(root_dir))))
     console.print(orch_msg.Eval.MODEL_COUNT.format(len(target_models)))
 
     all_eval_results: dict[str, list[ProcessingResult]] = {}
 
     for provider, model_name in target_models:
-        console.print(orch_msg.Eval.PER_PROVIDER.format(provider, model_name))
+        console.print(orch_msg.Eval.PER_PROVIDER.format(escape(provider), escape(model_name)))
 
-        results = await run_pipeline(
-            root_dir=root_dir,
-            provider=provider,
-            model=model_name,
-            config=ProcessingConfig.from_app_settings(
-                mode="evaluate",
-                workers=workers,
-                recursive=False,
-                fallback_mode=FallbackMode.OCR,
-                # Evaluate must never quarantine or relocate files, regardless
-                # of settings: from_app_settings derives skip_ocr_checks from
-                # skip_needs_ocr, so both quarantine knobs are forced off here
-                # (BookProcessor re-enforces the same invariants, issue #245).
-                move_scan_failures=False,
-                skip_ocr_checks=False,
-            ),
-        )
+        try:
+            results = await run_pipeline(
+                root_dir=root_dir,
+                provider=provider,
+                model=model_name,
+                config=ProcessingConfig.from_app_settings(
+                    mode="evaluate",
+                    workers=workers,
+                    recursive=False,
+                    fallback_mode=FallbackMode.OCR,
+                    # Evaluate must never quarantine or relocate files, regardless
+                    # of settings: from_app_settings derives skip_ocr_checks from
+                    # skip_needs_ocr, so both quarantine knobs are forced off here
+                    # (BookProcessor re-enforces the same invariants, issue #245).
+                    move_scan_failures=False,
+                    skip_ocr_checks=False,
+                ),
+            )
+        except ConfigurationError as exc:
+            console.print(
+                Text.assemble(
+                    ("Skipping ", "yellow"),
+                    (f"{provider}/{model_name}", "bold yellow"),
+                    (f": {exc}", "red"),
+                )
+            )
+            all_eval_results[f"{provider}/{model_name}"] = []
+            continue
         all_eval_results[f"{provider}/{model_name}"] = results
-        console.print(orch_msg.Eval.RESULTS_LOGGED.format(EVAL_LOG_FILE))
+        console.print(orch_msg.Eval.RESULTS_LOGGED.format(escape(str(EVAL_LOG_FILE))))
 
     _print_evaluation_summary(all_eval_results)
 
@@ -714,28 +770,28 @@ def _print_evaluation_summary(all_eval_results: dict[str, list[ProcessingResult]
 
         for model_key, res in runs:
             status = Text("SUCCESS", style="green") if res.success else Text("FAILED", style="red")
-            title: Any = ""
-            author: Any = ""
-            category: Any = ""
-            year: Any = ""
+            title_cell = Text("")
+            author_cell = Text("")
+            category_cell = Text("")
+            year_cell = Text("")
 
             if res.success and res.metadata:
-                title = res.metadata.get("title") or ""
-                author = res.metadata.get("author") or ""
-                category = res.metadata.get("category") or ""
-                year = str(res.metadata.get("year") or "")
+                title_cell = Text(str(res.metadata.get("title") or "")[:40])
+                author_cell = Text(str(res.metadata.get("author") or "")[:30])
+                category_cell = Text(str(res.metadata.get("category") or "")[:20])
+                year_cell = Text(str(res.metadata.get("year") or ""))
             elif res.error:
-                title = Text(f"Error: {res.error[:30]}", style="dim red")
+                title_cell = Text(f"Error: {res.error}"[:40], style="dim red")
 
             # LLM-derived metadata and error strings go in as plain Text so
             # markup-lookalike content renders verbatim (issue #254).
             table.add_row(
                 Text(str(model_key)),
                 status,
-                Text(str(title))[:40],
-                Text(str(author))[:30],
-                Text(str(category))[:20],
-                Text(str(year)),
+                title_cell,
+                author_cell,
+                category_cell,
+                year_cell,
             )
         console.print(table)
         console.print()

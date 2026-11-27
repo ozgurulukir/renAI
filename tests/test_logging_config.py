@@ -271,7 +271,6 @@ def test_handle_unhandled_exception():
 
 
 def test_handle_unhandled_exception_keyboard_interrupt():
-
     from renai.logging_config import handle_unhandled_exception
 
     exc_type, exc_value, exc_traceback = (
@@ -281,7 +280,7 @@ def test_handle_unhandled_exception_keyboard_interrupt():
     )
     with patch("sys.__excepthook__") as mock_excepthook:
         handle_unhandled_exception(exc_type, exc_value, exc_traceback)
-        mock_excepthook.assert_called_once_with(exc_type, exc_value, exc_traceback)
+        mock_excepthook.assert_not_called()
 
 
 if __name__ == "__main__":

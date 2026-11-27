@@ -62,6 +62,7 @@ class UndoResult:
     reverted: int = 0
     skipped: int = 0
     failed: int = 0
+    errors: list[str] = dataclasses.field(default_factory=list)
 
 
 def ensure_within_root(path: Path, root_dir: Path) -> None:
@@ -291,13 +292,14 @@ def undo_last_operation(cache_dir: Path | None = None) -> UndoResult:
                 logger.warning("Skipping malformed undo entry: %r", entry)
                 result.skipped += 1
                 continue
-            old_path = Path(old_raw)
-            new_path = Path(new_raw)
+            old_path, new_path = Path(old_raw), Path(new_raw)
             if not new_path.exists():
                 # Nothing left to move back: count as failed and drop so a
                 # dead entry never pins the newest-run pointer (#285).
-                logger.error(f"Cannot undo {old_path}: recorded path {new_path} no longer exists")
+                reason = f"{old_path}: recorded path {new_path} no longer exists"
+                logger.error(f"Cannot undo {reason}")
                 result.failed += 1
+                result.errors.append(reason)
                 continue
             if old_path.exists():
                 # Never overwrite or move into whatever now occupies the
@@ -312,8 +314,10 @@ def undo_last_operation(cache_dir: Path | None = None) -> UndoResult:
                 old_path.parent.mkdir(parents=True, exist_ok=True)
                 _robust_move(new_path, old_path)
             except Exception as e:
-                logger.error(f"Failed to undo {new_path} -> {old_path}: {e}")
+                reason = f"{new_path} -> {old_path}: {e}"
+                logger.error(f"Failed to undo {reason}")
                 result.failed += 1
+                result.errors.append(reason)
                 failed_retry.append(entry)
                 continue
             result.reverted += 1
