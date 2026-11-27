@@ -94,8 +94,8 @@ def paused_console_logging() -> Iterator[None]:
     """Defer stderr log output until the innermost block exits.
 
     The orchestrator wraps the Rich ``Live`` progress block so that per-file
-    log records (retry warnings, ``logger.exception`` tracebacks) cannot
-    interleave with the live rendering. Buffered records are replayed once,
+    log records (retry warnings, failure error lines) cannot interleave with
+    the live rendering. Buffered records are replayed once,
     right after the display closes and before the summary is printed. Nested
     uses buffer together and flush only at the outermost exit.
 
@@ -148,8 +148,12 @@ def configure_logging(
     root.addHandler(handler)
     root.setLevel(log_level)
 
-    # Reduce noise from third-party libraries
+    # Reduce noise from third-party libraries. openai 3.x ships its own
+    # httpx fork (httpx2) and logs every request/response line through it at
+    # INFO ("HTTP Request: POST ... 402 Payment Required"), so both names
+    # must be silenced or every API error floods the log stream.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpx2").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 

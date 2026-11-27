@@ -349,10 +349,10 @@ async def _execute_processing_loop(
     # would make `evaluate` continue with the next model after Ctrl+C.
     #
     # Log records are paused while the display owns the terminal: per-file
-    # failures log warnings and tracebacks (e.g. book.py's logger.exception),
-    # which would otherwise be written to the real stderr behind Rich Live's
-    # back and garble the progress screen. Buffered records replay right
-    # after the display closes, before the summary prints.
+    # failures log concise warnings and error lines (retry notices, failure
+    # reasons), which would otherwise be written to the real stderr behind
+    # Rich Live's back and garble the progress screen. Buffered records
+    # replay right after the display closes, before the summary prints.
     with (
         paused_console_logging(),
         Live(
