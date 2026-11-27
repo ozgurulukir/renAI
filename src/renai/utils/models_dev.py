@@ -261,16 +261,78 @@ def _match_provider_scoped_basename(catalog: dict, normalized: str) -> bool | No
     return None
 
 
-def is_vision_supported(model_name: str) -> bool | None:
+def _lookup_provider_model_info(
+    model_name: str, provider: str | None, providers_catalog: dict | None
+) -> dict | None:
+    """Look up a model's metadata entry inside a provider's own models table."""
+    if not provider or not providers_catalog or provider not in providers_catalog:
+        return None
+    p_models = providers_catalog[provider].get("models")
+    if not isinstance(p_models, dict):
+        return None
+
+    raw = model_name.strip()
+    stripped = (
+        raw.split(":", 1)[0] if ":" in raw and not raw.startswith(("http://", "https://")) else raw
+    )
+    prefix = f"{provider}/"
+    candidates = [raw, stripped]
+    if stripped.startswith(prefix):
+        candidates.append(stripped[len(prefix) :])
+
+    for candidate in candidates:
+        entry = p_models.get(candidate)
+        if isinstance(entry, dict):
+            return entry
+
+    target_lower = stripped.lower()
+    for key, info in p_models.items():
+        if key.lower() == target_lower and isinstance(info, dict):
+            return info
+    return None
+
+
+def is_text_output_model(model_info: dict | None) -> bool | None:
+    """Return whether a model entry lists ``"text"`` in its output modalities.
+
+    Returns ``None`` when modality metadata is absent so callers can distinguish
+    unknown models from explicitly non-text models (embeddings, TTS, image/video).
+    """
+    if not isinstance(model_info, dict):
+        return None
+    modalities = model_info.get("modalities")
+    if not isinstance(modalities, dict) or "output" not in modalities:
+        return None
+    outputs = modalities.get("output")
+    if not isinstance(outputs, list):
+        return None
+    return "text" in outputs
+
+
+def is_vision_supported(
+    model_name: str,
+    provider: str | None = None,
+    providers_catalog: dict | None = None,
+    catalog: dict | None = None,
+) -> bool | None:
     """Check if the given model name supports vision modalities.
+
+    Consults ``providers_catalog[provider]["models"][model_name]`` first when
+    available, falling back to the top-level ``models`` catalog.
 
     Returns:
         True: if supported
         False: if explicitly not supported
         None: if the model is not found in the catalog (unknown)
     """
-    catalog = get_models_catalog()
-    if not catalog:
+    provider_entry = _lookup_provider_model_info(model_name, provider, providers_catalog)
+    if provider_entry is not None:
+        modalities = provider_entry.get("modalities")
+        if isinstance(modalities, dict) and "input" in modalities:
+            return _check_vision_modalities(provider_entry)
+
+    models_catalog = catalog if catalog is not None else get_models_catalog()
+    if not models_catalog:
         return None
 
     raw = model_name.strip()
@@ -280,8 +342,8 @@ def is_vision_supported(model_name: str) -> bool | None:
     model_name_lower = raw.lower()
 
     # 1. Direct match
-    if model_name_lower in catalog:
-        return _check_vision_modalities(catalog[model_name_lower])
+    if model_name_lower in models_catalog:
+        return _check_vision_modalities(models_catalog[model_name_lower])
 
     # Standardize provider prefix aliases
     normalized = model_name_lower
@@ -294,12 +356,12 @@ def is_vision_supported(model_name: str) -> bool | None:
     elif normalized.startswith("mistralai/"):
         normalized = "mistral/" + normalized[len("mistralai/") :]
 
-    if normalized in catalog:
-        return _check_vision_modalities(catalog[normalized])
+    if normalized in models_catalog:
+        return _check_vision_modalities(models_catalog[normalized])
 
     # 2. Try matching by model basename (suffix), scoped to the same provider so
     #    two providers' variants that share a basename cannot shadow each other.
-    return _match_provider_scoped_basename(catalog, normalized)
+    return _match_provider_scoped_basename(models_catalog, normalized)
 
 
 def _check_vision_modalities(model_info: dict) -> bool:
@@ -308,15 +370,34 @@ def _check_vision_modalities(model_info: dict) -> bool:
     return "image" in inputs
 
 
-def filter_vision_models(model_names: list[str], catalog: dict | None = None) -> list[str]:
+def filter_vision_models(
+    model_names: list[str],
+    catalog: dict | None = None,
+    provider: str | None = None,
+    providers_catalog: dict | None = None,
+) -> list[str]:
     """Filter a list of catalog model IDs to only those supporting vision/image input.
 
-    Models that are explicitly known NOT to support vision (is_vision_supported is False)
-    are excluded. Unknown models (None) or vision-capable models (True) are retained.
+    Consults the provider's own ``modalities`` table first, falling back to the
+    top-level ``models`` catalog. When catalog modality information is available,
+    text-only models are excluded without falling back to the unfiltered list.
     """
-    catalog = catalog or get_models_catalog()
-    if not catalog:
+    has_provider_catalog = bool(provider and providers_catalog and provider in providers_catalog)
+    models_catalog = catalog
+    if models_catalog is None and not has_provider_catalog:
+        models_catalog = get_models_catalog()
+
+    if not models_catalog and not has_provider_catalog:
         return model_names
 
-    filtered = [m for m in model_names if is_vision_supported(m) is not False]
-    return filtered or model_names
+    return [
+        m
+        for m in model_names
+        if is_vision_supported(
+            m,
+            provider=provider,
+            providers_catalog=providers_catalog,
+            catalog=models_catalog or {},
+        )
+        is not False
+    ]

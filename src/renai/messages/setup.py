@@ -13,7 +13,9 @@ class Wizard:
         "[italic]Setting up your environment for AI-powered document organization.[/italic]"
     )
     CONFIG_DIR = "[info]Config directory:[/info] {}"
-    OVERWRITE_PROMPT = "User configuration files already exist. Overwrite?"
+    OVERWRITE_PROMPT = (
+        "User configuration files already exist. Update and merge with existing configuration?"
+    )
     CANCELLED = "[info]Setup cancelled.[/info]"
     STEP_1 = "\n[highlight]Step 1: Provider Setup[/highlight]"
     STEP_2 = "\n[highlight]Step 2: General Settings[/highlight]"
@@ -58,13 +60,21 @@ class Provider:
     MODEL_PROMPT = "Select or type a model for {}\n  (press Tab to show choices):"
     BASE_URL_PROMPT = "Base URL for {}:"
     API_KEY_PROMPT = "Enter your {} API Key:"
-    CUSTOM_KEY_PROMPT = "Custom API Key:"
+    CUSTOM_KEY_PROMPT = "Custom API Key (leave empty if not required):"
     CUSTOM_URL_PROMPT = "Custom API Base URL:"
     CUSTOM_MODEL_PROMPT = "Custom Model Name:"
+    FETCHING_CATALOG = "Fetching model catalog..."
+    INVALID_BASE_URL = "Base URL must be a non-empty http:// or https:// URL."
+    INVALID_MODEL = "Model name cannot be empty."
     VALIDATING = "[info]Validating {} API Key...[/info]"
     VALID_WARNING = "[warning]{}[/warning]"
     KEY_VALID = "[success]✔ API Key is valid![/success]"
     KEY_INVALID = "[error]API Key validation failed: {}[/error]"
+    KEY_ENDPOINT_UNSUPPORTED = "Endpoint does not support key listing (HTTP {})."
+    KEY_VALIDATION_ACTION = "How would you like to proceed?"
+    KEY_ACTION_RETRY = "Retry"
+    KEY_ACTION_SKIP = "Skip validation"
+    KEY_ACTION_CANCEL = "Cancel"
     CONNECTION_WARN = "Connection warning: {}"
     VALID_GENERIC_WARN = "Warning: Could not verify key status: {}"
     VALID_WRAPPER_WARN = "Warning: Could not run validation: {}"
@@ -75,6 +85,9 @@ class Provider:
     )
     VISION_PROMPT = "Would you like to configure a Vision model for image/PDF vision tasks?"
     VISION_USE_TEXT_MODEL = "Text model '{}' supports vision. Use it for Vision operations too?"
+    VISION_USE_TEXT_MODEL_UNKNOWN = (
+        "Vision support for '{}' is unknown. Use it for Vision operations anyway?"
+    )
     VISION_PROVIDER_SELECT = "Select the LLM provider for Vision operations:"
     VISION_MODEL_SELECT = "Select the Vision model for {}:"
     VISION_MODEL_PROMPT = "Select or type a Vision model for {}\n  (press Tab to show choices):"

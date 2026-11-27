@@ -71,9 +71,11 @@ def test_run_init_wizard_success_custom(tmp_path):
     mock_text.ask.side_effect = [
         "http://localhost:1234/v1",  # Custom API base
         "custom-model",  # Custom model name
-        "custom-key",  # Custom API key
         "4",  # Workers count
     ]
+
+    mock_password = MagicMock()
+    mock_password.ask.return_value = "custom-key"
 
     with (
         patch("renai.processors.setup.SETTINGS_USER_FILE", settings_user),
@@ -83,6 +85,7 @@ def test_run_init_wizard_success_custom(tmp_path):
         patch("questionary.confirm", return_value=mock_confirm),
         patch("questionary.select", return_value=mock_select),
         patch("questionary.text", return_value=mock_text),
+        patch("questionary.password", return_value=mock_password),
         patch("shutil.which", return_value="/bin/tesseract"),
         patch("renai.processors.setup.console.print"),
     ):
@@ -388,9 +391,12 @@ def test_prompt_and_validate_api_key_retry():
 
     mock_password = MagicMock()
     mock_password.ask.side_effect = ["wrong-key", "correct-key"]
+    mock_select = MagicMock()
+    mock_select.ask.return_value = "Retry"
 
     with (
         patch("questionary.password", return_value=mock_password),
+        patch("questionary.select", return_value=mock_select),
         patch(
             "renai.processors.setup_steps._validate_api_key",
             side_effect=[(False, "Invalid key"), (True, "")],
@@ -644,3 +650,287 @@ def test_save_configuration_failure_is_logged(tmp_path, caplog):
     # settings.toml was written atomically and stays complete; no .tmp litter.
     assert settings_user.exists()
     assert not list(tmp_path.glob("*.tmp"))
+
+
+# ---------------------------------------------------------------------------
+# Issue #278: Model catalog defaults, vision filtering, and base URLs
+# ---------------------------------------------------------------------------
+
+FIXED_CATALOG_FIXTURE = {
+    "models": {
+        "openai/gpt-4o-mini": {
+            "modalities": {"input": ["text", "image"], "output": ["text"]},
+        },
+    },
+    "providers": {
+        "openai": {
+            "name": "OpenAI",
+            "api": "https://api.openai.com/v1",
+            "models": {
+                "text-embedding-3-large": {"modalities": {"input": ["text"], "output": []}},
+                "tts-1": {"modalities": {"input": ["text"], "output": ["audio"]}},
+                "dall-e-3": {"modalities": {"input": ["text"], "output": ["image"]}},
+                "gpt-4o-mini": {
+                    "modalities": {"input": ["text", "image"], "output": ["text"]},
+                },
+                "gpt-3.5-turbo": {"modalities": {"input": ["text"], "output": ["text"]}},
+            },
+        },
+        "acme": {
+            "name": "Acme AI",
+            "api": "https://api.acme.example/v1",
+            "models": {
+                "acme-embed": {"modalities": {"input": ["text"], "output": ["embedding"]}},
+                "acme-video": {"modalities": {"input": ["text"], "output": ["video"]}},
+                "acme-chat": {"modalities": {"input": ["text"], "output": ["text"]}},
+                "acme-vision": {
+                    "modalities": {"input": ["text", "image"], "output": ["text"]},
+                },
+            },
+        },
+        "textonly": {
+            "name": "TextOnly AI",
+            "api": "https://api.textonly.example/v1",
+            "models": {
+                "to-chat": {"modalities": {"input": ["text"], "output": ["text"]}},
+            },
+        },
+        "noapi": {
+            "name": "No API Provider",
+            "models": {
+                "noapi-chat": {"modalities": {"input": ["text"], "output": ["text"]}},
+            },
+        },
+    },
+}
+
+
+def test_catalog_defaults_are_text_and_vision_capable_and_no_localhost():
+    """Every catalog provider gets text/vision-capable defaults and never a localhost URL."""
+    from renai.processors.model_catalog import _filter_catalog_models, select_default_model
+    from renai.processors.setup_steps import (
+        KNOWN_PROVIDER_BASE_URLS,
+        _build_provider_options,
+        _is_valid_base_url,
+    )
+
+    catalog = FIXED_CATALOG_FIXTURE["models"]
+    providers_catalog = FIXED_CATALOG_FIXTURE["providers"]
+
+    options = _build_provider_options(
+        catalog, list(providers_catalog.keys()), providers_catalog=providers_catalog
+    )
+    option_names = [opt["name"] for opt in options]
+
+    # Provider without an api URL is skipped instead of falling back to localhost
+    assert "noapi" not in option_names
+    assert "openai" in option_names
+    assert "acme" in option_names
+    assert "custom" in option_names
+
+    for opt in options:
+        name = opt["name"]
+        if name == "custom":
+            continue
+        p_info = providers_catalog[name]
+        base_url = p_info.get("api") or KNOWN_PROVIDER_BASE_URLS.get(name, "")
+        assert _is_valid_base_url(base_url)
+        assert "localhost" not in base_url
+
+        # Default text model must have "text" in output modalities
+        default_text = opt["extra"]
+        assert default_text in p_info["models"]
+        assert "text" in p_info["models"][default_text]["modalities"]["output"]
+
+        # Text-model list excludes embedding, TTS, image-gen, video
+        text_models = _filter_catalog_models(name, catalog, providers_catalog, vision_only=False)
+        for m in text_models:
+            assert "text" in p_info["models"][m]["modalities"]["output"]
+
+        # Vision-model list contains only models with "image" input modality
+        vision_models = _filter_catalog_models(name, catalog, providers_catalog, vision_only=True)
+        for m in vision_models:
+            assert "image" in p_info["models"][m]["modalities"]["input"]
+
+        # Default vision model is vision-capable (or empty if provider has no vision models)
+        default_vision = select_default_model(name, catalog, providers_catalog, vision_only=True)
+        if vision_models:
+            assert default_vision in p_info["models"]
+            assert "image" in p_info["models"][default_vision]["modalities"]["input"]
+        else:
+            assert default_vision == ""
+
+    # Text-only provider must NOT leak text-only models into vision list
+    assert _filter_catalog_models("textonly", catalog, providers_catalog, vision_only=True) == []
+
+
+def test_vision_prompt_unknown_defaults_to_no():
+    """When is_vision_supported returns None, prompt says unknown and defaults to False."""
+    from renai.processors.setup_steps import _configure_vision_selection
+
+    mock_confirm = MagicMock()
+    mock_confirm.ask.side_effect = [False, False]  # decline unknown text model, decline vision
+
+    with patch("questionary.confirm", return_value=mock_confirm) as confirm_cls:
+        vp, vm = _configure_vision_selection(
+            default_provider="custom",
+            default_model="my-local-model",
+            configured_names=["custom"],
+            configured={
+                "custom": {
+                    "base_url": "http://localhost:8000/v1",
+                    "models": ["my-local-model"],
+                    "api_key": "not-required",
+                }
+            },
+            catalog={},
+            provider_options=[],
+            providers_catalog={},
+            is_vision_supported_func=lambda _m: None,
+        )
+
+    assert (vp, vm) == (None, None)
+    first_call_args, first_call_kwargs = confirm_cls.call_args_list[0]
+    assert "unknown" in first_call_args[0].lower()
+    assert first_call_kwargs["default"] is False
+
+
+# ---------------------------------------------------------------------------
+# Issue #279: Setup wizard config merging, validation, and UX hardening
+# ---------------------------------------------------------------------------
+
+
+def test_save_configuration_merges_existing_settings_and_secrets(tmp_path):
+    """Re-running the wizard preserves non-wizard settings, extra providers, and other secrets."""
+    import tomli_w
+
+    from renai.processors.setup import _save_configuration
+
+    settings_user = tmp_path / "settings.toml"
+    secrets_file = tmp_path / "secrets.toml"
+    package_config = tmp_path / "package_config"
+    package_config.mkdir()
+
+    existing_settings = {
+        "provider": "deepinfra",
+        "rename_images": True,
+        "exif": True,
+        "ocr_lang": "eng+deu",
+        "max_filename_length": 180,
+        "llm_timeout": 90.0,
+        "providers": {
+            "deepinfra": {
+                "base_url": "https://api.deepinfra.com/v1/openai",
+                "default_model": "meta-llama/Llama-3.3-70B-Instruct",
+            }
+        },
+    }
+    existing_secrets = {"deepinfra_api_key": "existing-deepinfra-key"}
+    settings_user.write_text(tomli_w.dumps(existing_settings), encoding="utf-8")
+    secrets_file.write_text(tomli_w.dumps(existing_secrets), encoding="utf-8")
+
+    new_config = {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "providers": {
+            "openai": {
+                "base_url": "https://api.openai.com/v1",
+                "default_model": "gpt-4o-mini",
+            }
+        },
+    }
+    new_secrets = {"openai_api_key": "new-openai-key"}
+
+    with (
+        patch("renai.processors.setup.SETTINGS_USER_FILE", settings_user),
+        patch("renai.processors.setup.SECRETS_FILE", secrets_file),
+        patch("renai.processors.setup.CONFIG_DIR", tmp_path),
+        patch("renai.processors.setup.PACKAGE_CONFIG_DIR", package_config),
+    ):
+        _save_configuration(new_config, new_secrets)
+
+    with settings_user.open("rb") as f:
+        merged_settings = tomllib.load(f)
+    assert merged_settings["provider"] == "openai"
+    assert merged_settings["rename_images"] is True
+    assert merged_settings["exif"] is True
+    assert merged_settings["ocr_lang"] == "eng+deu"
+    assert merged_settings["max_filename_length"] == 180
+    assert merged_settings["llm_timeout"] == 90.0
+    assert "deepinfra" in merged_settings["providers"]
+    assert "openai" in merged_settings["providers"]
+
+    with secrets_file.open("rb") as f:
+        merged_secrets = tomllib.load(f)
+    assert merged_secrets["deepinfra_api_key"] == "existing-deepinfra-key"
+    assert merged_secrets["openai_api_key"] == "new-openai-key"
+
+
+def test_validators_reject_empty_url_model_and_non_ascii_workers():
+    """Validators reject empty/whitespace URL & model, and non-ASCII digits like '²'."""
+    from pydantic import ValidationError
+
+    from renai.processors.setup_steps import (
+        _build_final_config_and_secrets,
+        _validate_base_url,
+        _validate_non_empty_model,
+        _validate_workers_input,
+    )
+
+    assert _validate_base_url("") is not True
+    assert _validate_base_url("   ") is not True
+    assert _validate_base_url("ftp://example.com") is not True
+    assert _validate_base_url("https://api.openai.com/v1") is True
+
+    assert _validate_non_empty_model("") is not True
+    assert _validate_non_empty_model("   ") is not True
+    assert _validate_non_empty_model("gpt-4o-mini") is True
+
+    # Non-ASCII superscript digit '²' must return a validation message, not raise ValueError
+    workers_result = _validate_workers_input("²")
+    assert isinstance(workers_result, str)
+    assert _validate_workers_input("4") is True
+
+    # ProviderConfig.model_validate prevents writing empty base_url or default_model
+    with pytest.raises(ValidationError):
+        _build_final_config_and_secrets(
+            configured={"custom": {"base_url": "   ", "models": ["llama3"], "api_key": "k"}},
+            default_provider="custom",
+            default_model="llama3",
+        )
+
+
+def test_prompt_and_validate_api_key_skip_and_cancel():
+    """Key validation loop offers Skip validation and Cancel on failure."""
+    from renai.processors.setup_steps import _prompt_and_validate_api_key
+
+    mock_password = MagicMock()
+    mock_password.ask.return_value = "unverified-key"
+    mock_select = MagicMock()
+    mock_select.ask.return_value = "Skip validation"
+
+    with (
+        patch("questionary.password", return_value=mock_password),
+        patch("questionary.select", return_value=mock_select),
+        patch(
+            "renai.processors.setup_steps._validate_api_key",
+            return_value=(False, "Endpoint does not support key listing (HTTP 404)."),
+        ),
+        patch("renai.processors.setup_steps.console.print"),
+    ):
+        assert _prompt_and_validate_api_key("openai", "https://api.openai.com/v1") == (
+            "unverified-key"
+        )
+
+    mock_select.ask.return_value = "Cancel"
+    with (
+        patch("questionary.password", return_value=mock_password),
+        patch("questionary.select", return_value=mock_select),
+        patch(
+            "renai.processors.setup_steps._validate_api_key",
+            return_value=(False, "Invalid key"),
+        ),
+        patch("renai.processors.setup_steps.console.print"),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        _prompt_and_validate_api_key("openai", "https://api.openai.com/v1")
