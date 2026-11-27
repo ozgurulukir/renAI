@@ -206,6 +206,7 @@ class LLMEngine:
         )
         self.rate_limiter = rate_limiter
         self.allowed_categories = get_allowed_categories()
+        self.image_categories = get_image_categories()
         # Path to the prompts directory within the package
         self.prompts_dir = Path(__file__).parent.parent / "prompts"
 
@@ -270,7 +271,7 @@ class LLMEngine:
         template = self._templates.get(template_name, "")
 
         # Determine which categories to inject
-        cats = categories or (get_image_categories() if is_image_mode else self.allowed_categories)
+        cats = categories or (self.image_categories if is_image_mode else self.allowed_categories)
         category_table = self._format_category_table(cats)
 
         # Generate JSON schema example from Pydantic model
@@ -583,7 +584,7 @@ class LLMEngine:
         lang = validated_model.language.lower()
         is_image = isinstance(validated_model, ImageMetadata)
         allowed_dict = categories_override or (
-            get_image_categories() if is_image else self.allowed_categories
+            self.image_categories if is_image else self.allowed_categories
         )
 
         allowed = resolve_allowed_bucket(allowed_dict, lang)
@@ -614,7 +615,7 @@ class LLMEngine:
         try:
             filtered_data = _filter_model_fields(last_parsed_data, model_class)
             allowed_dict = categories_override or (
-                get_image_categories() if model_class is ImageMetadata else self.allowed_categories
+                self.image_categories if model_class is ImageMetadata else self.allowed_categories
             )
             filtered_data["category"] = resolve_fallback_category(
                 filtered_data.get("language", "en"), allowed_dict

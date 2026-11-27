@@ -5,7 +5,10 @@ Exception analysis messages for the empathetic error handler.
 DEFAULT_WHY = "An unexpected system error occurred."
 DEFAULT_HOW = "Please review the error details or open an issue on GitHub."
 API_KEY_WHY = "API Key not found or invalid."
-API_KEY_HOW = "Check the RENAI_PROVIDER_API_KEY environment variable or update your .env file."
+API_KEY_HOW = (
+    "Check the <PROVIDER>_API_KEY environment variable (e.g. OPENAI_API_KEY) "
+    "or update your secrets.toml file."
+)
 TOOL_MISSING_WHY = "A required external tool (OCR or MuTool) was not found."
 TOOL_MISSING_HOW = "Ensure Tesseract or MuTool is installed and available in your PATH."
 FILE_NOT_FOUND_WHY = "The specified file or directory was not found: {}"

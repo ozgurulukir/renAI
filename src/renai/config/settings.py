@@ -38,7 +38,7 @@ class ProviderConfig(BaseModel):
     """Provider configuration model."""
 
     base_url: str = Field(min_length=1, description="Base URL for the provider API")
-    api_key: str | None = Field(default=None, description="Provider API key")
+    api_key: str | None = Field(default=None, repr=False, description="Provider API key")
     default_model: str = Field(min_length=1, description="Default model name for the provider")
 
 
@@ -261,9 +261,9 @@ class ProviderSettings(BaseSettings):
     """Provider-specific API settings."""
 
     # API Keys
-    deepinfra_api_key: str | None = None
-    openrouter_api_key: str | None = None
-    openai_api_key: str | None = None
+    deepinfra_api_key: str | None = Field(default=None, repr=False)
+    openrouter_api_key: str | None = Field(default=None, repr=False)
+    openai_api_key: str | None = Field(default=None, repr=False)
 
     # Provider-specific models
     deepinfra_model: str | None = None
@@ -275,10 +275,20 @@ class ProviderSettings(BaseSettings):
         default="http://localhost:8000/v1",
         description="Custom provider base URL",
     )
-    custom_api_key: str = Field(default="not-required", description="Custom provider API key")
+    custom_api_key: str = Field(
+        default="not-required", repr=False, description="Custom provider API key"
+    )
     custom_model: str = Field(default="llama3", description="Custom provider model name")
 
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="", extra="allow")
+
+    def __repr_args__(self):  # type: ignore[no-untyped-def]
+        """Exclude any ``*_api_key`` fields (including dynamic extra fields) from repr."""
+        return [
+            (key, value)
+            for key, value in super().__repr_args__()
+            if not (isinstance(key, str) and key.endswith("_api_key"))
+        ]
 
     @classmethod
     def settings_customise_sources(
@@ -325,13 +335,16 @@ def _recover_provider_registry() -> dict[str, ProviderConfig]:
     """Best-effort recovery of the provider registry from raw TOML files.
 
     Used only when the full settings load fails: valid provider tables are kept
-    so diagnostics like `renai providers` stay meaningful.
+    so diagnostics like `renai providers` stay meaningful. Partial user tables
+    are merged onto the default-file entry before validation so single-field
+    overrides (such as ``default_model``) are preserved.
     """
     try:
         import tomllib
     except ImportError:
         import tomli as tomllib  # type: ignore[no-redef]
 
+    raw_providers: dict[str, dict] = {}
     registry: dict[str, ProviderConfig] = {}
     for path in (SETTINGS_DEFAULT_FILE, SETTINGS_USER_FILE):
         if not path.is_file():
@@ -344,8 +357,10 @@ def _recover_provider_registry() -> dict[str, ProviderConfig]:
         for name, table in (data.get("providers") or {}).items():
             if not isinstance(table, dict):
                 continue
+            merged = {**raw_providers.get(name, {}), **table}
             try:
-                registry[name] = ProviderConfig.model_validate(table)
+                registry[name] = ProviderConfig.model_validate(merged)
+                raw_providers[name] = merged
             except Exception:
                 logger.warning(
                     "Skipping invalid provider table '%s' while recovering settings.", name
@@ -353,12 +368,37 @@ def _recover_provider_registry() -> dict[str, ProviderConfig]:
     return registry
 
 
+def _annotate_toml_decode_error(exc: Exception) -> Exception:
+    """Attach the offending file path to a TOMLDecodeError when identifiable."""
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib  # type: ignore[no-redef]
+
+    if not isinstance(exc, tomllib.TOMLDecodeError):
+        return exc
+
+    from renai.config.constants import SECRETS_FILE
+
+    for path in (SETTINGS_USER_FILE, SETTINGS_DEFAULT_FILE, SECRETS_FILE):
+        if not path.is_file():
+            continue
+        try:
+            with path.open("rb") as f:
+                tomllib.load(f)
+        except tomllib.TOMLDecodeError:
+            return tomllib.TOMLDecodeError(f"{path}: {exc}")
+        except OSError:
+            continue
+    return exc
+
+
 try:
     app_settings = AppSettings()
     provider_settings = ProviderSettings()
 except Exception as exc:
-    config_load_error = exc
-    _log_config_load_failure(exc)
+    config_load_error = _annotate_toml_decode_error(exc)
+    _log_config_load_failure(config_load_error)
     # The custom config sources (env TOML, secrets TOML) drive *every*
     # `AppSettings()`/`ProviderSettings()` construction, so re-invoking the
     # constructor would just fail again. `model_construct` builds the instance

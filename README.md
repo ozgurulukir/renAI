@@ -197,7 +197,7 @@ Precedence (highest wins):
 
 #### Provider API Keys & Endpoints
 
-These plain (unprefixed) variables are read as fallbacks when no key is configured via `secrets.toml` / `providers.toml`:
+These plain (unprefixed) variables take highest precedence over `secrets.toml` and `settings.toml` (`environment` > `secrets.toml` > `settings.toml`):
 
 | Variable              | Description                                                        | Default                    |
 | :-------------------- | :----------------------------------------------------------------- | :------------------------- |

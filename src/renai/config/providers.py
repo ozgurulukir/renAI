@@ -72,7 +72,12 @@ _CUSTOM_KEY_SENTINEL = "not-required"
 
 def _secret_api_key(prov, provider: str) -> str | None:
     """Return the key loaded from secrets.toml for *provider*, if meaningfully set."""
-    value = getattr(prov, f"{provider}_api_key", None)
+    key_name = f"{provider}_api_key"
+    value = getattr(prov, key_name, None)
+    if value is None:
+        extra = getattr(prov, "model_extra", None)
+        if isinstance(extra, dict):
+            value = extra.get(key_name)
     if provider == "custom" and value == _CUSTOM_KEY_SENTINEL:
         return None
     return value or None

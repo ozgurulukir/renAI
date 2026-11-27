@@ -31,10 +31,9 @@ We aim to acknowledge your report within 48 hours and provide a fix or mitigatio
 
 renAI reads provider API keys from, in order of precedence (highest first):
 
-1. **Environment variables**: `DEEPINFRA_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, and `CUSTOM_API_KEY` (for the `custom` provider).
-2. **`secrets.toml`** in your user config directory (see `provider.api_key` entries and `deepinfra_api_key` / `openrouter_api_key` / `openai_api_key` / `custom_api_key` fields), written by the `renai init` wizard.
-
-Keys may also be set via `providers.toml` entries (`api_key` field) for registered custom providers.
+1. **Environment variables**: `<PROVIDER>_API_KEY` (e.g. `DEEPINFRA_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `CUSTOM_API_KEY`).
+2. **`secrets.toml`** in your user config directory (`<provider>_api_key` fields, e.g. `deepinfra_api_key`, `groq_api_key`, `custom_api_key`), written by the `renai init` wizard.
+3. **`settings.toml`** (`[providers.<name>].api_key` entries) for registered providers.
 
 - `CUSTOM_API_KEY` has a default sentinel value of `not-required`, intended for keyless local servers (Ollama, LM Studio, etc.). If your custom endpoint requires authentication, always set a real key — the sentinel is **not** a credential.
 

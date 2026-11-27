@@ -68,10 +68,10 @@ ocr_lang = "tur+eng"
 max_text_read_size = 1000000
 subprocess_timeout = 60
 
-# Custom Provider Settings (Override defaults here or in settings.toml)
-custom_api_base_url = "http://localhost:8000/v1"
-custom_api_key = "not-required"
-custom_model = "llama3"
+# Custom Provider Settings
+# Configure custom providers via `renai init`, `[providers.custom]` in settings.toml,
+# `secrets.toml` (`custom_api_key`), or environment variables
+# (`CUSTOM_API_BASE_URL`, `CUSTOM_API_KEY`, `CUSTOM_MODEL`).
 
 # =============================================================================
 # Provider Registry (Standard configurations)
