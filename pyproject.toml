@@ -109,6 +109,7 @@ select = [
 ignore = [
     "T201", # Allow print() in CLI
     "PLR0913", # Allow many arguments (common in orchestrators)
+    "PLR0917", # Allow many positional arguments (same family as PLR0913; stable as of ruff 0.17)
     "RUF001",  # Allow Turkish characters (dotless i, etc.)
     "PLC0415", # Allow local imports (often used for lazy loading or to avoid circularity)
 ]
