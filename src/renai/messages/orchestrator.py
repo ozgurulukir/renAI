@@ -25,6 +25,10 @@ class Summary:
     SUCCESS_COUNT = "[bold green]{}[/bold green]"
     FAILED_BADGE = "[bold red]❌ Failed[/bold red]"
     FAILED_COUNT = "[bold red]{}[/bold red]"
+    FAILURES_TITLE = "[bold red]Failed Files[/bold red]"
+    FAILURES_FILE_HEADER = "Failed File"
+    FAILURES_ERROR_HEADER = "Error"
+    FAILURES_ERROR_SUFFIX = "… (truncated; full details in the log output above)"
 
 
 class Error:
