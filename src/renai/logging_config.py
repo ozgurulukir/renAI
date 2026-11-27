@@ -7,6 +7,8 @@ All application logging uses the standard library ``logging`` framework
 - Plain console output for development
 - Third-party noise suppression
 - An empathetic unhandled-exception hook (what happened / why / how to fix)
+- Live-aware stderr routing: log records never leak into the Rich Live
+  progress display (see ``paused_console_logging``)
 
 Usage:
     import logging
@@ -18,6 +20,9 @@ Usage:
 import json
 import logging
 import sys
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 
@@ -52,6 +57,67 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
+_pause_depth = [0]  # one-element list: mutated in place, no `global` needed
+_paused_records: list[str] = []
+_pause_lock = threading.Lock()
+
+
+class _LiveAwareStderrHandler(logging.StreamHandler):
+    """stderr handler that cannot leak into the Rich Live progress display.
+
+    Two safeguards:
+
+    - The stream is resolved from ``sys.stderr`` at **emit time** instead of
+      being pinned at construction. Rich Live redirects ``sys.stderr`` while
+      the progress display owns the terminal; a handler that captured the
+      original stream object would bypass that redirection and write straight
+      to the real stderr fd, garbling the live screen.
+    - While :func:`paused_console_logging` is active (the orchestrator wraps
+      its ``Live`` block with it), formatted records are buffered in memory
+      and replayed to stderr when the display closes, so log lines and
+      tracebacks never interleave with the live rendering at all.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.stream = sys.stderr
+        if _pause_depth[0] > 0:
+            try:
+                _paused_records.append(self.format(record) + self.terminator)
+            except Exception:  # mirror StreamHandler.emit's error tolerance
+                self.handleError(record)
+            return
+        super().emit(record)
+
+
+@contextmanager
+def paused_console_logging() -> Iterator[None]:
+    """Defer stderr log output until the innermost block exits.
+
+    The orchestrator wraps the Rich ``Live`` progress block so that per-file
+    log records (retry warnings, ``logger.exception`` tracebacks) cannot
+    interleave with the live rendering. Buffered records are replayed once,
+    right after the display closes and before the summary is printed. Nested
+    uses buffer together and flush only at the outermost exit.
+
+    In production (JSON) mode this merely delays stderr lines to the end of
+    the run; each line stays a valid JSON object.
+    """
+    with _pause_lock:
+        _pause_depth[0] += 1
+    try:
+        yield
+    finally:
+        with _pause_lock:
+            _pause_depth[0] -= 1
+            flush_now = _pause_depth[0] == 0
+            pending = list(_paused_records) if flush_now else []
+            if flush_now:
+                _paused_records.clear()
+        if pending:
+            sys.stderr.write("".join(pending))
+            sys.stderr.flush()
+
+
 def configure_logging(
     log_level: int | None = None,
     json_output: bool | None = None,
@@ -71,7 +137,7 @@ def configure_logging(
     if json_output is None:
         json_output = not is_development()
 
-    handler = logging.StreamHandler(sys.stderr)
+    handler = _LiveAwareStderrHandler()
     if json_output:
         handler.setFormatter(JsonFormatter())
     else:
