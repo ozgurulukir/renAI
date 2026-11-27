@@ -136,6 +136,11 @@ class TextExtractor:
         # Serializes fallback moves so same-basename files from different subfolders
         # cannot interleave the collision check and the move (TOCTOU overwrite).
         self._move_lock = asyncio.Lock()
+        self._dry_run_quarantined: dict[Path, str] = {}
+
+    def pop_dry_run_quarantine(self, file_path: Path) -> str | None:
+        """Return and clear the dry-run quarantine folder recorded for ``file_path``, if any."""
+        return self._dry_run_quarantined.pop(file_path, None)
 
     async def extract(
         self,
@@ -195,6 +200,10 @@ class TextExtractor:
                     ocr_psm=self.ocr_engine.psm,
                     ocr_enhanced=self.ocr_engine.enhanced,
                     use_mutool=self.ocr_engine.use_mutool,
+                    ocr_head_pages=getattr(self.ocr_engine, "head_pages", 0),
+                    ocr_tail_pages=getattr(self.ocr_engine, "tail_pages", 0),
+                    subprocess_timeout=getattr(self.ocr_engine, "subprocess_timeout", 0),
+                    mutool_path=str(getattr(self.ocr_engine, "mutool_path", "") or ""),
                 ),
             )
 
@@ -207,10 +216,10 @@ class TextExtractor:
         ext = file_path.suffix.lower()
         extracted_text = ""
 
-        if ext in self.office_extensions:
-            extracted_text = await self._extract_from_office(file_path, target_length)
-        elif ext in self.plain_text_extensions:
-            extracted_text = await self._extract_from_plain_text(file_path, target_length)
+        if ext in self.office_extensions or ext in self.plain_text_extensions:
+            extracted_text = await self._extract_non_pdf(
+                file_path, ext, target_length, fallback, dry_run
+            )
         else:
             # PDF/EPUB/MOBI
             extracted_text = await self._extract_from_document(
@@ -229,6 +238,26 @@ class TextExtractor:
             return head_tail_trim(text, target_length, self.head_ratio)
         return text[:target_length]
 
+    async def _extract_non_pdf(
+        self,
+        file_path: Path,
+        ext: str,
+        target_length: int,
+        fallback: FallbackMode,
+        dry_run: bool,
+    ) -> str:
+        """Extract Office or plain-text files and route insufficient text to quarantine fallback."""
+        raw_text = (
+            await self._extract_from_office(file_path, target_length)
+            if ext in self.office_extensions
+            else await self._extract_from_plain_text(file_path, target_length)
+        )
+        if len(raw_text.strip()) > self.min_sufficient_text:
+            return raw_text
+        return await self._handle_extraction_fallback(
+            file_path, raw_text, target_length, fallback, dry_run, allow_ocr_vision=False
+        )
+
     async def _handle_extraction_fallback(
         self,
         file_path: Path,
@@ -236,22 +265,24 @@ class TextExtractor:
         target_length: int,
         fallback: FallbackMode,
         dry_run: bool = False,
+        *,
+        allow_ocr_vision: bool = True,
     ) -> str:
         """Route and execute fallback strategy when text extraction is insufficient."""
-        if fallback == FallbackMode.MOVE_TO_FOLDER:
+        if fallback == FallbackMode.MOVE_TO_FOLDER or (
+            fallback == FallbackMode.OCR and self.skip_scan_files
+        ):
             logger.debug(
                 f"Primary text insufficient, moving {file_path.name} to {NEEDS_SCAN_DIR_NAME}"
             )
             return await self._quarantine(file_path, NEEDS_SCAN_DIR_NAME, dry_run)
 
+        if not allow_ocr_vision:
+            if self.move_scan_failures:
+                return await self._quarantine(file_path, SCAN_FAILURES_DIR_NAME, dry_run)
+            return full_text[:target_length] if fallback == FallbackMode.NONE else ""
+
         if fallback == FallbackMode.OCR:
-            if self.skip_scan_files:
-                # skip_needs_ocr: never OCR these files -- quarantine them instead
-                logger.debug(
-                    f"Primary text insufficient for {file_path.name}, "
-                    f"moving to {NEEDS_SCAN_DIR_NAME} (OCR skipped)"
-                )
-                return await self._quarantine(file_path, NEEDS_SCAN_DIR_NAME, dry_run)
             logger.debug(f"Primary text insufficient for {file_path.name}, falling back to OCR")
             return await self._fallback_to_ocr(file_path, target_length, dry_run)
 
@@ -261,10 +292,6 @@ class TextExtractor:
             )
             return ""
 
-        # The NONE sentinel is remapped to OCR by the document pipeline in
-        # BookProcessor, while benchmark mode passes NONE deliberately so that
-        # extraction runs without any fallback side effects. Returning the
-        # trimmed text here is therefore intentional, never a "no fallback" gap.
         return full_text[:target_length]
 
     async def _extract_from_office(
@@ -280,6 +307,17 @@ class TextExtractor:
         """
         try:
             from markitdown import MarkItDown
+
+            max_office_bytes = 50 * 1024 * 1024  # 50 MiB guard for MarkItDown
+            file_size = await asyncio.to_thread(lambda: file_path.stat().st_size)
+            if file_size > max_office_bytes:
+                logger.error(
+                    "Skipping Office file %s: size (%d bytes) exceeds limit (%d bytes).",
+                    file_path.name,
+                    file_size,
+                    max_office_bytes,
+                )
+                return ""
 
             def _convert():
                 md = MarkItDown()
@@ -399,6 +437,7 @@ class TextExtractor:
             return ""
         if dry_run:
             logger.info(f"[DRY-RUN] Would move {file_path.name} to {folder_name}")
+            self._dry_run_quarantined[file_path] = folder_name
             return ""
         # Serialize moves so same-basename files from concurrent workers cannot
         # interleave the collision check and the move (silent overwrite).

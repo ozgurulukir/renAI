@@ -2,6 +2,8 @@ import logging
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
+import pytest
+
 from renai.extractors.pdf_extractors import (
     PDFPlumberExtractor,
     PyMuPDFExtractor,
@@ -110,14 +112,18 @@ class TestGetExtractor:
         assert isinstance(extractor, PDFPlumberExtractor)
 
     def test_get_extractor_fallback(self):
-        """Test that unknown extractors fallback to PyMuPDFExtractor."""
-        extractor = get_extractor("unknown_extractor_name")
-        assert isinstance(extractor, PyMuPDFExtractor)
+        """Test that unknown extractors raise ConfigurationError."""
+        from renai.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="unknown_extractor_name"):
+            get_extractor("unknown_extractor_name")
 
     def test_get_extractor_empty_string(self):
-        """Test that an empty string falls back to PyMuPDFExtractor."""
-        extractor = get_extractor("")
-        assert isinstance(extractor, PyMuPDFExtractor)
+        """Test that an empty string raises ConfigurationError."""
+        from renai.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError):
+            get_extractor("")
 
 
 class TestPyPDFExtractor:

@@ -120,6 +120,10 @@ def text_settings_fingerprint(
     ocr_psm: int,
     ocr_enhanced: bool = False,
     use_mutool: bool = False,
+    ocr_head_pages: int = 0,
+    ocr_tail_pages: int = 0,
+    subprocess_timeout: int = 0,
+    mutool_path: str = "",
 ) -> str:
     """Stable fingerprint of the settings that change extracted text (#246).
 
@@ -138,6 +142,10 @@ def text_settings_fingerprint(
             int(ocr_psm),
             bool(ocr_enhanced),
             bool(use_mutool),
+            int(ocr_head_pages),
+            int(ocr_tail_pages),
+            int(subprocess_timeout),
+            str(mutool_path or ""),
         ],
         sort_keys=True,
     )

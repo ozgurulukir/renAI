@@ -198,14 +198,16 @@ class TestExtractText:
 
         created: list[MagicMock] = []
 
+        from concurrent.futures.process import BrokenProcessPool
+
         class FakePool:
             def __init__(self, max_workers=None, mp_context=None):
                 self.max_workers = max_workers
                 self.mp_context = mp_context
                 created.append(self)
 
-            def run_in_executor(self, *args, **kwargs):
-                raise RuntimeError("broken pool")
+            def submit(self, *args, **kwargs):
+                raise BrokenProcessPool("broken pool")
 
             def shutdown(self, wait=False):
                 self.shutdown_wait = wait

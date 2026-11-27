@@ -12,6 +12,8 @@ from ..models.schemas import BookMetadata, ImageMetadata
 
 logger = logging.getLogger(__name__)
 
+MAX_VISION_IMAGE_BYTES = 50 * 1024 * 1024  # 50 MiB safety cap before reading into RAM
+
 
 class VisualProcessor:
     """
@@ -47,15 +49,21 @@ class VisualProcessor:
         )
 
     async def _render_pages_skipping_failures(
-        self, renderer: PageRenderer, file_path: Path, pages: list[int]
+        self,
+        renderer: PageRenderer,
+        file_path: Path,
+        pages: list[int],
+        already_rendered: dict[int, RenderedPage] | None = None,
     ) -> dict[int, RenderedPage]:
-        """Render sampled pages one at a time, skipping pages that fail.
+        """Render sampled pages one at a time, skipping pages that fail or already succeeded.
 
         A single corrupt page must not discard the whole vision sample: the
         surviving pages still give the vision LLM something to work with.
         """
-        rendered: dict[int, RenderedPage] = {}
+        rendered: dict[int, RenderedPage] = dict(already_rendered) if already_rendered else {}
         for page_number in pages:
+            if page_number in rendered:
+                continue
             try:
                 rendered.update(
                     await renderer.render_pages(file_path, [page_number], self.vision_dpi)
@@ -114,6 +122,15 @@ class VisualProcessor:
     ) -> ImageMetadata | None:
         """Extract metadata from a direct image file asynchronously."""
         try:
+            file_size = await asyncio.to_thread(lambda: file_path.stat().st_size)
+            if file_size > MAX_VISION_IMAGE_BYTES:
+                logger.error(
+                    "Skipping image %s: file size (%d bytes) exceeds limit (%d bytes).",
+                    file_path.name,
+                    file_size,
+                    MAX_VISION_IMAGE_BYTES,
+                )
+                return None
             image_bytes = await asyncio.to_thread(file_path.read_bytes)
             if not self.llm_engine:
                 return None

@@ -148,15 +148,77 @@ class ProcessingConfig(BaseModel):
         return cls(**fields)
 
 
+_LANGUAGE_ALIASES: dict[str, str] = {
+    "turkish": "tr",
+    "türkçe": "tr",
+    "turkce": "tr",
+    "tur": "tr",
+    "english": "en",
+    "ingilizce": "en",
+    "eng": "en",
+    "german": "de",
+    "deutsch": "de",
+    "almanca": "de",
+    "deu": "de",
+    "ger": "de",
+    "french": "fr",
+    "français": "fr",
+    "francais": "fr",
+    "fransızca": "fr",
+    "fra": "fr",
+    "fre": "fr",
+    "spanish": "es",
+    "español": "es",
+    "espanol": "es",
+    "ispanyolca": "es",
+    "spa": "es",
+    "italian": "it",
+    "italiano": "it",
+    "ita": "it",
+    "russian": "ru",
+    "rusça": "ru",
+    "rus": "ru",
+    "arabic": "ar",
+    "arapça": "ar",
+    "ara": "ar",
+    "portuguese": "pt",
+    "português": "pt",
+    "por": "pt",
+    "japanese": "ja",
+    "jpn": "ja",
+    "chinese": "zh",
+    "zho": "zh",
+    "chi": "zh",
+}
+
+
 class BaseMetadata(BaseModel):
     """Base schema for all metadata extracted by renAI."""
 
     language: str = Field(
-        ..., description="ISO 639-1 language code (e.g., 'tr' for Turkish, 'en' for English/Other)."
+        "en",
+        description="ISO 639-1 language code (e.g., 'tr' for Turkish, 'en' for English/Other).",
     )
     category: str = Field(
         ..., description="The most appropriate category chosen from the allowed list."
     )
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def normalize_language(cls, v: Any) -> str:
+        """Normalize language names, region tags, and empty/null values to ISO 639-1 codes."""
+        if v is None or not isinstance(v, str):
+            return "en"
+        cleaned = v.strip().lower()
+        if not cleaned or cleaned in ("unknown", "n/a", "-", "null", "none"):
+            return "en"
+        if cleaned in _LANGUAGE_ALIASES:
+            return _LANGUAGE_ALIASES[cleaned]
+        # Strip region/script subtags (e.g. "tr-TR", "en_US" -> "tr", "en")
+        primary = re.split(r"[-_\s]", cleaned, maxsplit=1)[0]
+        if primary in _LANGUAGE_ALIASES:
+            return _LANGUAGE_ALIASES[primary]
+        return primary or "en"
 
     @property
     def safe_category(self) -> str:
@@ -285,6 +347,15 @@ class BookMetadata(BaseMetadata):
         """Convert empty or placeholder strings in text fields to None or clean strings."""
         if v is None:
             return None
+        if isinstance(v, list):
+            parts = [
+                str(item).strip()
+                for item in v
+                if item is not None
+                and str(item).strip()
+                and str(item).strip().lower() not in ("unknown", "n/a", "-")
+            ]
+            return ", ".join(parts) if parts else None
         if isinstance(v, str):
             v = v.strip()
             if not v or v.lower() in ("unknown", "n/a", "-"):

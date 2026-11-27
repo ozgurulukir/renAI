@@ -33,21 +33,22 @@ def _extract_head_tail(
         If the document is short enough that head and tail overlap,
         returns all pages without separator.
     """
-    head_target = int(target_chars * head_ratio)
-    tail_target = target_chars - head_target
     separator = "\n---\n"
+    effective_budget = max(0, target_chars - len(separator))
+    head_target = int(effective_budget * head_ratio)
+    tail_target = effective_budget - head_target
 
     head_parts: list[str] = []
     head_accumulated = 0
     head_end_page = 0
 
     for i in range(min(max_pages_per_side, total_pages)):
-        page_text = get_page_text(i)
-        if not page_text:
-            continue
         remaining = head_target - head_accumulated
         if remaining <= 0:
             break
+        page_text = get_page_text(i)
+        if not page_text:
+            continue
         if head_accumulated + len(page_text) > head_target:
             head_parts.append(page_text[:remaining])
             head_accumulated += remaining
@@ -63,12 +64,12 @@ def _extract_head_tail(
     for i in range(total_pages - 1, head_end_page - 1, -1):
         if total_pages - 1 - i >= max_pages_per_side:
             break
-        page_text = get_page_text(i)
-        if not page_text:
-            continue
         remaining = tail_target - tail_accumulated
         if remaining <= 0:
             break
+        page_text = get_page_text(i)
+        if not page_text:
+            continue
         if tail_accumulated + len(page_text) > tail_target:
             trimmed = page_text[-remaining:]
             tail_parts.append(trimmed)
@@ -248,4 +249,12 @@ _DEFAULT_EXTRACTOR = "pymupdf"
 
 
 def get_extractor(name: str) -> BaseExtractor:
-    return EXTRACTOR_REGISTRY.get(name.lower(), EXTRACTOR_REGISTRY[_DEFAULT_EXTRACTOR])
+    key = name.lower()
+    if key not in EXTRACTOR_REGISTRY:
+        from ..exceptions import ConfigurationError
+
+        valid = ", ".join(EXTRACTOR_NAMES)
+        raise ConfigurationError(
+            f"Cannot select extractor '{name}' because it is unknown. To fix, use one of: {valid}."
+        )
+    return EXTRACTOR_REGISTRY[key]

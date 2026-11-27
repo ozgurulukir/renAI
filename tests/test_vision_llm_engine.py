@@ -184,7 +184,7 @@ class TestVisionLLMCall:
         assert result is None
         assert (
             llm_engine.client.chat.completions.create.await_count
-            == llm_engine.call_policy.max_retries
+            == 1 + llm_engine.call_policy.max_retries
         )
 
     @pytest.mark.asyncio

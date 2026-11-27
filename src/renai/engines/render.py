@@ -89,14 +89,29 @@ class _PymupdfPageRenderer:
         *,
         image_max_size: int | None = None,
         image_quality: int | None = None,
+        max_dimension: int | None = None,
     ):
         self._doc = doc
         self._image_max_size = image_max_size
         self._image_quality = image_quality
+        self._max_dimension = max_dimension
 
     def _render_page(self, doc: pymupdf.Document, page_number: int, dpi: int) -> RenderedPage:
         page = doc.load_page(page_number)
         zoom = dpi / 72
+        # Cap zoom before get_pixmap so huge mediaboxes (e.g. 14400x14400 pt)
+        # never allocate multi-GB pixmaps. When image_max_size is set, cap at
+        # max(image_max_size, 2000) so normal pages still go through PIL LANCZOS
+        # thumbnailing with identical dimensions while huge pages stay bounded.
+        cap = self._max_dimension
+        if cap is None and self._image_max_size is not None:
+            cap = max(self._image_max_size, 2000)
+        if cap is not None and cap > 0:
+            rect = getattr(page, "rect", None)
+            if rect is not None:
+                max_side_pt = max(float(rect.width), float(rect.height))
+                if max_side_pt > 0:
+                    zoom = min(zoom, cap / max_side_pt)
         pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
@@ -290,6 +305,7 @@ def create_page_renderer(
     subprocess_timeout: int | None = None,
     image_max_size: int | None = None,
     image_quality: int | None = None,
+    max_dimension: int | None = None,
 ) -> PageRenderer:
     """Factory for the page-rendering seam; callers never learn the backend.
 
@@ -299,7 +315,12 @@ def create_page_renderer(
     """
     if use_mutool:
         return _MutoolPageRenderer(mutool_path=mutool_path, subprocess_timeout=subprocess_timeout)
-    return _PymupdfPageRenderer(doc=doc, image_max_size=image_max_size, image_quality=image_quality)
+    return _PymupdfPageRenderer(
+        doc=doc,
+        image_max_size=image_max_size,
+        image_quality=image_quality,
+        max_dimension=max_dimension,
+    )
 
 
 def get_subprocess_kwargs() -> dict[str, Any]:

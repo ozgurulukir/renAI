@@ -149,7 +149,8 @@ async def test_call_llm_final_fallback_uses_last_parsed_data(llm_engine):
     assert result.title == "Test Book"
     assert result.category == "Other"
     assert (
-        llm_engine.client.chat.completions.create.await_count == llm_engine.call_policy.max_retries
+        llm_engine.client.chat.completions.create.await_count
+        == 1 + llm_engine.call_policy.max_retries
     )
 
 
