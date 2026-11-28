@@ -9,7 +9,7 @@ via PEP 562 ``__getattr__`` so a plain ``import renai`` (e.g. to read
 ``__version__``) does not pull in openai, cv2, pymupdf, etc.
 """
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 
 from typing import TYPE_CHECKING
 
